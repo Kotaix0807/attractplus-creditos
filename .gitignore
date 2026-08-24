@@ -1,4 +1,5 @@
 /attract
+/attractplus
 *.o
 obj*
 core
@@ -18,3 +19,6 @@ core
 /modules
 /history.idx
 /.vscode
+
+# descarga de terceros, no forma parte del proyecto
+/CheatCollection
