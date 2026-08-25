@@ -1,0 +1,338 @@
+/*
+ *
+ *  Attract-Mode frontend
+ *  Copyright (C) 2014-2016 Andrew Mickelson
+ *
+ *  This file is part of Attract-Mode.
+ *
+ *  Attract-Mode is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  Attract-Mode is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with Attract-Mode.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#ifndef FE_VM_HPP
+#define FE_VM_HPP
+
+#include <vector>
+#include <queue>
+#include <string>
+
+#include "fe_input.hpp"
+#include "fe_present.hpp"
+#include "sq_ease.hpp"
+#include "sq_math.hpp"
+#include "sq_vec2.hpp"
+
+#include <sqrat/sqratObject.h>
+#include <sqrat/sqratFunction.h>
+#include "sqrat_regexp2.hpp"
+
+class FeWindow;
+class FeOverlay;
+class FeConfigContext;
+
+namespace Sqrat
+{
+	class Table;
+	class Array;
+};
+
+namespace sf
+{
+	class Event;
+};
+
+class FeCallback
+{
+public:
+	FeCallback( int pid,
+		const Sqrat::Object &env,
+		const std::string &fn,
+		FeSettings &fes );
+	Sqrat::Function &get_fn();
+
+	int m_sid;		// -1 for layout, otherwise the plugin index
+	Sqrat::Object m_env;	// callback function environment
+	std::string m_fn;	// callback function name
+
+	std::string m_path;
+	std::string m_file;
+	const FeScriptConfigurable *m_cfg;
+
+private:
+	Sqrat::Function m_cached_fn;
+};
+
+class FePluginGlobals
+{
+public:
+	enum Property
+	{
+		GridProperty,
+		GridUniformProperty,
+		PixelSnapProperty
+	};
+
+	FePluginGlobals()
+		: m_values{ GridPixel, true, false }
+	{
+	}
+
+	static int get_property( const char * );
+	void push_property( HSQUIRRELVM, int ) const;
+	void set_property( HSQUIRRELVM, int );
+
+	int get_grid() const { return m_values[GridProperty]; }
+	bool get_grid_uniform() const { return m_values[GridUniformProperty]; }
+	bool get_pixel_snap() const { return m_values[PixelSnapProperty]; }
+
+private:
+	static const char *property_names[];
+	SQInteger m_values[PixelSnapProperty + 1];
+};
+
+class FeVM : public FePresent
+{
+private:
+	friend class FeConfigVM;
+
+	static const char *transitionTypeStrings[];
+	static const char *get_transition_name( FeTransitionType t );
+
+	enum FromToType
+	{
+		FromToNoValue=0,
+		FromToScreenSaver=1,
+		FromToFrontend=2
+	};
+
+	FeOverlay *m_overlay;
+	FeMusic &m_ambient_sound;
+
+	bool m_redraw_triggered;
+	bool m_sort_zorder_triggered;
+	bool m_process_console_input;
+	const FeScriptConfigurable *m_script_cfg;
+	int m_script_id;
+	std::vector< FePluginGlobals > m_plugin_globals;
+	std::string m_last_layout;
+
+	std::queue< FeInputMap::Command > m_posted_commands;
+	std::vector< FeCallback > m_ticks;
+	std::vector< FeCallback > m_trans;
+	std::vector< FeCallback > m_sig_handlers;
+
+	FeVM( const FeVM & );
+	FeVM &operator=( const FeVM & );
+
+	void add_ticks_callback( Sqrat::Object, const char * );
+	void add_transition_callback( Sqrat::Object, const char * );
+	void add_signal_handler( Sqrat::Object, const char * );
+	void remove_signal_handler( Sqrat::Object, const char * );
+	void set_for_callback( const FeCallback & );
+	bool process_console_input();
+
+	static bool internal_do_nut(const std::string &, const std::string &);
+
+public:
+	FeVM( FeSettings &fes, FeWindow &wnd, FeMusic &ambient_sound, bool console_input );
+	~FeVM();
+
+	void load_script_nv();
+	void save_script_nv();
+	void load_layout_nv();
+	void save_layout_nv();
+
+	void set_overlay( FeOverlay *feo );
+
+	void flag_redraw() { m_redraw_triggered = true; };
+	void flag_sort_zorder() { m_sort_zorder_triggered = true; };
+	void clear_commands();
+	void post_command( FeInputMap::Command c );
+	bool poll_command( FeInputMap::Command &c, std::optional<sf::Event> &ev, bool &from_ui );
+	void clear_handlers();
+	void clear_layout(); // override of base class clear_layout()
+
+	void update_filters_binding( Sqrat::Table &fe );
+	void update_to_new_list( int var=0, bool reset_display=false );
+
+	// runs .attract/emulators/template/setup.nut to generate default emulator
+	// configs and detect emulators.  Prompts user to automaticallly import emulators
+	//
+	bool setup_wizard();
+
+	void set_audio_loudness( bool enabled );
+
+	// Scripting functionality
+	//
+	void vm_close();
+	void vm_init();
+	bool on_new_layout();
+	bool on_tick();
+	void on_transition( FeTransitionType, int var );
+	void init_with_default_layout();
+	int get_script_id() { return m_script_id; };
+	void set_script_id( int id ) { m_script_id=id; };
+	int get_plugin_grid() const override;
+	bool get_plugin_grid_uniform() const override;
+	bool get_plugin_pixel_snap() const override;
+
+	bool script_handle_event( FeInputMap::Command c );
+
+	//
+	// overlay functions used from scripts
+	//
+	int list_dialog( Sqrat::Array, const char *, int, int, FeInputMap::Command );
+	int list_dialog( Sqrat::Array, const char *, int, int );
+	int list_dialog( Sqrat::Array, const char *, int );
+	int list_dialog( Sqrat::Array, const char * );
+	int list_dialog( Sqrat::Array );
+	const char *edit_dialog( const char *, const char * );
+	bool overlay_is_on();
+	int overlay_get_list_index();
+	int overlay_get_list_size();
+	void overlay_set_custom_controls( FeText *caption, FeListBox *opts );
+	void overlay_set_custom_controls( FeText *caption );
+	void overlay_set_custom_controls();
+	void overlay_clear_custom_controls();
+	bool splash_message( const char *, const char * );
+	bool splash_message( const char * );
+	Sqrat::Array get_tags_available() const;
+
+	static void script_get_config_options(
+			FeConfigContext &ctx,
+			std::string &gen_help,
+			FeScriptConfigurable &configurable,
+			const std::string &script_path,
+			const std::string &script_file );
+
+	// Simply get the general help message for the specified script:
+	static void script_get_config_options(
+			std::string &gen_help,
+			const std::string &script_path,
+			const std::string &script_file );
+
+	static void script_run_config_function(
+			FeScriptConfigurable &configurable,
+			const std::string &script_path,
+			const std::string &script_file,
+			const std::string &func_name,
+			std::string &returned_message );
+
+	//
+	// Script callback functions
+	//
+	static FeImage *cb_add_image(const char *,float, float, float, float);
+	static FeImage *cb_add_image(const char *, float, float);
+	static FeImage *cb_add_image(const char *);
+	static FeImage *cb_add_artwork(const char *,float, float, float, float);
+	static FeImage *cb_add_artwork(const char *, float, float);
+	static FeImage *cb_add_artwork(const char *);
+	static FeImage *cb_add_clone(FeImage *);
+	static FeText *cb_add_text(const char *,int, int, int, int);
+	static FeListBox *cb_add_listbox(int, int, int, int);
+	static FeRectangle *cb_add_rectangle(float, float, float, float);
+	static FeImage *cb_add_surface(float, float, float, float);
+	static FeImage *cb_add_surface(float, float, float, float, int, int);
+	static FeImage *cb_add_surface(float, float);
+	static FeSound *cb_add_sound(const char *, bool);
+	static FeSound *cb_add_sound(const char *);
+	static FeMusic *cb_add_music(const char *);
+	static FeShader *cb_add_shader(int, const char *, const char *);
+	static FeShader *cb_add_shader(int, const char *);
+	static FeShader *cb_add_shader(int);
+	static FeShader *cb_compile_shader(int, const char *, const char *);
+	static FeShader *cb_compile_shader(int, const char *);
+	static FeShader *cb_compile_shader(int);
+	static void cb_add_ticks_callback( Sqrat::Object, const char *);
+	static void cb_add_ticks_callback(const char *);
+	static void cb_add_transition_callback( Sqrat::Object, const char *);
+	static void cb_add_transition_callback(const char *);
+	static void cb_add_signal_handler( Sqrat::Object, const char *);
+	static void cb_add_signal_handler( const char * );
+	static void cb_remove_signal_handler( Sqrat::Object, const char *);
+	static void cb_remove_signal_handler( const char * );
+	static SQInteger cb_plugin_get( HSQUIRRELVM );
+	static SQInteger cb_plugin_set( HSQUIRRELVM );
+	static bool cb_get_input_state( const char *input );
+	static float cb_get_input_pos( const char *input );
+	static bool do_nut(const char *);
+	static bool load_module( const char *module_file );
+	static void print_to_console( const char *str );
+#ifdef USE_LIBCURL
+	static bool get_url( const char *url, const char *path );
+#endif
+	static bool cb_plugin_command(const char *, const char *, Sqrat::Object, const char * );
+	static bool cb_plugin_command(const char *, const char *, const char *);
+	static bool cb_plugin_command(const char *, const char *);
+	static bool cb_plugin_command_bg(const char *, const char *);
+	static const char *cb_path_expand( const char *path );
+
+	enum PathTestFlags
+	{
+		IsNotFound=0,
+		IsFile=1,
+		IsDirectory=2,
+		IsFileOrDirectory=4,
+		IsRelativePath=8,
+		IsSupportedArchive=16,
+		IsSupportedMedia=32
+	};
+	static bool cb_path_test( const char *, int );
+	static time_t cb_get_file_mtime( const char * );
+	static bool cb_set_file_mtime( const char *, time_t );
+	static bool cb_copy_file( const char *, const char * );
+	static const char *cb_read_file( const char * );
+	static bool cb_write_file( const char *, const char * );
+	static bool cb_append_file( const char *, const char * );
+	static Sqrat::Array cb_get_dir( const char * );
+	static bool cb_make_dir( const char * );
+
+	static const char *cb_get_clipboard();
+	static void cb_set_clipboard( const char * );
+
+	static const char *cb_json_stringify( const Sqrat::Object );
+	static Sqrat::Object cb_json_parse( const char * );
+
+	static const char *cb_get_game_info( int, int, int );
+	static const char *cb_get_game_info( int, int );
+	static const char *cb_get_game_info( int );
+	static bool cb_set_game_info( int, const char *, int, int );
+	static bool cb_set_game_info( int, const char *, int );
+	static bool cb_set_game_info( int, const char * );
+
+	enum ArtFlags
+	{
+		AF_Default=0,
+		AF_ImagesOnly=1,
+		AF_IncludeLayout=2,
+		AF_FullList=4
+	};
+	static const char *cb_get_art( const char *,int,int,int);
+	static const char *cb_get_art( const char *,int,int);
+	static const char *cb_get_art( const char *,int);
+	static const char *cb_get_art( const char *);
+	static Sqrat::Table cb_get_input_mappings();
+	static Sqrat::Table cb_get_general_config();
+	static Sqrat::Table cb_get_config();
+	static void cb_set_config( const Sqrat::Table );
+	static void cb_signal( const char * );
+	static void cb_set_display( int, bool, bool );
+	static void cb_set_display( int, bool );
+	static void cb_set_display( int );
+	static const char *cb_get_text( const char *, int, int );
+	static const char *cb_get_text( const char *, int );
+	static const char *cb_get_text( const char * );
+};
+
+#endif

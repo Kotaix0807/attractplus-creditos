@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  Windows:
+    uses: ./.github/workflows/Windows.yml
+
+  MacOS:
+    uses: ./.github/workflows/MacOS.yml
+
+  Linux:
+    uses: ./.github/workflows/Linux-x86_64.yml
+
+  ARM:
+    uses: ./.github/workflows/ARM.yml
+
+  Release:
+    name: Release to Github
+    needs: [Linux, ARM, Windows, MacOS]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v8
+      with:
+        path: artifacts
+
+    - name: Prepare artifacts
+      id: prepare_artifacts
+      run: |
+        tag="${GITHUB_REF#refs/*/}"
+        echo "current_tag=${tag}" >> $GITHUB_OUTPUT
+        mkdir -p "${GITHUB_WORKSPACE}"/artifacts_for_release
+        find "${GITHUB_WORKSPACE}"/artifacts/ -type f -name '*.deb' -exec cp -v "{}" "${GITHUB_WORKSPACE}"/artifacts_for_release \;
+        7z a "${GITHUB_WORKSPACE}"/artifacts_for_release/"attractplus_${GITHUB_REF#refs/*/}_Windows.7z" ./artifacts/Windows/*
+        7z a "${GITHUB_WORKSPACE}"/artifacts_for_release/"attractplus_${GITHUB_REF#refs/*/}_MacOS.7z" ./artifacts/MacOS/*
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        name: Attract Mode Plus ${{ steps.prepare_artifacts.outputs.current_tag }}
+        draft: true
+        prerelease: false
+        files: |
+          artifacts_for_release/attractplus*.7z
+          artifacts_for_release/attractplus*.deb

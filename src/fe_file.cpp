@@ -1,0 +1,86 @@
+/*
+ *
+ *  Attract-Mode frontend
+ *  Copyright (C) 2017 Andrew Mickelson
+ *
+ *  This file is part of Attract-Mode.
+ *
+ *  Attract-Mode is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  Attract-Mode is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with Attract-Mode.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#include "fe_file.hpp"
+#include "nowide/cstdio.hpp"
+
+FeFileInputStream::FeFileInputStream( const std::string &fn )
+	: m_file( NULL )
+{
+	m_file = nowide::fopen( fn.c_str(), "rb" );
+}
+
+FeFileInputStream::~FeFileInputStream()
+{
+	if ( m_file )
+		fclose( m_file );
+}
+
+std::optional<std::size_t> FeFileInputStream::read( void *data, std::size_t size )
+{
+	if ( m_file )
+		return fread( data, 1, (std::size_t)size, m_file );
+
+	return -1;
+}
+
+std::optional<std::size_t> FeFileInputStream::seek( std::size_t pos )
+{
+	if ( m_file )
+	{
+		if ( fseek( m_file, (std::size_t)pos, SEEK_SET ) )
+			return -1;
+
+		return tell();
+	}
+
+	return -1;
+}
+
+std::optional<std::size_t> FeFileInputStream::tell()
+{
+	if ( m_file )
+		return ftell( m_file );
+
+	return -1;
+}
+
+std::optional<std::size_t> FeFileInputStream::getSize()
+{
+	if ( m_file )
+	{
+		auto pos_opt = tell();
+		if ( !pos_opt.has_value() ) return -1;
+		std::size_t pos = pos_opt.value();
+
+		fseek( m_file, 0, SEEK_END );
+
+		auto size_opt = tell();
+		if ( !size_opt.has_value() ) return -1;
+		std::size_t size = size_opt.value();
+
+		seek( pos );
+		return size;
+	}
+
+	return -1;
+}
