@@ -711,7 +711,11 @@ if VIGILAR and MON then
 		-- tenia en el monedero. Se monta con la secuencia POR DEFECTO del
 		-- campo, no con la efectiva, porque es la que set_default_input_seq
 		-- cambia sin dejar rastro en el .cfg del juego.
-		if CERROJO and CER and HAY_MONEDERO then
+		-- El cerrojo se monta SIEMPRE, tambien sin monedero: aunque no haya
+		-- limite que aplicar, hace falta para tener el boton cerrado mientras
+		-- la placa arranca. Sin eso, pulsar la moneda durante la carga
+		-- acumula creditos que nadie ha pagado (Q*bert llegaba a 52).
+		if CERROJO and CER then
 			local okd, orig = pcall(function()
 				return emu.input_seq(CAMPO:default_input_seq('standard'))
 			end)
@@ -722,6 +726,7 @@ if VIGILAR and MON then
 				local avisado = false
 
 				GA_ESTADO.cerrojo = CER.nuevo{
+					ilimitado = not HAY_MONEDERO,
 					limite   = SALDO,
 					bloquear = function()
 						CAMPO:set_default_input_seq('standard', vacia)
@@ -747,7 +752,8 @@ if VIGILAR and MON then
 					log = log,
 				}
 
-				log('cerrojo puesto: el jugador puede meter %d moneda(s)', SALDO)
+				log('cerrojo puesto: el jugador puede meter %s',
+					GA_ESTADO.cerrojo.cuantas())
 			else
 				log('no puedo leer la secuencia por defecto de la moneda (%s): sin cerrojo',
 					tostring(orig))

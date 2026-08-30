@@ -27,6 +27,11 @@ function M.nuevo(op)
 	op = op or {}
 
 	local c = {
+		-- Sin monedero (monedas de verdad) no hay limite que aplicar: el
+		-- cerrojo sigue existiendo solo para tener el boton cerrado mientras
+		-- la placa arranca, que es cuando el juego tira las monedas o las
+		-- acumula a lo bestia.
+		ilimitado = op.ilimitado and true or false,
 		limite   = math.max(0, math.floor(op.limite or 0)),
 		metidas  = 0,
 		echado   = nil,      -- nil: todavia no se ha decidido nada
@@ -42,6 +47,7 @@ function M.nuevo(op)
 	}
 
 	function c.disponible()
+		if c.ilimitado then return math.huge end
 		local n = c.limite - c.metidas
 		return (n > 0) and n or 0
 	end
@@ -79,6 +85,8 @@ function M.nuevo(op)
 				c.bloquear()
 				if not c.listo then
 					c.log('la maquina esta arrancando: boton de moneda cerrado')
+				elseif c.ilimitado then
+					c.log('boton de moneda cerrado')
 				else
 					c.log('sin monedero: bloqueo el boton de moneda (%d metidas de %d)',
 						c.metidas, c.limite)
@@ -96,6 +104,11 @@ function M.nuevo(op)
 		if not c.listo then return 'arrancando' end
 		if c.disponible() <= 0 then return 'sin creditos' end
 		return nil
+	end
+
+	-- El log del arranque enseña el limite, y con ilimitado no hay numero
+	function c.cuantas()
+		return c.ilimitado and 'las que quiera' or (tostring(c.limite) .. ' moneda(s)')
 	end
 
 	-- Se llama al terminar. Deja el boton como estaba, pase lo que pase.

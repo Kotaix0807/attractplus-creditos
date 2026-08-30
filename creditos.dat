@@ -4272,7 +4272,7 @@ tantrbl2 @:maincpu,program,fffc18   # (cheat)
 tantrbl3 @:maincpu,program,fffc18   # (cheat)
 tantrbl4 @:maincpu,program,fffc18   # (cheat)
 tantrkor @:maincpu,program,fffc18   # (cheat)
-tapper @:maincpu,program,e011   # (cheat)
+tapper @:maincpu,program,e011
 tappera @:maincpu,program,e011   # (cheat)
 tapperb @:maincpu,program,e011   # (cheat)
 tapperg @:maincpu,program,e011   # (cheat)

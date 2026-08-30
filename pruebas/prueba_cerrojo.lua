@@ -131,5 +131,34 @@ do
 	comprueba('y un solo bloqueo', h.bloqueos == 1)
 end
 
+print('\n10. sin monedero: cerrojo ilimitado, solo cierra en el arranque')
+do
+	local hechos = { bloqueos = 0, sueltas = 0 }
+	local c = CER.nuevo{
+		ilimitado = true,
+		bloquear = function() hechos.bloqueos = hechos.bloqueos + 1 end,
+		soltar   = function() hechos.sueltas = hechos.sueltas + 1 end,
+	}
+
+	c.listo = false
+	c.frame()
+	comprueba('cerrado mientras arranca', hechos.bloqueos == 1)
+	comprueba('y la moneda se rechaza', c.moneda() == false)
+
+	c.listo = true
+	c.frame()
+	comprueba('luego se abre', hechos.sueltas == 1)
+
+	-- y ya no se cierra nunca por falta de creditos
+	for i = 1, 50 do
+		comprueba_silencio = c.moneda()
+		c.frame()
+	end
+	comprueba('entran todas las monedas', c.metidas == 50)
+	comprueba('y no vuelve a bloquear', hechos.bloqueos == 1)
+	comprueba('el limite no aplica', c.disponible() == math.huge)
+	comprueba('y se dice asi en el log', c.cuantas() == 'las que quiera')
+end
+
 print(string.format('\n=== cerrojo: %d ok, %d fallos ===', ok, fallos))
 os.exit(fallos == 0 and 0 or 1)

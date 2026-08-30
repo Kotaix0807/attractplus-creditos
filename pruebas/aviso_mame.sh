@@ -212,11 +212,27 @@ echo "# 9. modo monedas de verdad: solo arranque tapado y aviso al salir"
 	> "$T/reales.log" 2>&1 )
 comprobar "no busca monedero" \
 	"$(tiene reales 'sin monedero')" "ver log"
-comprobar "no monta cerrojo" \
-	"$([ "$(tiene reales 'cerrojo puesto')" = "0" ] && echo 1 || echo 0)" "monto cerrojo"
+comprobar "monta cerrojo sin limite" \
+	"$(tiene reales 'puede meter las que quiera')" "ver log"
 comprobar "tapa el arranque igual" "$(tiene reales 'arranque terminado')" "ver log"
 comprobar "y avisa al salir con creditos dentro" "$(tiene reales 'salida frenada')" "ver log"
 comprobar "la partida no se corta" "$(sigue reales)" "MAME salio"
+
+echo "# 9b. sin monedero, la moneda durante la carga tampoco cuenta"
+# El caso de Q*bert: pulsar el boton de creditos mientras carga daba 52.
+( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_PRUEBA_MONEDA=5,40,80,120 \
+	xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	-video none -sound none -nothrottle -noswitchres -seconds_to_run 16 \
+	-autoboot_script "$AQUI/integracion/mame_con_captura.lua" -autoboot_delay 0 \
+	> "$T/carga.log" 2>&1 )
+comprobar "el boton esta cerrado mientras carga" \
+	"$(tiene carga 'la maquina esta arrancando: boton de moneda cerrado')" "ver log"
+comprobar "las cuatro pulsaciones se rechazan" \
+	"$([ "$(grep -c 'todavia esta arrancando' "$T/carga.log")" = "4" ] && echo 1 || echo 0)" \
+	"$(grep -c 'todavia esta arrancando' "$T/carga.log") rechazos"
+comprobar "y ninguna entra en la maquina" \
+	"$([ "$(grep -c 'entra en la maquina' "$T/carga.log")" = "0" ] && echo 1 || echo 0)" \
+	"$(grep -c 'entra en la maquina' "$T/carga.log") entradas"
 
 echo "# fallos=$fallos"
 exit $(( fallos > 0 ))
