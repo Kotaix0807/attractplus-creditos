@@ -234,5 +234,29 @@ comprobar "y ninguna entra en la maquina" \
 	"$([ "$(grep -c 'entra en la maquina' "$T/carga.log")" = "0" ] && echo 1 || echo 0)" \
 	"$(grep -c 'entra en la maquina' "$T/carga.log") entradas"
 
+echo "# 10. un juego que reinicia la placa deja el emulador como estaba"
+# elevator se reinicia durante el arranque y MAME relanza el autoboot. Sin
+# cuidado, la segunda ejecucion guardaba como "original" lo que dejo la primera
+# (freno ya quitado, moneda ya bloqueada) y lo restauraba al terminar: el
+# emulador se quedaba sin freno y el boton de moneda muerto.
+( cd "$MAME_DIR" && env GA_VERBOSO=1 \
+	xvfb-run -a ./mame elevator -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	-video none -sound none -noswitchres -seconds_to_run 40 \
+	-autoboot_script "$AQUI/integracion/estado_final.lua" -autoboot_delay 0 \
+	> "$T/reinicio.log" 2>&1 )
+comprobar "el script se ejecuta dos veces" \
+	"$([ "$(grep -c 'encontrado COIN1' "$T/reinicio.log")" -ge "2" ] && echo 1 || echo 0)" \
+	"$(grep -c 'encontrado COIN1' "$T/reinicio.log") veces"
+comprobar "y lo detecta" "$(tiene reinicio 'la placa se reinicio')" "ver log"
+comprobar "el emulador vuelve a su velocidad" \
+	"$(grep -q '\[final\] throttled=true' "$T/reinicio.log" && echo 1 || echo 0)" \
+	"$(grep '\[final\] throttled' "$T/reinicio.log")"
+comprobar "y sin quedarse mudo" \
+	"$(grep -q 'mute=false' "$T/reinicio.log" && echo 1 || echo 0)" \
+	"$(grep '\[final\] throttled' "$T/reinicio.log")"
+comprobar "el boton de moneda sigue vivo" \
+	"$([ "$(grep -q '\[final\] moneda: 0 codigos' "$T/reinicio.log" && echo 1 || echo 0)" = "0" ] && echo 1 || echo 0)" \
+	"$(grep '\[final\] moneda' "$T/reinicio.log")"
+
 echo "# fallos=$fallos"
 exit $(( fallos > 0 ))

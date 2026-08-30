@@ -147,6 +147,27 @@ end
 -- Modulos de al lado. La ruta sale del propio script: comprobado que
 -- debug.getinfo funciona en el contexto de -autoboot_script.
 -- ---------------------------------------------------------------
+-- --- si la placa se reinicio, MAME vuelve a lanzar este script ---
+--
+-- Comprobado con elevator: la placa se reinicia durante el arranque y MAME
+-- relanza el autoboot. Las globales de Lua SOBREVIVEN, asi que aqui todavia
+-- esta el estado de la ejecucion anterior.
+--
+-- Hay que deshacer lo suyo ANTES de tomar nota de como esta todo. Si no, esta
+-- ejecucion guardaria como "original" lo que dejo la anterior -- el freno ya
+-- quitado y la secuencia de la moneda ya vacia -- y al terminar restauraria
+-- eso: emulador sin freno y boton de moneda muerto, para siempre.
+if GA_ESTADO and GA_ESTADO.deshaceres then
+	log('la placa se reinicio: deshago lo de la ejecucion anterior')
+
+	for i = #GA_ESTADO.deshaceres, 1, -1 do
+		local ok, err = pcall(GA_ESTADO.deshaceres[i])
+		if not ok then log('  no pude deshacer algo: %s', tostring(err)) end
+	end
+
+	GA_ESTADO.deshaceres = {}
+end
+
 local MI_DIR = (debug.getinfo(1, 'S').source or ''):match('^@(.*[/\\])') or ''
 
 local function vecino(nombre)
@@ -375,6 +396,7 @@ GA_ESTADO = {
 	consumido_visto = 0,
 	cerrojo   = nil,   -- limita las monedas del jugador a su monedero
 	metidos   = 0,     -- creditos que el jugador ha pagado en esta partida
+	deshaceres = {},   -- para dejarlo todo como estaba si la placa se reinicia
 	arranque  = false, -- true mientras la maquina esta arrancando
 	arranque_frames = 0,
 	estable   = 0,     -- frames que el contador de creditos lleva quieto
@@ -752,6 +774,13 @@ if VIGILAR and MON then
 					log = log,
 				}
 
+				-- Se apunta como devolver el boton a como estaba. La copia
+				-- local es importante: cuando esto se ejecute, la global
+				-- GA_ESTADO ya sera la de la ejecucion siguiente.
+				local suelta = function() CAMPO:set_default_input_seq('standard', orig) end
+				local d = GA_ESTADO.deshaceres
+				d[#d + 1] = suelta
+
 				log('cerrojo puesto: el jugador puede meter %s',
 					GA_ESTADO.cerrojo.cuantas())
 			else
@@ -962,6 +991,15 @@ if ARRANQUE > 0 then
 			else
 				pcall(function() v.throttle_rate = VELOCIDAD end)
 			end
+
+			-- Copias locales, por lo mismo que en el cerrojo
+			local t = GA_ESTADO.turbo
+			local d = GA_ESTADO.deshaceres
+			d[#d + 1] = function()
+				pcall(function() t.video.throttled = t.throttled end)
+				pcall(function() t.video.throttle_rate = t.rate end)
+				if t.sonido then pcall(function() t.sonido.system_mute = t.mudo end) end
+			end
 		end
 	end
 
@@ -1063,7 +1101,15 @@ GA_ESTADO.pintor = function()
 	end
 end
 
-emu.register_frame_done(GA_ESTADO.pintor)
+-- register_frame_done ACUMULA callbacks (luaengine.cpp, register_function) y no
+-- hay forma de quitarlos, asi que si la placa se reinicia se irian sumando
+-- pintores. Se registra uno solo, que siempre llama al del estado vigente.
+if not GA_PINTOR_PUESTO then
+	emu.register_frame_done(function()
+		if GA_ESTADO and GA_ESTADO.pintor then GA_ESTADO.pintor() end
+	end)
+	GA_PINTOR_PUESTO = true
+end
 
 if (GA_ESTADO.fase == 'fin') and not GA_ESTADO.cuenta and not GA_ESTADO.aviso
 		and not GA_ESTADO.memoria then
@@ -1072,6 +1118,17 @@ if (GA_ESTADO.fase == 'fin') and not GA_ESTADO.cuenta and not GA_ESTADO.aviso
 end
 
 GA_ESTADO.sub = emu.add_machine_frame_notifier(por_frame)
+
+-- Si la placa se reinicia hay que cancelar esta suscripcion: si no, el
+-- notificador viejo seguiria vivo y correria por_frame DOS veces por frame
+-- sobre el estado nuevo (lee GA_ESTADO, que para entonces ya es otro).
+do
+	local sub = GA_ESTADO.sub
+	local d = GA_ESTADO.deshaceres
+	d[#d + 1] = function()
+		if sub and sub.unsubscribe then sub:unsubscribe() end
+	end
+end
 
 if (MONEDAS > 0) and not GA_ESTADO.sincro then
 	log('insertando %d monedas para %d creditos (pulso=%d hueco=%d espera=%d)',
