@@ -38,7 +38,10 @@ correr() {  # $1 = nombre, resto = variables
 	# ($HOME/.attract/creditos.txt) y el resultado dependeria de lo que hubiera
 	# jugado el usuario. Un escenario puede pasar su propio GA_ARCHIVO despues.
 	printf 'saldo 5\ninserta 0\n' > "$T/$n.txt"
-	( cd "$MAME_DIR" && env GA_ARCHIVO="$T/$n.txt" "$@" GA_VERBOSO=1 GA_SNAP="$T/$n.png" GA_SNAP_FRAMES=$FRAME_CORTE \
+	# GA_MONEDERO=1 porque estos escenarios prueban el monedero compartido,
+	# que desde el 2026-08-29 ya no es el modo por defecto (ver el escenario 9
+	# para el modo de monedas de verdad).
+	( cd "$MAME_DIR" && env GA_MONEDERO=1 GA_ARCHIVO="$T/$n.txt" "$@" GA_VERBOSO=1 GA_SNAP="$T/$n.png" GA_SNAP_FRAMES=$FRAME_CORTE \
 		xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 		-snapshot_directory "$T" -video soft -sound none -nothrottle -noswitchres \
 		-window -resolution 640x480 -seconds_to_run 16 \
@@ -196,6 +199,24 @@ comprobar "lee el contador de la RAM" "$(tiene memoria 'creditos leidos de la me
 	"$JUEGO no esta en creditos.dat?"
 comprobar "y el consumo sale de ahi, no de una estimacion" \
 	"$(tiene memoria 'el juego se lleva 1 credito (contador en')" "ver log"
+
+echo "# 9. modo monedas de verdad: solo arranque tapado y aviso al salir"
+# El modo por defecto desde el 2026-08-29. Sin monedero: las monedas entran
+# solas en el emulador y este script solo tapa el arranque y avisa al salir.
+( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_PRUEBA_MONEDA=460,500 GA_PRUEBA_SALIR=610 \
+	GA_SNAP="$T/reales.png" GA_SNAP_FRAMES=$FRAME_CORTE \
+	xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	-snapshot_directory "$T" -video soft -sound none -nothrottle -noswitchres \
+	-window -resolution 640x480 -seconds_to_run 16 \
+	-autoboot_script "$AQUI/integracion/mame_con_captura.lua" -autoboot_delay 0 \
+	> "$T/reales.log" 2>&1 )
+comprobar "no busca monedero" \
+	"$(tiene reales 'sin monedero')" "ver log"
+comprobar "no monta cerrojo" \
+	"$([ "$(tiene reales 'cerrojo puesto')" = "0" ] && echo 1 || echo 0)" "monto cerrojo"
+comprobar "tapa el arranque igual" "$(tiene reales 'arranque terminado')" "ver log"
+comprobar "y avisa al salir con creditos dentro" "$(tiene reales 'salida frenada')" "ver log"
+comprobar "la partida no se corta" "$(sigue reales)" "MAME salio"
 
 echo "# fallos=$fallos"
 exit $(( fallos > 0 ))

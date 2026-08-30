@@ -56,7 +56,7 @@ echo "# construyendo romlist..."
 	tail -5 "$T/romlist.log"; echo "fallo construyendo la romlist" >&2; exit 1; }
 
 echo "# arrancando Attract-Mode Plus bajo Xvfb (tarda ~1 min: son dos partidas)..."
-( cd "$REPO" && env GA_VERBOSO=1 GA_ARCHIVO="$T/buzon.txt" GA_SNAP="$T/mame.png" GA_SNAP_FRAMES=650 \
+( cd "$REPO" && env GA_MONEDERO=1 GA_VERBOSO=1 GA_ARCHIVO="$T/buzon.txt" GA_SNAP="$T/mame.png" GA_SNAP_FRAMES=650 \
 	GA_PRUEBA_MONEDA=480 GA_PRUEBA_START=560 \
 	timeout 300 xvfb-run -a "$AM" --config "$D" ) > "$T/am.log" 2>&1
 echo "#   (codigo de salida $?)"

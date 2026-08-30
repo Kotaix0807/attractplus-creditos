@@ -26,6 +26,10 @@
 --     creditos, asi que 3 monedas daban CREDIT 6. De eso se encarga GA_TARIFA.
 --
 -- Variables de entorno (todas opcionales):
+--   GA_MONEDERO  1 para el monedero compartido con el frontend. Apagado por
+--                defecto: la cabina va a MONEDAS DE VERDAD, que entran solas
+--                en el emulador. Con 0 este script solo tapa el arranque y
+--                avisa al salir con creditos dentro
 --   GA_CREDITOS  creditos a insertar. Si no esta, se lee del fichero
 --   GA_ARCHIVO   fichero del monedero        ($HOME/.attract/creditos.txt)
 --   GA_TARIFA    1c1c | auto | off           (por defecto 1c1c)
@@ -84,6 +88,8 @@ local ESPERA  = math.max(0, num('GA_ESPERA', 0))
 local TOKEN   = os.getenv('GA_MONEDA') or 'COIN1'
 local VERBOSO = os.getenv('GA_VERBOSO') == '1'
 local TARIFA  = (os.getenv('GA_TARIFA') or '1c1c'):lower()
+-- Monedas de verdad (por defecto) o monedero compartido con el frontend
+local MONEDERO = os.getenv('GA_MONEDERO') == '1'
 local VIGILAR = os.getenv('GA_VIGILAR') ~= '0'
 local AVISAR  = os.getenv('GA_AVISO') ~= '0'
 local ESPERA_AVISO = math.max(30, num('GA_AVISO_ESPERA', 300))
@@ -190,7 +196,11 @@ local TURBO = (os.getenv('GA_TURBO') ~= '0') and (ajuste('turbo', nil, 1) ~= 0)
 local SALDO, INSERTA = 0, 0
 local HAY_MONEDERO = false     -- sin fichero y sin GA_CREDITOS: modo manual
 
-if MON then
+-- El monedero compartido con el frontend esta APAGADO por defecto desde el
+-- 2026-08-29: la cabina va a monedas de verdad, que entran directamente en el
+-- emulador como en una recreativa. GA_MONEDERO=1 lo vuelve a encender (el
+-- sistema entero sigue montado y probado, ver la rama monedero-frontend).
+if MON and MONEDERO then
 	local s, i = MON.leer(BUZON)
 	if s then
 		SALDO, INSERTA, HAY_MONEDERO = s, i, true
@@ -201,7 +211,7 @@ if MON then
 	end
 end
 
-if os.getenv('GA_CREDITOS') then
+if MONEDERO and os.getenv('GA_CREDITOS') then
 	INSERTA = math.max(0, num('GA_CREDITOS', 0))
 	HAY_MONEDERO = true
 	log('GA_CREDITOS=%d manda sobre el fichero', INSERTA)
@@ -984,9 +994,9 @@ end
 -- --- cuadro de aviso de creditos dentro de la maquina ---
 if AVISAR and AV then
 	GA_ESTADO.aviso = AV.nuevo{
-		-- En modo 'meter' el credito ya se pago al entrar la moneda, asi que
-		-- lo que se queda dentro de la maquina se pierde de verdad.
-		se_pierden = (COBRO == 'meter'),
+		-- Con monedas de verdad, lo que se queda dentro de la maquina es
+		-- dinero perdido; con monedero y cobro al meter, tambien.
+		se_pierden = (not HAY_MONEDERO) or (COBRO == 'meter'),
 		entrado = GRATIS and 0 or INSERTA,
 		espera = ESPERA_AVISO,
 		-- Si sabemos leer los creditos de la RAM, el cuadro dice el numero
