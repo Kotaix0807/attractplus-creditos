@@ -848,7 +848,7 @@ tipo 7, `START2` = 8, `UI_CANCEL` = 172.
 
 ## Parche de avisos en GroovyMAME (sin commitear)
 
-Dos ficheros modificados en `/home/eloy/groovymame_src`, 14 líneas:
+Dos ficheros modificados en `/home/eloy/groovymame_src`, 22 líneas:
 
 - `src/frontend/mame/ui/ui.cpp` — en `display_startup_screens()`, `show_gameinfo`
   y `show_warnings` forzados a `false`.
@@ -858,9 +858,51 @@ Dos ficheros modificados en `/home/eloy/groovymame_src`, 14 líneas:
   del menú, textos `Status: NOT WORKING` / `Sound: Imperfect` del selector, y los
   colores rojo/amarillo.
 
+- `src/frontend/mame/ui/ui.cpp` — en `set_startup_text()`, `messagebox_text` se
+  vacía. Es el único sitio por el que pasan los tres mensajes de carga:
+  `Initializing...` (`emu/machine.cpp:171`) y `Loading Machine (N%)` /
+  `Loading Complete` (`emu/romload.cpp:647`). Se deja el `frame_update()` de
+  después, que es lo que mantiene la pantalla viva mientras cargan las ROMs.
+
 Los filtros del selector (`WORKING`, `MECHANICAL`, `BIOS`) leen `driver->flags`
 directamente, así que siguen funcionando. **Verificado**: Q*bert (sonido
 imperfecto) arranca directo al juego sin pantalla de aviso.
+
+**Cómo se verificó lo de los mensajes de carga**, porque la captura NO sirve: la
+carga desde disco local dura tan poco que bajo Xvfb sale negra con parche y sin
+él, o sea que no prueba nada (lo comprobé compilando las dos versiones). Lo que
+sí prueba es instrumentar la función un momento:
+
+```
+[PRUEBA] MAME queria mostrar [Initializing...];      messagebox queda []
+[PRUEBA] MAME queria mostrar [Loading Machine (0%)]; messagebox queda []
+```
+
+## El scraper de artes no funciona: la clave de API está muerta
+
+Probado el 2026-08-30. AM+ 3.2.3 trae una clave pública de thegamesdb.net
+incrustada (`scraper_gamesdb.cpp:697`) y el servidor la rechaza:
+
+```
+$ curl "https://api.thegamesdb.net/v1/Platforms?apikey=035b376c..."
+HTTP 403 — {"status":"Invalid API key was provided."}
+```
+
+De ahí toda la cascada del log: `Platform :Arcade (-1)`, `Unable to get platform
+information` y los 19 juegos sin emparejar. **No es un fallo de configuración de
+la cabina.**
+
+Salidas, de mejor a peor para una recreativa:
+
+1. **Un pack de artes de MAME** (progetto-SNAPS y similares: snaps, marquesinas,
+   títulos, flyers) y apuntar las rutas de artwork del emulador en AM+. Es lo
+   que hace todo el mundo con MAME: cobertura completa y nombres que coinciden
+   exactamente con los sets, sin depender de que un servidor empareje títulos.
+2. **Una clave propia de thegamesdb.net** (gratis, se pide en su foro) en
+   `Configure > General`, ajuste `thegamesdb_key`. Aun así el emparejamiento por
+   título con nombres de set (`nrallyx`, `rbtapper`) sería flojo.
+
+
 
 ## API Lua de MAME (verificada en el código fuente)
 
