@@ -44,30 +44,34 @@ class UserConfig </ help="Contador de creditos estilo recreativa: un boton mete 
 	</ label="Exigir credito para jugar", help="Si es 'Si', el boton de seleccionar no lanza nada sin creditos", options="Si,No", order=5 />
 	exigir="Si";
 
-	</ label="Creditos por partida", help="Cuantos creditos cuesta lanzar un juego", order=6 />
+	</ label="Creditos por partida", help="Cuantos creditos hacen falta para lanzar un juego. Con 'Que se inserta al lanzar' en 'Nada' NO se cobran: solo se exigen, y el jugador los mete dentro con el boton", order=6 />
 	coste="1";
 
-	</ label="Que se inserta al lanzar", help="'Solo el coste' deja el resto de creditos en el frontend, que es lo que casi siempre quieres. 'Todos' mete el monedero entero en el juego y lo que sobre al salir de la partida SE PIERDE", options="Solo el coste,Todos", order=7 />
-	gasto="Solo el coste";
+	</ label="Que se inserta al lanzar", help="'Nada' es el modo con contador fisico: el jugador entra con la maquina a cero y mete los creditos que quiera con el boton de moneda, viendolos salir de su monedero. 'Solo el coste' inserta un credito al lanzar. 'Todos' mete el monedero entero en el juego y lo que sobre al salir SE PIERDE", options="Nada,Solo el coste,Todos", order=7 />
+	gasto="Nada";
 
-	</ label="Fichero del monedero", help="Fichero que se comparte con MAME para llevar la cuenta. Debe coincidir con GA_ARCHIVO de creditos.lua", order=8 />
+	</ label="Antirrebote (ms)", help="Milisegundos que se ignoran tras contar una moneda. Es SOLO contra el rebote de contactos, no para limitar el ritmo: aqui entran monedas de verdad y todas tienen que contar. OJO si tu chauchera manda varios pulsos por moneda (una de 500 puede mandar 5): este valor debe ser MENOR que el hueco entre pulsos, o se comeria monedas. 40 mata el rebote (que dura menos de 20 ms) y deja pasar trenes de pulsos separados 100 ms. 0 lo desactiva", order=8 />
+	antirrebote="40";
+
+	</ label="Fichero del monedero", help="Fichero que se comparte con MAME para llevar la cuenta. Debe coincidir con GA_ARCHIVO de creditos.lua", order=10 />
 	buzon="$HOME/.attract/creditos.txt";
 
-	</ label="Mostrar marcador", options="Si,No", order=9 />
+	</ label="Mostrar marcador", options="Si,No", order=10 />
 	mostrar="Si";
 
-	</ label="Posicion del marcador", options="Abajo izquierda,Abajo derecha,Arriba izquierda,Arriba derecha", order=10 />
+	</ label="Posicion del marcador", options="Abajo izquierda,Abajo derecha,Arriba izquierda,Arriba derecha", order=11 />
 	posicion="Abajo izquierda";
 
-	</ label="Tamano del texto", help="Altura de las letras en pixeles", order=11 />
+	</ label="Tamano del texto", help="Altura de las letras en pixeles", order=12 />
 	tamano="24";
 
-	</ label="Etiqueta", help="Texto que precede al numero de creditos", order=12 />
+	</ label="Etiqueta", help="Texto que precede al numero de creditos", order=13 />
 	etiqueta="CREDITOS";
 
-	</ label="Texto sin creditos", help="Se muestra parpadeando cuando el contador esta a cero", order=13 />
+	</ label="Texto sin creditos", help="Se muestra parpadeando cuando el contador esta a cero", order=14 />
 	vacio="INSERTA MONEDA";
 }
+
 
 // Los ajustes llegan siempre como cadena y el usuario puede teclear
 // cualquier cosa: nunca dejar que un ajuste malo tumbe el frontend.
@@ -99,7 +103,8 @@ class Creditos
 	m_maximo     = 99;
 	m_exigir     = true;
 	m_coste      = 1;
-	m_todos      = true;
+	m_todos      = false;
+	m_nada       = true;    // el jugador mete los creditos el mismo, con el boton
 	m_buzon      = "";
 	m_tamano     = 24;
 	m_etiqueta   = "CREDITOS";
@@ -110,6 +115,10 @@ class Creditos
 	// --- estado ---
 	m_creditos   = 0;
 	m_pulsado    = false;   // deteccion de flanco del boton de moneda
+	m_antirrebote = 150;
+	m_ultima     = -1000000;   // cuando se conto la ultima moneda (ms de tick)
+	m_rebotes    = 0;
+	m_ahora      = 0;      // ultimo ttime visto, para la senal
 	m_texto      = null;
 	m_parpadeo   = true;
 	m_reloj      = 0;
@@ -130,7 +139,9 @@ class Creditos
 		m_maximo   = creditos_ajuste( c[ "maximo" ], 99, 1 );
 		m_exigir   = ( c[ "exigir" ] == "Si" );
 		m_coste    = creditos_ajuste( c[ "coste" ], 1, 1 );
+		m_antirrebote = creditos_ajuste( c[ "antirrebote" ], 150, 0 );
 		m_todos    = ( c[ "gasto" ] == "Todos" );
+		m_nada     = ( c[ "gasto" ] == "Nada" );
 		m_buzon    = fs.path_expand( c[ "buzon" ] );
 		m_tamano   = creditos_ajuste( c[ "tamano" ], 24, 4 );
 		m_etiqueta = c[ "etiqueta" ];
@@ -149,6 +160,10 @@ class Creditos
 		fe.add_ticks_callback( this, "en_tick" );
 		fe.add_signal_handler( this, "en_senal" );
 		fe.add_transition_callback( this, "en_transicion" );
+
+		// Al arrancar se deja el saldo por escrito, para que el contador
+		// fisico marque lo correcto desde el primer momento.
+		escribir_monedero( m_creditos, 0 );
 	}
 
 	// ---- contador ----
@@ -159,6 +174,48 @@ class Creditos
 			fe.nv[ NV_CLAVE ] = m_creditos;
 		else
 			fe.nv[ NV_CLAVE ] <- m_creditos;
+
+		// El monedero se escribe en CADA cambio, no solo al lanzar el juego:
+		// es lo que lee el contador fisico de la cabina (daemon.py), que tiene
+		// que enterarse de la moneda en el momento en que entra. De paso, el
+		// fichero se recrea solo si alguien lo borra.
+		//
+		// Va con inserta=0 a proposito: la orden de meter creditos en la
+		// partida solo la escribe ToGame, justo antes del lanzamiento.
+		escribir_monedero( m_creditos, 0 );
+	}
+
+	// Una moneda, venga del boton o de la senal.
+	//
+	// El antirrebote esta aqui y no en sumar() a proposito: los contactos de
+	// una chauchera REBOTAN al cerrarse (abren y cierran varias veces en unos
+	// milisegundos). El tick del frontend corre una vez por fotograma
+	// (main.cpp: feVM.tick()), asi que puede muestrear ese rebote como varias
+	// pulsaciones completas y una moneda acaba dando tres creditos.
+	//
+	// ttime es el reloj del tick en ms. Al volver de una partida da un salto
+	// hacia delante (inofensivo) y al recargar el layout vuelve atras, que si
+	// se detecta se da por bueno el siguiente credito.
+	function moneda( ttime )
+	{
+		if ( m_antirrebote > 0 )
+		{
+			if ( ttime < m_ultima )
+				m_ultima = ttime - m_antirrebote - 1;
+
+			local desde = ttime - m_ultima;
+
+			if ( desde < m_antirrebote )
+			{
+				m_rebotes++;
+				fe.log( "Creditos: rebote descartado, solo " + desde
+					+ " ms desde la anterior (van " + m_rebotes + ")\n" );
+				return;
+			}
+		}
+
+		m_ultima = ttime;
+		sumar( m_paso );
 	}
 
 	function sumar( n )
@@ -176,12 +233,22 @@ class Creditos
 
 	// Creditos que se pasan al juego al lanzarlo.
 	//
-	// Con m_todos (el ajuste "Todos") entra el monedero completo, y ahi esta la
-	// trampa: los creditos que el juego no gaste se quedan dentro de la partida
-	// y al salir de MAME se pierden, porque no hay forma general de saber
-	// cuantos quedaban. Por eso el modo por defecto es gastar solo el coste.
+	// Con m_nada (el ajuste por defecto, "Nada") el plugin no inserta ni cobra
+	// nada: es una hucha y punto. El jugador entra con la maquina a cero y mete
+	// los creditos que quiera con el boton de moneda; cada uno sale de su
+	// monedero y el contador fisico lo ensena al momento. Lo que se queda
+	// dentro de la maquina al salir SI se pierde, y de eso avisa el cuadro de
+	// creditos.lua.
+	//
+	// Con m_todos ("Todos") entra el monedero completo, y ahi esta la trampa:
+	// los creditos que el juego no gaste se quedan dentro de la partida y al
+	// salir de MAME se pierden, porque no hay forma general de saber cuantos
+	// quedaban.
 	function creditos_a_gastar()
 	{
+		if ( m_nada )
+			return 0;
+
 		if ( m_todos )
 			return m_creditos;
 
@@ -313,6 +380,8 @@ class Creditos
 
 	function en_tick( ttime )
 	{
+		m_ahora = ttime;
+
 		if ( m_resinc )
 		{
 			m_resinc = false;
@@ -345,7 +414,7 @@ class Creditos
 		else if ( m_pulsado )
 		{
 			m_pulsado = false;
-			sumar( m_paso );
+			moneda( ttime );
 		}
 	}
 
@@ -353,7 +422,9 @@ class Creditos
 	{
 		if (( m_senal.len() > 0 ) && ( sig == m_senal ))
 		{
-			sumar( m_paso );
+			// Por el mismo antirrebote que el boton: la senal tambien puede
+			// venir de un contacto que rebota.
+			moneda( m_ahora );
 			return true;   // consumida, que no haga nada mas el frontend
 		}
 

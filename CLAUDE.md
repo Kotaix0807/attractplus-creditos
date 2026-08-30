@@ -3,7 +3,7 @@
 Contexto traspasado desde otra sesión. Todo lo marcado como **verificado** se
 comprobó ejecutando código y mirando capturas de pantalla reales, no de memoria.
 
-## Decisión de Eloy (2026-08-24): modo manual
+## Decisión de Eloy (2026-08-24): modo manual — SUPERADA, ver la sección siguiente
 
 La cabina queda en **modo manual**: el plugin del frontend está **desactivado**,
 se entra al juego sin créditos y las monedas las mete el jugador con el botón,
@@ -18,6 +18,75 @@ Todo lo demás sigue montado y probado por si se quiere volver atrás: basta
 encender el plugin (`Configure > Plug-ins > Creditos > Enabled`). `creditos.lua`
 se queda en los argumentos del emulador porque sin monedero sigue sirviendo para
 la tarifa 1C/1C y para el aviso al salir.
+
+## Diseño objetivo (Eloy, 2026-08-28): monedero visible en el Arduino
+
+**Implementado y verificado el 2026-08-28.** Sustituye a la «Decisión de Eloy
+(2026-08-24): modo manual» de arriba, que fue el paso intermedio.
+
+La idea, en una frase: **el plugin sólo guarda los créditos del jugador; el
+Arduino los enseña; el jugador decide cuántos mete en el juego pulsando la
+moneda, y cuando se acaban el botón se bloquea.**
+
+El flujo:
+
+1. El jugador mete 5 monedas en el frontend. El Arduino marca **5**.
+2. Elige juego. **No se inserta nada**: entra con 0 créditos, como en el modo
+   manual.
+3. Dentro de la partida pulsa la moneda 3 veces. El juego marca 3 créditos y el
+   Arduino baja a **2**.
+4. Si sigue pulsando hasta agotar el monedero, el Arduino marca **0** y el
+   botón de moneda deja de responder (el cerrojo, ya montado).
+
+De momento el Arduino lo representa con un LED; el display real viene después.
+
+### Lo que cambia respecto a lo que hay hoy
+
+**El monedero vuelve a cobrar al METER, no al jugar.** Esto invierte a propósito
+la regla de la sección «Los créditos que se quedan dentro del juego», y conviene
+entender por qué deja de ser un problema:
+
+> El agujero original no era cobrar al meter, era **cobrar sin que se viera**.
+> Un jugador que pulsaba la moneda creyendo que acumulaba créditos para otros
+> juegos se vaciaba el monedero a ciegas. Con el contador físico delante, el
+> número baja a la vista: meter una moneda es gastarla, igual que en una
+> recreativa. La regla vieja seguirá siendo la correcta si algún día se quita el
+> contador.
+
+Cómo se enciende: **es lo que hay por defecto**. Dos interruptores, uno a cada
+lado, y los dos tienen que ir juntos:
+
+- Plugin: `Que se inserta al lanzar` = **`Nada`** (antes «Solo el coste»).
+- `creditos.lua`: **`GA_COBRO=meter`** (por defecto; `jugar` es el modo viejo).
+
+Lo que se tocó, por orden de importancia:
+
+- **El plugin no inserta ni cobra al lanzar** (`creditos_a_gastar()` devuelve 0
+  con `m_nada`). Escribe `inserta 0`; el campo se mantiene por compatibilidad.
+- **`creditos.lua` cobra la moneda al meterla**, en el mismo sitio donde ya
+  avisaba al jugador. Y **no vuelve a cobrar** cuando el juego se lleva el
+  crédito: eso sería cobrar dos veces.
+- **La sincronización por escritura se apaga sola en modo `meter`**
+  (`SINCRONIZAR and (COBRO ~= 'meter')`). Era imprescindible: volcaba el
+  monedero entero en la RAM del juego, o sea metía los 10 créditos de golpe y
+  el botón de moneda no pintaba nada. `memoria.lua` y `creditos.dat` siguen
+  usándose para saber **cuántos hay dentro** en el aviso de salida.
+- **El cerrojo valía tal cual**: `disponible = SALDO - metidas` es exactamente
+  el saldo del momento.
+- **El cuadro de aviso vuelve a ser un aviso de pérdida de verdad**
+  (`op.se_pierden`): «SI SALES AHORA LOS PIERDES. MONEDERO: N». Con la regla
+  nueva esos créditos ya están pagados.
+- **Se sigue exigiendo saldo para elegir juego**, pero **sin cobrarlo**:
+  `m_coste` pasa de ser un precio a ser un mínimo. Sin créditos no hay nada que
+  hacer dentro de una partida, así que dejar entrar sería un engaño.
+- **`daemon.py` no cambia**: ya se limita a enseñar el `saldo`.
+
+### Lo que no cambia
+
+- El fichero `~/.attract/creditos.txt` y su escritura atómica.
+- El cerrojo y su técnica (`set_default_input_seq`).
+- Que el plugin escriba el monedero en cada cambio, que es lo que alimenta al
+  contador físico.
 
 ## Objetivo
 
@@ -120,6 +189,10 @@ salir. La regla es ahora:
 
 > **El monedero paga por lo que se JUEGA, no por lo que se mete.**
 
+**Ojo: el diseño objetivo del 2026-08-28 invierte esta regla a propósito**
+(cobrar al meter), porque el contador físico hace visible el gasto. Ver
+«Diseño objetivo» al principio antes de tocar nada aquí.
+
 Meter una moneda dentro de la partida sólo mueve un crédito del monedero a la
 máquina; lo que descuenta es pulsar START, que es cuando el juego se lo lleva.
 Así, `saldo = base - consumido`, con `base` = saldo al lanzar + lo insertado.
@@ -139,10 +212,287 @@ pero se quedan ahí; de eso avisa el cuadro de la sección siguiente.
 Sí tiene solución **juego a juego**, y es la de la sección «Dónde guarda cada
 juego sus créditos».
 
-Y si el saldo llega a 0, seguir pulsando la moneda da créditos gratis, porque la
-entrada la lee MAME directamente. Bloquearla exigiría reescribir el mapeo de
-controles, que MAME **guarda en su `.cfg`**: el riesgo es dejar el botón muerto
-para siempre. Para una cabina de casa se descartó.
+**El botón de moneda al llegar a 0: resuelto** (2026-08-28). Antes, con el saldo
+a cero, seguir pulsando la moneda daba créditos gratis, porque la entrada la lee
+MAME directamente. Ahora hay cerrojo, ver «El cerrojo del botón de moneda».
+
+## El contador físico de la cabina (Arduino)
+
+Montado el 2026-08-28, escrito por Eloy con tutoría.
+
+```
+Creditos.nut escribe ~/.attract/creditos.txt  ->  daemon.py lo vigila
+   ->  puerto serie 9600  ->  Arcade.ino  ->  contador físico
+```
+
+**`daemon.py`** (en la raíz del repo): lee el `saldo`, y sólo cuando **cambia**
+respecto a lo último enviado manda `N\n` por `/dev/ttyUSB0`. Detalles que
+costaron una iteración cada uno:
+
+- **Se vuelve a abrir el fichero en cada lectura.** El monedero se reemplaza
+  entero (temporal + `rename()`), no se modifica: con el descriptor abierto se
+  leería el fichero viejo para siempre.
+- **El puerto se abre una sola vez.** Abrirlo **reinicia la placa**, de ahí los
+  3 s de espera antes del primer envío. El `echo > /dev/ttyUSB0` que se intentó
+  al principio reiniciaba el Arduino en cada moneda.
+- **`lastCredit = None` al reconectar**, porque la placa se ha reiniciado
+  mostrando 0 y el saldo del fichero no ha cambiado: sin esto el contador se
+  queda congelado tras un tirón de cable.
+- **Sólo se apunta el crédito si el envío devolvió `True`.** Apuntarlo antes
+  dejaba el contador desincronizado para siempre.
+- El registro **no repite el mismo error**, pero anota `recuperado` al
+  arreglarse, para que un fallo que vuelve tres horas después no se pierda.
+
+**El plugin escribe el monedero en CADA cambio**, no sólo al lanzar
+(`Creditos.nut`, `guardar()` y el constructor). Antes el contador físico no se
+enteraba de las monedas metidas en el menú, y si alguien borraba el fichero no
+se recreaba hasta el siguiente juego.
+
+**`Arcade.ino`** (`~/snap/arduino/85/Arduino/Arcade/`): faltaba
+`Serial.begin(9600)` en el `setup()` — el fallo por el que «no funcionaba nada»
+mientras el Python estaba perfecto. Además `Serial.parseInt()` estaba dentro de
+la condición del `for`, así que se releía en cada vuelta y devolvía 0 a la
+segunda. Diagnóstico que conviene recordar: **el registro del demonio decía la
+verdad** (leía el saldo, escribía sin error); el fallo estaba al otro lado del
+cable.
+
+Pendiente: que el demonio arranque solo con la cabina (servicio de `systemd` de
+usuario) y sustituir el parpadeo del LED por el display de verdad — el parpadeo
+bloquea el `loop()` y deja la placa sorda al puerto casi cuatro segundos con 9
+créditos.
+
+## El arranque tapado, y el agujero del jugador pillo
+
+Encontrado por Eloy el 2026-08-28 probando la cabina: *«si soy pillo y empiezo a
+pulsar el botón de créditos apenas comienza, el plugin regala créditos»*. Tenía
+razón y el diagnóstico también era suyo: **la culpa era del retardo**.
+
+**El agujero.** Con `-autoboot_delay 6`, durante esos seis segundos
+`creditos.lua` **todavía no existe**: no hay cerrojo, no hay contador de
+monedas, y la entrada de moneda la lee MAME directamente. Todo lo pulsado ahí
+era gratis y además invisible para la cuenta.
+
+**El arreglo de fondo: `-autoboot_delay 0`.** Ese retardo era un requisito del
+diseño viejo, cuando el script **insertaba** las monedas y la placa aún estaba
+en su test de RAM/ROM. En el diseño de la hucha no se inserta nada, así que el
+motivo desapareció. Comprobado arrancando en el frame 0: encuentra COIN1, lee el
+DIP de tarifa, monta el cerrojo y localiza la dirección de la RAM. **Todo
+funciona sin esperar.**
+
+Pero arrancar en el frame 0 destapa dos cosas nuevas, y las dos hay que tratar:
+
+**1. La RAM del juego todavía es basura.** Sin esperar, el byte de los créditos
+de Pac-Man leía 176. De ahí `GA_ASENTAR` (180 frames): mientras se asienta, el
+contador **sólo toma nota, no cuenta**, y `dentro()` devuelve `nil` en vez de un
+número inventado — importa, porque si no el cuadro de salida anunciaría «DEJAS
+176 CREDITOS DENTRO».
+
+Al terminar el asentamiento se hace un **barrido**: los créditos que la máquina
+traiga puestos y no estén pagados se quitan (`GA_LIMPIAR`). Cubre lo que la
+NVRAM guardó de la sesión anterior y cualquier moneda que se colara. Una
+recreativa arranca sin créditos. **Sólo se escribe en direcciones comprobadas**:
+en las importadas de la colección de cheats nunca.
+
+Cuidado con el barrido: **lo que el jugador haya metido mientras la placa se
+asentaba es suyo** y ya se le cobró, así que sólo se quita lo que sobra por
+encima de `GA_ESTADO.metidos`. Hay una prueba para eso (`6d`).
+
+**2. La placa ignora las monedas mientras arranca.** Esto es lo que vio Eloy con
+su idea de acelerar el arranque, y es un segundo agujero, del signo contrario:
+cobrarle al jugador un crédito que el juego tira a la basura. De ahí el
+**arranque tapado**:
+
+- El cerrojo tiene una segunda razón para estar echado (`cerrojo.listo`), y
+  pulsar la moneda ahí sale con «ESPERA, LA MAQUINA ESTA ARRANCANDO».
+- La pantalla se pone **en negro y sin ningún texto**. **Verificado con
+  captura.**
+- El emulador va sin freno (`video.throttled = false`) y mudo
+  (`sound.system_mute`), así que el arranque dura un suspiro de tiempo real.
+  `GA_TURBO=0` lo desactiva. Los ajustes se guardan y se restauran.
+
+### Cuándo termina el arranque: NO puede ser un plazo fijo
+
+Eloy volvió con el fallo el 2026-08-28: con la ventana fija de 4 segundos, en un
+juego que tarda más el cerrojo se abría antes de tiempo y las monedas volvían a
+perderse. Tenía razón — cada placa tarda lo suyo.
+
+**Medido**, trazando el byte `4e6e` de Pac-Man frame a frame (y con el
+notificador en una global, que si no **el recolector de basura se lleva la
+suscripción** y la traza se corta en el frame 90 sin avisar):
+
+| frames | contador | qué pasa |
+|---|---|---|
+| 1-90 | 3, 10, 1, 8, 15, 144, 112… | test de RAM, patrones |
+| 90-250 | **176, quieto** | sigue arrancando |
+| 250+ | **0** | la placa terminó |
+
+Lo importante es la fila del medio: **«lleva un rato quieto» NO sirve como señal
+de que esté lista.** La RAM sin inicializar también está quieta, y con esa regla
+el botón se abría en el frame 302 con la placa a medias. La señal buena es que
+el contador esté **a CERO** y se quede: para Pac-Man, listo en el frame 370
+(250 + 120 de confirmación), y cuadra con la medición.
+
+Segunda regla, para juegos con NVRAM que arrancan con créditos de la sesión
+anterior y nunca pasan por cero: quieto **mucho** más rato (3×). El plazo es
+largo a propósito, porque la meseta de 176 de Pac-Man dura 160 frames y no debe
+colarse por ahí.
+
+Y una trampa que costó una pasada: **el propio barrido contaminaba la
+detección.** Escribía 0 en el frame 180 y entonces «lleva 120 frames a cero» era
+mentira, nuestra. Por eso el asentamiento del contador ya no va por frames
+cuando hay arranque tapado: lo cierra `fin_del_arranque()` llamando a
+`memoria.asentar_ya()`, y el contador de frames se queda sólo como red **por
+detrás** del tope, nunca por delante.
+
+En juegos sin dirección conocida no hay nada que mirar y sólo queda el reloj
+(`GA_ARRANQUE_SIN`, 900 frames). Se espera bastante más a propósito: con el
+emulador sin freno no cuesta tiempo real, y cobrar por una moneda que el juego
+tira es peor que un arranque largo.
+
+### La red de verdad: si la moneda no llega, se devuelve
+
+Ninguna detección es perfecta, así que hay una segunda red que no depende de
+adivinar cuándo arranca la placa: **al cobrar una moneda se apunta el valor del
+contador, y si en `GA_COMPROBAR` frames (90) no ha subido, se devuelve el
+crédito** (`monedero.lua`, `c.devuelve`).
+
+Se cobra primero y se devuelve después, y no al revés, por el mismo motivo que
+en el lanzamiento: si algo se cae por el camino, el error seguro es tener
+cobrado de más, nunca regalar créditos. Y si no se puede leer la RAM no se
+devuelve nada, por lo mismo.
+
+Detalle: se guarda el **máximo** visto del contador, no el último. Si el jugador
+le da a START durante ese segundo y medio, el contador baja, y sin eso
+creeríamos que la moneda nunca llegó.
+
+**Verificado en MAME** (escenario `6g`): moneda en el frame 200 con la placa aún
+arrancando, monedero 5 → 4 al cobrarla → 5 otra vez a los 90 frames.
+
+API verificada: `manager.machine.video.throttled`, `.throttle_rate` y
+`manager.machine.sound.system_mute` **se leen y se escriben** desde Lua
+(`luaengine.cpp:2199-2200` y `:2219-2225`).
+
+**Probado reproduciendo el agujero** (`aviso_mame.sh`, escenarios 6c a 6e):
+pulsar la moneda en los frames 5, 25, 45 y 65 con el monedero a cero da cuatro
+rechazos, cero entradas y el barrido limpia la máquina; con el monedero lleno,
+pulsar durante el arranque tampoco cuesta nada.
+
+Efecto secundario en las pruebas: los frames simulados van 360 más adelante que
+antes, porque el script ya no espera 6 segundos.
+
+## El rebote de la chauchera
+
+Encontrado por Eloy el 2026-08-29: *«al presionar el botón de créditos como
+loco, a veces da más créditos de los que debería»*. Su primera idea fue mover la
+gestión del botón a un backend en C o Python. **No era un problema de
+arquitectura, era rebote de contactos**, y se habría ido con él al backend.
+
+Una chauchera es un microinterruptor mecánico: al cerrar, sus contactos abren y
+cierran varias veces durante unos milisegundos. El plugin muestrea una vez por
+fotograma (`feVM.tick()`, `main.cpp:1308`), así que ese rebote se lee como
+varias pulsaciones completas y una moneda da tres créditos.
+
+El arreglo es antirrebote por tiempo, pero **con valores distintos en cada lado,
+porque las dos entradas son cosas distintas** (aclarado por Eloy el 2026-08-29):
+
+| | entrada | qué es | valor |
+|---|---|---|---|
+| Frontend | chauchera | **monedas de verdad** | 40 ms |
+| MAME | botón de créditos | lo pulsa una persona | 8 frames (~130 ms) |
+
+- **Plugin**: `moneda( ttime )` descarta un crédito si han pasado menos de
+  `antirrebote` ms desde el anterior, y lo anota en el log. Ojo con `ttime`: al
+  recargar el layout vuelve atrás, y eso se detecta para no comerse la siguiente
+  moneda de verdad.
+- **`monedero.lua`**: `M.pulsador(leer, hueco)` ignora flancos durante `hueco`
+  frames.
+
+**Por qué 40 ms y no 150 en el frontend.** Ahí no se trata de limitar el ritmo:
+entran monedas de verdad y todas tienen que contar. Y hay una trampa —
+**muchas chaucheras mandan varios pulsos por moneda** (una de 500 puede mandar
+cinco, separados unos 100 ms). Un antirrebote de 150 ms se comería cuatro de los
+cinco. 40 ms mata el rebote de contactos, que dura menos de 20 ms, y deja pasar
+el tren entero. Hay prueba para eso (`23b`).
+
+En el botón de MAME sí interesa el plazo largo: ahí lo pulsa una persona y no
+hay monedas físicas que perder.
+
+Lo que sí acertaba la idea del backend: hoy la lógica vive en dos sitios. Si
+algún día se quiere un único dueño, **el sitio bueno es el Arduino**, no un
+proceso más — un microcontrolador muestrea a kilohercios y ve el rebote entero.
+Pero eso es un proyecto de cableado, no un parche para este fallo.
+
+## Ajustes de arranque por juego (`arranque.dat`)
+
+`ajustes.lua` + `arranque.dat`, pedidos por Eloy el 2026-08-29. Mismo espíritu
+que `creditos.dat`: una línea por juego con pares `clave=valor`.
+
+```
+defecto   velocidad=0 arranque=5 max=30 sin=15
+pacman    arranque=5
+simpsons  velocidad=2 arranque=15 fijo=1
+```
+
+- `velocidad` — a qué velocidad corre el emulador mientras arranca. `0` es sin
+  freno; `2` es el doble; `1`, normal.
+- `arranque` / `max` / `sin` / `estable` — los tiempos del arranque tapado.
+- `fijo=1` — usa `arranque` tal cual, **sin detección automática**. Es la
+  válvula de escape para un juego que se porte raro.
+- `turbo=0` — no acelerar ni silenciar ese juego.
+
+**Los tiempos del fichero van en SEGUNDOS**, que es como piensa una persona;
+dentro se pasan a frames. **Las variables de entorno siguen en frames**, que es
+como estaban antes y como las usan las pruebas — cambiarlo habría roto todos los
+escenarios sin avisar.
+
+Precedencia: **entorno > línea del juego > línea `defecto` > valor interno**.
+
+Para saber cuánto necesita un juego: lanzarlo con `GA_VERBOSO=1` y mirar
+«arranque terminado en el frame N»; entre 60 son los segundos.
+
+**No hace falta Python ni C para esto.** El script ya lee dos ficheros `.dat`
+con `io` de Lua, y `emu.romname()` da el nombre del set. Un proceso más sólo
+añadiría un modo de fallo.
+
+## El cerrojo del botón de moneda
+
+`cerrojo.lua`, pedido por Eloy el 2026-08-28: *«una vez ingresado en el juego se
+pueden agregar créditos infinitos»*. La regla es ahora:
+
+> Durante una partida el jugador puede meter **tantas monedas como créditos
+> tenía en el monedero al lanzar** (`SALDO`). Ni una más.
+
+Cuando se acaban, el botón deja de responder y aparece abajo
+«SIN CREDITOS. VUELVE AL MENU PARA ANADIR». `GA_CERROJO=0` lo desactiva.
+
+**Cómo se bloquea sin arriesgar el botón**, que es lo delicado. Hay dos APIs y
+sólo una sirve:
+
+- `campo:set_input_seq('standard', vacía)` escribe `"NONE"` en
+  `live().cfg[seqtype]` (`luaengine_input.cpp:343`), y eso **se guarda en el
+  `.cfg` del juego** (`ioport.cpp:2859-2894`). Peor aún: **el `.cfg` se guarda
+  ANTES que los notificadores de salida** (`machine.cpp:440` frente a `:480`),
+  así que restaurar al salir **no llega a tiempo**. Salir con el cerrojo echado
+  dejaría el botón muerto para siempre. **No usar.**
+- `campo:set_default_input_seq('standard', vacía)` llama a `set_defseq`, que
+  toca `m_seq` y **no toca `live().cfg`**. Y `seq()` cae en `defseq()` cuando la
+  secuencia viva es la de por defecto (`ioport.cpp`, `ioport_field::seq`). Es la
+  buena.
+
+**Verificado dentro de MAME**, no leído: la secuencia efectiva pasa de 3 códigos
+a 0 al bloquear y vuelve a 3 al soltar; `set_value` sigue funcionando (o no
+podríamos insertar los créditos del lanzamiento); y saliendo con el cerrojo
+echado **a propósito**, el `.cfg` de Pac-Man no tiene ni un `NONE` y queda
+idéntico. Aun así el `bloquear()` **comprueba que surtió efecto** y avisa por el
+log si no: si un juego trae secuencia propia en `live().seq`, `defseq` no manda.
+
+**El detector de moneda guarda una copia de la secuencia** (`emu.input_seq(...)`,
+copia explícita). Dos motivos: si fuera una referencia se vaciaría justo al
+bloquear, y teniéndola aparte se detecta la pulsación rechazada y se puede
+explicar al jugador por qué no pasa nada.
+
+El cerrojo se ajusta **después** de contar la moneda del frame, para que la
+última que le queda al jugador entre y el bloqueo empiece en ese mismo frame.
 
 ## Dónde guarda cada juego sus créditos
 
@@ -405,9 +755,10 @@ bool curstate = m_digital_value || machine().input().seq_pressed(seq());
 
 Consecuencia importante: `set_value(1)` fuerza el input a encendido, pero
 **`set_value(0)` NO bloquea el mando físico**. Para desactivar controles hay que
-usar `ioport:set_typeseq(tipo, jugador, "standard", secuencia_vacía)` guardando
-las originales para restaurarlas. Ojo con el modo de fallo: si el script muere a
-medias, la cabina se queda sin controles.
+usar `campo:set_default_input_seq("standard", secuencia_vacía)`, que es la
+vía segura (ver «El cerrojo del botón de moneda»). El nombre real de la API del
+`ioport` es `set_type_seq`, no `set_typeseq` (`luaengine_input.cpp:179`), pero
+ésa sí escribe en el `.cfg`.
 
 ## Trampas descubiertas midiendo (esto costó varias iteraciones)
 
@@ -491,6 +842,20 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 | `GA_TARIFA` | `1c1c` | `1c1c`, `auto` (sólo compensa), `off` (ignora los DIP) |
 | `GA_VIGILAR` | 1 | `0` para no llevar la cuenta durante la partida |
 | `GA_AVISO` | 1 | `0` para no avisar al salir con créditos dentro |
+| `GA_ARRANQUE` | 300 | frames MÍNIMOS de arranque tapado (pantalla negra, moneda cerrada) |
+| `GA_ARRANQUE_MAX` | 1800 | tope de ese arranque |
+| `GA_ARRANQUE_SIN` | 900 | arranque en juegos sin dirección conocida |
+| `GA_ESTABLE` | 120 | frames que el contador debe estar a cero para darlo por listo |
+| `GA_COMPROBAR` | 90 | frames de gracia para ver si la moneda llegó; si no, se devuelve |
+| `GA_ANTIRREBOTE` | 8 | frames que se ignoran tras una moneda, contra el rebote |
+| `GA_VELOCIDAD` | 0 | velocidad del emulador al arrancar (0 = sin freno) |
+| `GA_FIJO` | 0 | `1` para usar `GA_ARRANQUE` tal cual, sin detección |
+| `GA_AJUSTES` | `arranque.dat` | fichero de ajustes por juego |
+| `GA_TURBO` | 1 | `0` para no acelerar el emulador durante el arranque |
+| `GA_ASENTAR` | 180 | frames que se deja asentar la RAM antes de contar |
+| `GA_LIMPIAR` | 1 | `0` para no quitar los créditos que la máquina trae puestos |
+| `GA_COBRO` | `meter` | `meter` cobra la moneda al meterla (contador físico); `jugar` cobra al gastarla |
+| `GA_CERROJO` | 1 | `0` para no limitar las monedas del jugador a su monedero |
 | `GA_MENSAJE` | 150 | frames que dura el aviso al meter una moneda |
 | `GA_PULSO` | 8 | frames con la moneda pulsada |
 | `GA_HUECO` | 8 | frames entre monedas |
@@ -573,9 +938,10 @@ Con AM+ compilado, esto ya no es lectura de código sino medición:
 
 ## Cómo se prueba el plugin
 
-`/home/eloy/groovyarcade-creditos/pruebas/correr.sh` — 61 comprobaciones del
-plugin, 24 del analizador de tarifas, 30 del monedero, 46 del cuadro de aviso,
-30 de la lectura y escritura en memoria y 7 del importador de cheats, y no
+`/home/eloy/groovyarcade-creditos/pruebas/correr.sh` — 84 comprobaciones del
+plugin, 24 del analizador de tarifas, 46 del monedero, 53 del cuadro de aviso,
+46 de la lectura y escritura en memoria, 23 de los ajustes por juego, 37 del
+cerrojo de la moneda y 7 del importador de cheats, y no
 necesita AM+ compilado ni emulador.
 
 Truco: `extlibs/squirrel` no depende de nada externo, así que se compila un
@@ -602,7 +968,7 @@ el marcador encima del layout (midiendo píxeles), los créditos llegando a MAME
 que la moneda metida durante la partida se descuenta, y que con lo que queda se
 juega otra partida.
 
-Y `pruebas/aviso_mame.sh`, 18 comprobaciones dentro de MAME: frenar, confirmar,
+Y `pruebas/aviso_mame.sh`, 42 comprobaciones dentro de MAME: frenar, confirmar,
 cancelar con START, rendirse solo, no molestar al que sólo entra a mirar,
 `GA_AVISO=0`, el caso del jugador despistado (cuatro monedas metidas en la
 partida, una jugada, monedero de 10 a 9) y que los créditos se lean de la RAM
@@ -624,9 +990,10 @@ Lo que **no** cubre: el mando físico de la cabina y el CRT.
    se puede probar sin la cabina).
 4. Pasar `poner_1c1c.sh` y `buscar_creditos.sh` una vez sobre la lista real de
    juegos.
-5. Sólo si hace falta, el bloqueo de la moneda cuando el saldo llega a 0.
-   Recordar que MAME persiste los remapeos en su `.cfg`: el camino bueno es el
-   del cuadro de aviso (`uiinput:reset()`), no `set_typeseq`.
+5. ~~El bloqueo de la moneda cuando el saldo llega a 0.~~ **Hecho** el
+   2026-08-28: `cerrojo.lua`, con `set_default_input_seq`, que no ensucia el
+   `.cfg`.
+6. Arrancar `daemon.py` solo con la cabina (servicio de `systemd` de usuario).
 
 **Aviso**: la API de MAME de este documento está verificada ejecutándola. La de
 Attract-Mode Plus **no** — cuando se llegue ahí, contrastar con `Manual.md` y
