@@ -568,6 +568,54 @@ Tres detalles que costaron pensarlos:
 
 Prueba permanente: `aviso_mame.sh`, escenario 10, con `estado_final.lua`.
 
+## Los créditos que la NVRAM guarda entre sesiones
+
+Traído por Eloy el 2026-08-29 en un fichero de roms problemáticas: Michael
+Jackson con 9 créditos, Root Beer Tapper con 9, y en Tapper *«el texto de la
+parte inferior se ve distorsionada y mal escrita»*.
+
+**El origen es el mismo en los tres: la NVRAM del juego guarda los créditos** y
+la sesión siguiente arranca con ellos. Verificado con capturas: Moonwalker
+enseña `CREDITS 7` en su pantalla de título, y sin su fichero de NVRAM arranca
+en `CREDIT 0`.
+
+**El texto distorsionado también era nuestro, y es la parte interesante.** El
+barrido escribe 0 en el contador **después** de que el juego haya pintado su
+mensaje largo (`CREDIT 6 PRESS 1 OR 2 PLAYER`); al quedarse en el corto
+(`INSERT COIN`) su rutina de dibujo no borra lo que sobra y quedan restos.
+
+**Lo que NO se puede hacer: adelantar el barrido.** Lo intenté — barrer en cada
+frame del arranque — y rompe la placa: los patrones del test de RAM de Pac-Man
+(3, 10, 1, 8, 15…) caen en el rango que se barría, así que le machacábamos el
+byte, el test se reiniciaba en bucle y el juego no empezaba hasta el frame 302
+en vez del 14. **Nunca escribir en la RAM de una placa que se está
+autoprobando.** El síntoma en las pruebas fue indirecto y feo: monedas dadas por
+perdidas y devueltas.
+
+**La solución: `nvram=0` por juego en `arranque.dat`.** `creditos.lua` apaga la
+opción `nvram_save` de MAME desde Lua (`options.entries['nvram_save']:value(false)`,
+verificado). El juego deja de guardar su NVRAM, así que el arranque siguiente es
+de fábrica: sin créditos y sin artefacto.
+
+- **El precio: ese juego tampoco conserva sus puntuaciones.** Por eso va por
+  juego y no para todos.
+- **Hay que borrar el fichero viejo una vez** (`~/.mame/nvram/<juego>/nvram`):
+  `nvram=0` evita **guardar**, no cargar.
+- Puestos así: `mwalk`, `tapper`, `rbtapper`.
+
+**Y una advertencia: tener NVRAM no significa guardar créditos.** Dig Dug la
+usa sólo para la puntuación y arranca en `CREDIT 0`. No apagarla a lo bruto.
+
+De la auditoría de `~/.mame/nvram`, siguen sin cubrir (no están en
+`creditos.dat` y no se han comprobado): `ncv2`, `simpsons`, `spaceinv`. Si
+alguno arranca con créditos, la receta es la de arriba.
+
+**Un fallo silencioso de `arranque.dat` que costó encontrar.** El fichero se
+había corrompido y el separador era un `?` literal en vez de un espacio
+(`pacman?arranque=5`). El parser lo tomaba como el nombre del juego, así que
+**ninguno de sus ajustes se aplicaba, sin decir nada**. Ahora `ajustes.lua`
+avisa de las líneas cuyo nombre contiene un `=`.
+
 ## El cerrojo del botón de moneda
 
 `cerrojo.lua`, pedido por Eloy el 2026-08-28: *«una vez ingresado en el juego se
@@ -960,6 +1008,7 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 | `GA_ARRANQUE_MAX` | 1800 | tope de ese arranque |
 | `GA_ARRANQUE_SIN` | 900 | arranque en juegos sin dirección conocida |
 | `GA_ESTABLE` | 120 | frames que el contador debe estar a cero para darlo por listo |
+| `GA_LIMPIAR` | 1 | `0` para no quitar los créditos que la máquina trae puestos |
 | `GA_COMPROBAR` | 90 | frames de gracia para ver si la moneda llegó; si no, se devuelve |
 | `GA_ANTIRREBOTE` | 8 | frames que se ignoran tras una moneda, contra el rebote |
 | `GA_VELOCIDAD` | 0 | velocidad del emulador al arrancar (0 = sin freno) |
@@ -1083,7 +1132,7 @@ el marcador encima del layout (midiendo píxeles), los créditos llegando a MAME
 que la moneda metida durante la partida se descuenta, y que con lo que queda se
 juega otra partida.
 
-Y `pruebas/aviso_mame.sh`, 53 comprobaciones dentro de MAME: frenar, confirmar,
+Y `pruebas/aviso_mame.sh`, 56 comprobaciones dentro de MAME: frenar, confirmar,
 cancelar con START, rendirse solo, no molestar al que sólo entra a mirar,
 `GA_AVISO=0`, el caso del jugador despistado (cuatro monedas metidas en la
 partida, una jugada, monedero de 10 a 9) y que los créditos se lean de la RAM
