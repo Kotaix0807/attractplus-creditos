@@ -490,6 +490,43 @@ Para saber cuánto necesita un juego: lanzarlo con `GA_VERBOSO=1` y mirar
 con `io` de Lua, y `emu.romname()` da el nombre del set. Un proceso más sólo
 añadiría un modo de fallo.
 
+## El cerrojo también sin monedero, y los créditos de la NVRAM
+
+Tres fallos que trajo Eloy el 2026-08-29 probando la cabina con monedas de
+verdad.
+
+**1. Q*bert con 52 créditos.** Pulsar el botón de moneda mientras el juego
+carga los acumulaba. La causa: el cerrojo sólo se montaba **si había monedero**,
+y en el flujo nuevo no lo hay. Ahora se monta siempre, con `ilimitado = true`
+cuando no hay monedero: no aplica ningún límite, pero sí tiene el botón **cerrado
+mientras la placa arranca**, que es lo único que hacía falta. Prueba `9b`.
+
+**2. Tapper arrancaba con 8 créditos.** Su dirección estaba en `creditos.dat`
+marcada `# (cheat)`, o sea importada de la colección, y **en las importadas
+nunca se escribe** — así que el barrido no podía limpiar lo que su NVRAM
+guardaba de la sesión anterior.
+
+Se comprobó a mano, que es lo que faltaba para ascenderla: la NVRAM traía 6,
+escribir 0 en `e011` se queda puesto, y una moneda lo sube 0→1. Con la marca
+`(cheat)` quitada, el barrido funciona: `trae 8 credito(s) y solo 0 estan
+pagados: quito el resto`, y el arranque siguiente empieza en 0.
+
+Ojo con el detector de «placa lista» en estos juegos: el contador de Tapper vale
+8 **desde el frame 3** y nunca pasa por cero, así que la regla del cero no sirve
+y entra la segunda, la de «quieto mucho rato» (3×`GA_ESTABLE`). Termina en el
+frame 363. Por eso esa segunda regla existe.
+
+**Y una advertencia para el resto de juegos importados:** cualquier otro con
+NVRAM y dirección `(cheat)` tendrá el mismo problema. La comprobación es la de
+arriba y se hace en un minuto: escribir 0, meter una moneda y ver si sube.
+
+**3. New Rally-X «no muestra el puntaje»: no es nuestro.** Comprobado:
+`-verifyroms` dice `romset nrallyx is good`, el driver es `status="good"`, el
+parche de avisos sólo toca dos ficheros de `ui/` (que no pueden cambiar el
+bitmap del juego), y capturando **sin nuestro script** el marcador **parpadea**:
+en blanco en el frame 1800 y con los `00` en el 1810. Es el modo atracción
+normal de Namco.
+
 ## El cerrojo del botón de moneda
 
 `cerrojo.lua`, pedido por Eloy el 2026-08-28: *«una vez ingresado en el juego se
@@ -1005,7 +1042,7 @@ el marcador encima del layout (midiendo píxeles), los créditos llegando a MAME
 que la moneda metida durante la partida se descuenta, y que con lo que queda se
 juega otra partida.
 
-Y `pruebas/aviso_mame.sh`, 47 comprobaciones dentro de MAME: frenar, confirmar,
+Y `pruebas/aviso_mame.sh`, 50 comprobaciones dentro de MAME: frenar, confirmar,
 cancelar con START, rendirse solo, no molestar al que sólo entra a mirar,
 `GA_AVISO=0`, el caso del jugador despistado (cuatro monedas metidas en la
 partida, una jugada, monedero de 10 a 9) y que los créditos se lean de la RAM
