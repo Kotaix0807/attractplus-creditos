@@ -3,7 +3,42 @@
 Contexto traspasado desde otra sesión. Todo lo marcado como **verificado** se
 comprobó ejecutando código y mirando capturas de pantalla reales, no de memoria.
 
-## Decisión de Eloy (2026-08-24): modo manual — SUPERADA, ver la sección siguiente
+## Decisión de Eloy (2026-08-29): monedas de verdad — ES LO QUE HAY AHORA
+
+El flujo de la cabina es el de una recreativa de toda la vida:
+
+1. El jugador **elige el juego** en el frontend. Sin créditos, sin nada.
+2. **Mete monedas en la máquina y juega.** Las monedas entran directamente en
+   el emulador, como en una placa real.
+
+**El plugin del frontend está desactivado** y `creditos.lua` corre en modo
+monedas de verdad (`GA_MONEDERO` apagado por defecto). De todo el sistema sólo
+quedan en pie las dos piezas que Eloy quiso conservar, y siguen probadas:
+
+- **El arranque tapado**: pantalla en negro y emulador acelerado mientras la
+  placa hace su test, con detección de cuándo está lista de verdad y ajustes por
+  juego en `arranque.dat`. Ver «El arranque tapado».
+- **El aviso al salir con créditos dentro**: como ahora son monedas de verdad,
+  esos créditos son dinero perdido, así que el cuadro avisa de la pérdida.
+  Pendiente de Eloy: cambiar la confirmación por una combinación de botones que
+  se enseñe en pantalla; por ahora sigue siendo pulsar salir dos veces.
+
+**Nada de lo anterior se ha borrado.** El sistema completo del monedero
+compartido (cerrojo, cobro al meter, devolución, contador físico) está en la
+rama **`monedero-frontend`** de los dos repos (`attractplus` y
+`groovyarcade-creditos`, que desde el 2026-08-29 también está bajo git).
+Encenderlo otra vez son dos interruptores: `GA_MONEDERO=1` y activar el plugin.
+Sus pruebas siguen pasando, porque los escenarios lo piden explícitamente.
+
+Dos cosas que quedan sueltas con este flujo, por si se quieren retomar:
+
+- **`daemon.py` y el contador físico se quedan sin nada que enseñar**, porque ya
+  no hay monedero. La evolución natural sería que mostrara los créditos que hay
+  **dentro del juego**, que para los juegos de `creditos.dat` se leen de la RAM.
+- **La tarifa del DIP ahora decide dinero de verdad.** Sigue forzada a 1 moneda
+  = 1 crédito (`GA_TARIFA`); si se quiere otra cosa, es ahí.
+
+## Decisión de Eloy (2026-08-24): modo manual — SUPERADA, ver arriba
 
 La cabina queda en **modo manual**: el plugin del frontend está **desactivado**,
 se entra al juego sin créditos y las monedas las mete el jugador con el botón,
@@ -21,8 +56,9 @@ la tarifa 1C/1C y para el aviso al salir.
 
 ## Diseño objetivo (Eloy, 2026-08-28): monedero visible en el Arduino
 
-**Implementado y verificado el 2026-08-28.** Sustituye a la «Decisión de Eloy
-(2026-08-24): modo manual» de arriba, que fue el paso intermedio.
+**Implementado y verificado el 2026-08-28. APAGADO desde el 2026-08-29**, ver
+la decisión de las monedas de verdad al principio. Se conserva entero en la
+rama `monedero-frontend` y se enciende con `GA_MONEDERO=1`.
 
 La idea, en una frase: **el plugin sólo guarda los créditos del jugador; el
 Arduino los enseña; el jugador decide cuántos mete en el juego pulsando la
@@ -854,6 +890,7 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 | `GA_TURBO` | 1 | `0` para no acelerar el emulador durante el arranque |
 | `GA_ASENTAR` | 180 | frames que se deja asentar la RAM antes de contar |
 | `GA_LIMPIAR` | 1 | `0` para no quitar los créditos que la máquina trae puestos |
+| `GA_MONEDERO` | – | `1` para el monedero compartido con el frontend; apagado = monedas de verdad |
 | `GA_COBRO` | `meter` | `meter` cobra la moneda al meterla (contador físico); `jugar` cobra al gastarla |
 | `GA_CERROJO` | 1 | `0` para no limitar las monedas del jugador a su monedero |
 | `GA_MENSAJE` | 150 | frames que dura el aviso al meter una moneda |
@@ -968,7 +1005,7 @@ el marcador encima del layout (midiendo píxeles), los créditos llegando a MAME
 que la moneda metida durante la partida se descuenta, y que con lo que queda se
 juega otra partida.
 
-Y `pruebas/aviso_mame.sh`, 42 comprobaciones dentro de MAME: frenar, confirmar,
+Y `pruebas/aviso_mame.sh`, 47 comprobaciones dentro de MAME: frenar, confirmar,
 cancelar con START, rendirse solo, no molestar al que sólo entra a mirar,
 `GA_AVISO=0`, el caso del jugador despistado (cuatro monedas metidas en la
 partida, una jugada, monedero de 10 a 9) y que los créditos se lean de la RAM
