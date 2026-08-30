@@ -187,8 +187,16 @@ local AJU = vecino('ajustes.lua')    -- ajustes de arranque por juego
 -- Los valores salen de arranque.dat (por juego, en segundos), y una variable
 -- de entorno pisa lo que diga el fichero (en frames, que es como estaban antes
 -- y como las usan las pruebas).
+local TABLA_AJUSTES = AJU and AJU.leer(os.getenv('GA_AJUSTES') or (MI_DIR .. 'arranque.dat')) or nil
+
+if TABLA_AJUSTES then
+	for _, aviso in ipairs(TABLA_AJUSTES.avisos or {}) do
+		log('arranque.dat: %s', aviso)
+	end
+end
+
 local AJUSTES = AJU and AJU.para(
-	AJU.leer(os.getenv('GA_AJUSTES') or (MI_DIR .. 'arranque.dat')),
+	TABLA_AJUSTES,
 	emu.romname and emu.romname() or '',
 	os.getenv) or nil
 
@@ -210,6 +218,17 @@ local FIJO = ajuste('fijo', 'GA_FIJO', 0) ~= 0
 -- Velocidad del emulador durante el arranque: 0 = sin freno
 local VELOCIDAD = math.max(0, ajuste('velocidad', 'GA_VELOCIDAD', 0))
 local TURBO = (os.getenv('GA_TURBO') ~= '0') and (ajuste('turbo', nil, 1) ~= 0)
+
+-- nvram=0 en arranque.dat: la placa no guarda su NVRAM al salir.
+--
+-- Es la salida para los juegos que arrancan con creditos de la sesion anterior
+-- y cuyo contador no sabemos localizar (mwalk: "CREDITS 7" nada mas arrancar,
+-- y su direccion no la encuentra buscar_creditos.sh). Al no guardarse, el
+-- siguiente arranque es de fabrica.
+--
+-- El precio: ese juego tampoco conserva sus puntuaciones. Por eso va por juego
+-- y no para todos.
+local GUARDAR_NVRAM = ajuste('nvram', nil, 1) ~= 0
 
 -- ---------------------------------------------------------------
 -- 1. La cuenta: cuanto hay que meter y cuanto queda en el monedero
@@ -900,6 +919,7 @@ if MEM then
 						pcall(GA_ESTADO.escribir_ram, suyos)
 					end
 				end
+
 			end
 
 			-- Con arranque tapado, quien decide cuando la RAM es de fiar es
@@ -948,6 +968,20 @@ if MEM then
 				log('sincronizando %d creditos por escritura, sin insertar monedas', quiero)
 			end
 		end
+	end
+end
+
+-- --- NVRAM: si el juego la usa para guardar creditos, se le quita ---
+if not GUARDAR_NVRAM then
+	local ok, err = pcall(function()
+		local e = manager.machine.options.entries['nvram_save']
+		if e then e:value(false) end
+	end)
+
+	if ok then
+		log('nvram=0: esta partida no guardara su NVRAM (ni creditos ni puntuaciones)')
+	else
+		log('no pude apagar el guardado de NVRAM: %s', tostring(err))
 	end
 end
 

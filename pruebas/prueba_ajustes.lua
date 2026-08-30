@@ -105,6 +105,30 @@ do
 	igual('se encuentra en minusculas', A.para(t, 'pacman', sin_entorno).frames('arranque', nil, 0), 360)
 end
 
+print('\n8. una linea sin separador de verdad se avisa, no se traga')
+do
+	-- Paso: un editor dejo "pacman?arranque=5" con un caracter raro en vez de
+	-- un espacio. Sin aviso, esa linea se apunta como un juego que no existe y
+	-- sus ajustes no se aplican NUNCA, en silencio.
+	escribe('defecto arranque=5\npacman?arranque=9\n')
+	local t = A.leer(TMP)
+
+	comprueba('se avisa de la linea', #t.avisos == 1, #t.avisos)
+	comprueba('y no se apunta como juego', t.juegos['pacman?arranque=9'] == nil)
+
+	local a = A.para(t, 'pacman', sin_entorno)
+	igual('asi que pacman cae al defecto', a.frames('arranque', nil, 0), 300)
+end
+
+print('\n9. la bandera nvram')
+do
+	escribe('defecto nvram=1\nmwalk nvram=0 arranque=10\n')
+	local t = A.leer(TMP)
+	igual('el juego la apaga', A.para(t, 'mwalk', sin_entorno).valor('nvram', nil, 1), 0)
+	igual('otro juego la mantiene', A.para(t, 'pacman', sin_entorno).valor('nvram', nil, 1), 1)
+	igual('y sus segundos van aparte', A.para(t, 'mwalk', sin_entorno).frames('arranque', nil, 0), 600)
+end
+
 os.remove(TMP)
 print(string.format('\n=== ajustes: %d ok, %d fallos ===', ok, fallos))
 os.exit(fallos == 0 and 0 or 1)

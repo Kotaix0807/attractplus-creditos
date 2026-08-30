@@ -3449,7 +3449,7 @@ raystormo @:maincpu,program,1cff38   # (cheat)
 raystormu @:maincpu,program,1cff38   # (cheat)
 rbibb @:maincpu,program,583   # (cheat)
 rbibba @:maincpu,program,583   # (cheat)
-rbtapper @:maincpu,program,e011   # (cheat)
+rbtapper @:maincpu,program,e011
 rchase @:maincpu,program,ce020   # (cheat)
 rchase2 @:maincpu,program,1d00022   # (cheat)
 rchase2a @:maincpu,program,1d00022   # (cheat)

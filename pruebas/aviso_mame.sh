@@ -258,5 +258,36 @@ comprobar "el boton de moneda sigue vivo" \
 	"$([ "$(grep -q '\[final\] moneda: 0 codigos' "$T/reinicio.log" && echo 1 || echo 0)" = "0" ] && echo 1 || echo 0)" \
 	"$(grep '\[final\] moneda' "$T/reinicio.log")"
 
+echo "# 11. nvram=0 evita que el juego guarde sus creditos"
+# Los juegos con NVRAM arrancan con los creditos de la sesion anterior. Limpiar
+# el contador no vale: el barrido llega despues de que el juego haya pintado su
+# mensaje, y adelantarlo rompe el test de RAM de la placa (medido: Pac-Man no
+# arrancaba hasta el frame 302 en vez del 14). La salida es no guardar la NVRAM.
+mkdir -p "$T/nv"
+cat > "$T/ajustes_nv.dat" <<'AJU'
+defecto velocidad=0 arranque=5
+tapper nvram=0
+AJU
+( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_AJUSTES="$T/ajustes_nv.dat" \
+	xvfb-run -a ./mame tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	-nvram_directory "$T/nv" -video none -sound none -nothrottle -noswitchres \
+	-seconds_to_run 14 -autoboot_script "$AQUI/../creditos.lua" -autoboot_delay 0 \
+	> "$T/nvram.log" 2>&1 )
+comprobar "el ajuste se aplica" "$(tiene nvram 'nvram=0')" "ver log"
+comprobar "y no se escribe la NVRAM" \
+	"$([ -f "$T/nv/tapper/nvram" ] && echo 0 || echo 1)" "se escribio"
+
+# y con el ajuste quitado, si se guarda
+cat > "$T/ajustes_nv2.dat" <<'AJU'
+defecto velocidad=0 arranque=5
+AJU
+( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_AJUSTES="$T/ajustes_nv2.dat" \
+	xvfb-run -a ./mame tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	-nvram_directory "$T/nv" -video none -sound none -nothrottle -noswitchres \
+	-seconds_to_run 14 -autoboot_script "$AQUI/../creditos.lua" -autoboot_delay 0 \
+	> "$T/nvram2.log" 2>&1 )
+comprobar "sin el ajuste, la NVRAM si se guarda" \
+	"$([ -f "$T/nv/tapper/nvram" ] && echo 1 || echo 0)" "no se escribio"
+
 echo "# fallos=$fallos"
 exit $(( fallos > 0 ))

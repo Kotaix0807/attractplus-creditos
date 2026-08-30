@@ -23,7 +23,7 @@ end
 
 -- Lee el fichero y devuelve { defecto = {...}, juegos = { pacman = {...} } }
 function M.leer(ruta)
-	local r = { defecto = {}, juegos = {} }
+	local r = { defecto = {}, juegos = {}, avisos = {} }
 
 	local f = io.open(ruta, 'r')
 	if not f then return r, 'no se puede abrir ' .. tostring(ruta) end
@@ -40,7 +40,14 @@ function M.leer(ruta)
 				ajustes[clave:lower()] = numero(valor) or valor
 			end
 
-			if nombre == 'defecto' then
+			-- Un nombre con '=' dentro significa que la linea no tiene un
+			-- separador de verdad ("pacman?arranque=5" en vez de
+			-- "pacman arranque=5"). Sin avisar, esa linea se apuntaria como un
+			-- juego que no existe y sus ajustes no se aplicarian NUNCA, en
+			-- silencio. Paso una vez y costo encontrarlo.
+			if nombre and nombre:find('=', 1, true) then
+				r.avisos[#r.avisos + 1] = 'linea sin separador: ' .. linea
+			elseif nombre == 'defecto' then
 				r.defecto = ajustes
 			elseif nombre then
 				r.juegos[nombre:lower()] = ajustes
@@ -58,7 +65,7 @@ end
 --   juego   nombre del set (emu.romname())
 --   entorno funcion nombre -> valor de la variable de entorno, o nil
 function M.para(tabla, juego, entorno)
-	tabla = tabla or { defecto = {}, juegos = {} }
+	tabla = tabla or { defecto = {}, juegos = {}, avisos = {} }
 	entorno = entorno or function() return nil end
 
 	local a = {

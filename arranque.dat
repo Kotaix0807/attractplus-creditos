@@ -1,8 +1,8 @@
 # arranque.dat - ajustes del arranque tapado, por juego.
 #
-# Una linea por juego: el nombre del set y pares clave=valor. La linea
-# "defecto" vale para todos los que no tengan la suya. Los tiempos van en
-# SEGUNDOS emulados.
+# Una linea por juego: el nombre del set y pares clave=valor, separados por
+# espacios. La linea "defecto" vale para todos los que no tengan la suya. Los
+# tiempos van en SEGUNDOS emulados.
 #
 #   velocidad  a que velocidad corre el emulador mientras arranca
 #                0 = sin freno, lo mas rapido que pueda (por defecto)
@@ -15,14 +15,36 @@
 #   sin        segundos de arranque en juegos que NO estan en creditos.dat: ahi
 #              no hay contador que mirar y solo queda el reloj
 #   fijo       1 para usar 'arranque' tal cual, sin deteccion automatica. Es lo
-#              que hay que poner en un juego que dé problemas
+#              que hay que poner en un juego que de problemas
 #   turbo      0 para no acelerar este juego (ni quitar el sonido)
+#   nvram      0 para que la placa NO guarde su NVRAM al salir. Es la salida
+#              para los juegos que arrancan con los creditos de la sesion
+#              anterior y cuyo contador no sabemos localizar. Ojo: ese juego
+#              tampoco conservara sus puntuaciones
 #
 # Como saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y mira la linea
 # "arranque terminado en el frame N". Divide N entre 60 y tienes los segundos.
 
-defecto?velocidad=0 arranque=5 max=30 sin=15
+defecto velocidad=0 arranque=5 max=30 sin=15
 
 # Medido: la placa termina su test en el frame 250 y el contador queda a cero
 # en el 370. Con 5 segundos de minimo va sobrado.
-pacman?arranque=5
+pacman arranque=5
+
+# Michael Jackson's Moonwalker arranca con los creditos de la sesion anterior
+# ("CREDITS 7" en la pantalla de titulo) y su contador no lo encuentra
+# buscar_creditos.sh: es un Sega System 18 y no esta en un byte simple. Sin
+# NVRAM arranca en CREDIT 0, comprobado con captura.
+mwalk nvram=0 arranque=10
+
+# Los Tapper guardan sus creditos en la NVRAM y arrancan con ellos. Aqui SI
+# sabemos donde esta el contador (e011, comprobado a mano), pero limpiarlo no
+# vale: el barrido llega despues de que el juego haya pintado su mensaje largo
+# ("CREDIT 6 PRESS 1 OR 2 PLAYER") y al acortarlo a "INSERT COIN" quedan restos
+# en pantalla. Y adelantarlo tampoco: escribir en la RAM mientras la placa hace
+# su test de memoria le rompe el test (medido con Pac-Man, que no arrancaba
+# hasta el frame 302 en vez del 14).
+#
+# Sin NVRAM arrancan limpios. El precio: tampoco guardan las puntuaciones.
+tapper nvram=0
+rbtapper nvram=0
