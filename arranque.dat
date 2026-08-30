@@ -1,0 +1,28 @@
+# arranque.dat - ajustes del arranque tapado, por juego.
+#
+# Una linea por juego: el nombre del set y pares clave=valor. La linea
+# "defecto" vale para todos los que no tengan la suya. Los tiempos van en
+# SEGUNDOS emulados.
+#
+#   velocidad  a que velocidad corre el emulador mientras arranca
+#                0 = sin freno, lo mas rapido que pueda (por defecto)
+#                1 = velocidad normal
+#                2 = el doble, 4 = el cuadruple...
+#   arranque   segundos MINIMOS de arranque tapado (pantalla negra, moneda
+#              cerrada). Si el juego esta en creditos.dat se puede alargar solo
+#              hasta que la placa este lista de verdad.
+#   max        tope de ese arranque
+#   sin        segundos de arranque en juegos que NO estan en creditos.dat: ahi
+#              no hay contador que mirar y solo queda el reloj
+#   fijo       1 para usar 'arranque' tal cual, sin deteccion automatica. Es lo
+#              que hay que poner en un juego que dé problemas
+#   turbo      0 para no acelerar este juego (ni quitar el sonido)
+#
+# Como saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y mira la linea
+# "arranque terminado en el frame N". Divide N entre 60 y tienes los segundos.
+
+defecto?velocidad=0 arranque=5 max=30 sin=15
+
+# Medido: la placa termina su test en el frame 250 y el contador queda a cero
+# en el 370. Con 5 segundos de minimo va sobrado.
+pacman?arranque=5
