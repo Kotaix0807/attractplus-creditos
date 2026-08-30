@@ -527,6 +527,47 @@ bitmap del juego), y capturando **sin nuestro script** el marcador **parpadea**:
 en blanco en el frame 1800 y con los `00` en el 1810. Es el modo atracción
 normal de Namco.
 
+## Juegos que reinician la placa: el script se ejecuta dos veces
+
+Encontrado por Eloy el 2026-08-29 en Elevator Action: *«el emulador no vuelve a
+su clock original y no permite agregar créditos»*. Los dos síntomas, una sola
+causa.
+
+**Elevator Action reinicia la placa durante el arranque, y MAME vuelve a
+ejecutar el `-autoboot_script`.** Medido: dos «encontrado COIN1» en el mismo
+lanzamiento. Y lo que lo hace venenoso: **las globales de Lua SOBREVIVEN al
+reinicio** (comprobado con un contador).
+
+Así que la segunda ejecución guardaba como «estado original» lo que había
+dejado la primera:
+
+| | throttled | mute | secuencia de la moneda |
+|---|---|---|---|
+| **Antes del arreglo** | `false` (sin freno) | `true` | **0 códigos** (botón muerto) |
+| **Después** | `true` | `false` | **3 códigos** |
+
+O sea: al terminar su arranque restauraba «sin freno» y «moneda bloqueada»,
+para siempre.
+
+**El arreglo:** `GA_ESTADO.deshaceres`, una lista de funciones que sabe deshacer
+todo lo que la ejecución tocó (velocidad, silencio, secuencia de la moneda,
+suscripción al notificador). Si al arrancar ya existe un `GA_ESTADO`, se
+ejecutan **antes de tomar nota de nada**.
+
+Tres detalles que costaron pensarlos:
+
+- **Las funciones de deshacer capturan copias locales**, no `GA_ESTADO`: cuando
+  se ejecutan, la global ya es la de la ejecución siguiente.
+- **Hay que cancelar el notificador viejo** (`sub:unsubscribe()`, expuesto en
+  `luaengine.cpp:987`). Si no, `por_frame` correría **dos veces por frame** sobre
+  el estado nuevo, porque lee `GA_ESTADO` en cada llamada.
+- **`emu.register_frame_done` ACUMULA callbacks** y no hay forma de quitarlos
+  (`luaengine.cpp`, `register_function`: hace `add`, no `create_named`). Por eso
+  el pintor se registra una sola vez, con un envoltorio que llama al del estado
+  vigente.
+
+Prueba permanente: `aviso_mame.sh`, escenario 10, con `estado_final.lua`.
+
 ## El cerrojo del botón de moneda
 
 `cerrojo.lua`, pedido por Eloy el 2026-08-28: *«una vez ingresado en el juego se
@@ -1042,7 +1083,7 @@ el marcador encima del layout (midiendo píxeles), los créditos llegando a MAME
 que la moneda metida durante la partida se descuenta, y que con lo que queda se
 juega otra partida.
 
-Y `pruebas/aviso_mame.sh`, 50 comprobaciones dentro de MAME: frenar, confirmar,
+Y `pruebas/aviso_mame.sh`, 53 comprobaciones dentro de MAME: frenar, confirmar,
 cancelar con START, rendirse solo, no molestar al que sólo entra a mirar,
 `GA_AVISO=0`, el caso del jugador despistado (cuatro monedas metidas en la
 partida, una jugada, monedero de 10 a 9) y que los créditos se lean de la RAM
