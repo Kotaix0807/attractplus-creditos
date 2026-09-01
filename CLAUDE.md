@@ -460,21 +460,32 @@ Pero eso es un proyecto de cableado, no un parche para este fallo.
 
 ## Ajustes de arranque por juego (`arranque.dat`)
 
-`ajustes.lua` + `arranque.dat`, pedidos por Eloy el 2026-08-29. Mismo espíritu
-que `creditos.dat`: una línea por juego con pares `clave=valor`.
+`ajustes.lua` + `arranque.dat`, pedidos por Eloy el 2026-08-29 y **rectificados
+por él el 2026-09-01**: son dos parámetros y sólo dos, y **no dependen de
+`creditos.dat`**.
 
 ```
-defecto   velocidad=0 arranque=5 max=30 sin=15
-pacman    arranque=5
-simpsons  velocidad=2 arranque=15 fijo=1
+defecto  velocidad=0 segundos=5
+frogger  velocidad=200 segundos=2
+mwalk    nvram=0 segundos=10
 ```
 
-- `velocidad` — a qué velocidad corre el emulador mientras arranca. `0` es sin
-  freno; `2` es el doble; `1`, normal.
-- `arranque` / `max` / `sin` / `estable` — los tiempos del arranque tapado.
-- `fijo=1` — usa `arranque` tal cual, **sin detección automática**. Es la
-  válvula de escape para un juego que se porte raro.
-- `turbo=0` — no acelerar ni silenciar ese juego.
+- **`velocidad`** — a qué velocidad corre el emulador mientras carga, en
+  **porcentaje**: `100` normal, `200` el doble, `1000` diez veces, `0` sin
+  freno. Se aplica a `video.throttle_rate` (verificado: `rate=2.0` durante el
+  arranque y `1.0` después).
+- **`segundos`** — cuánto dura eso, o sea los segundos que la pantalla está en
+  negro. **Es exacto.** `arranque` se sigue aceptando como sinónimo.
+- `nvram=0` — ese juego no guarda su NVRAM (ver la sección de la NVRAM).
+- `auto=1` — **opcional y apagado**: en vez de usar los segundos tal cual, se
+  alarga solo hasta detectar que la placa está lista.
+
+**El error de diseño que Eloy corrigió**, y conviene no repetirlo: yo hice la
+detección automática **por defecto**, y la única señal que tenía para saber si
+la placa estaba lista era el contador de créditos del juego — que vive en
+`creditos.dat`. Eso acopló el ajuste fino de la carga con la tabla de créditos,
+que son cosas distintas. Ahora la duración la pone el usuario y la detección es
+un extra que hay que pedir.
 
 **Los tiempos del fichero van en SEGUNDOS**, que es como piensa una persona;
 dentro se pasan a frames. **Las variables de entorno siguen en frames**, que es
@@ -1080,8 +1091,8 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 | `GA_LIMPIAR` | 1 | `0` para no quitar los créditos que la máquina trae puestos |
 | `GA_COMPROBAR` | 90 | frames de gracia para ver si la moneda llegó; si no, se devuelve |
 | `GA_ANTIRREBOTE` | 8 | frames que se ignoran tras una moneda, contra el rebote |
-| `GA_VELOCIDAD` | 0 | velocidad del emulador al arrancar (0 = sin freno) |
-| `GA_FIJO` | 0 | `1` para usar `GA_ARRANQUE` tal cual, sin detección |
+| `GA_VELOCIDAD` | 0 | velocidad al arrancar, en % (100 normal, 0 sin freno) |
+| `GA_AUTO` | 0 | `1` para alargar el arranque hasta detectar que la placa está lista |
 | `GA_AJUSTES` | `arranque.dat` | fichero de ajustes por juego |
 | `GA_TURBO` | 1 | `0` para no acelerar el emulador durante el arranque |
 | `GA_ASENTAR` | 180 | frames que se deja asentar la RAM antes de contar |

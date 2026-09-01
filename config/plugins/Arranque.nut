@@ -34,12 +34,16 @@ class Arranque
 	// nuevo. Es un static y no un const porque en Squirrel const solo admite
 	// escalares (entero, float o cadena), no arreglos.
 	static AJUSTES = [
-		[ "velocidad", "Velocidad de carga", "0 = sin freno, 1 = normal, 2 = el doble..." ],
-		[ "arranque",  "Segundos de carga",  "Segundos que dura la carga tapada (pantalla en negro)" ],
-		[ "fijo",      "Tiempo fijo",        "1 = usa los segundos tal cual, sin deteccion automatica" ],
-		[ "nvram",     "Guardar NVRAM",      "0 = el juego no guarda creditos ni puntuaciones entre sesiones" ],
-		[ "turbo",     "Acelerar",           "0 = no acelerar ni silenciar este juego" ],
+		[ "velocidad", "Velocidad de carga (%)",
+			"100 = normal, 200 = el doble, 1000 = diez veces. 0 = sin freno" ],
+		[ "segundos",  "Segundos en negro",
+			"Cuanto dura la carga tapada. Es exacto, no una estimacion" ],
+		[ "nvram",     "Guardar NVRAM",
+			"0 = este juego no guarda creditos ni puntuaciones entre sesiones" ],
+		[ "auto",      "Alargar solo",
+			"1 = se alarga hasta detectar que la placa esta lista. Solo en los juegos que estan en creditos.dat" ],
 	];
+
 
 	m_boton    = "";
 	m_senal    = "ninguna";
@@ -129,7 +133,13 @@ class Arranque
 			return true;
 		} catch ( e ) {
 			fe.log( "Arranque: no puedo escribir " + m_fichero + " (" + e + ")\n" );
-			try { ::remove( tmp ); } catch ( e2 ) {}
+			fe.log("Intentando eliminar cambios...\n");
+			try { 
+				::remove( tmp ); 
+			} catch ( e2 ) 
+			{
+				fe.log("No se pudieron eliminar los cambios\n");
+			}
 			return false;
 		}
 	}
