@@ -152,7 +152,8 @@ class Arranque
 	function limpiar( linea )
 	{
 		local c = linea.find( "#" );
-		if ( c != null ) linea = linea.slice( 0, c );
+		if ( c != null ) 
+			linea = linea.slice( 0, c );
 		return strip( linea );
 	}
 
@@ -169,7 +170,8 @@ class Arranque
 		for ( local i = 1; i < trozos.len(); i++ )
 		{
 			local p = split( trozos[i], "=" );
-			if ( p.len() == 2 ) r[ p[0] ] <- p[1];
+			if ( p.len() == 2 )
+				r[ p[0] ] <- p[1];
 		}
 
 		return r;
@@ -178,7 +180,8 @@ class Arranque
 	function nombre_de( linea )
 	{
 		local l = limpiar( linea );
-		if ( l.len() == 0 ) return null;
+		if ( l.len() == 0 )
+			return null;
 
 		local trozos = split( l, " \t" );
 		local n = trozos[0];
@@ -259,7 +262,8 @@ class Arranque
 	function menu()
 	{
 		local juego = fe.game_info( Info.Name );
-		if ( juego.len() == 0 ) return;
+		if ( juego.len() == 0 )
+			return;
 
 		while ( true )
 		{

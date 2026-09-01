@@ -19,6 +19,9 @@ core
 /modules
 /history.idx
 /.vscode
-
+sq
+sandbox
+test.nut
 # descarga de terceros, no forma parte del proyecto
 /CheatCollection
+.stfolder/
