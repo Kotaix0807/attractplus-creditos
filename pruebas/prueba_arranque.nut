@@ -23,7 +23,7 @@ function lee() {
 }
 
 function cargar() {
-	MOCK.reset( { senal = "custom2", fichero = DAT } );
+	MOCK.reset( { boton = "Num8", senal = "custom2", fichero = DAT } );
 	dofile( PLUGIN, true );
 	return fe.plugin[ "Arranque" ];
 }
@@ -107,6 +107,25 @@ print( "\n6. el menu edita el juego seleccionado\n" );
 		MOCK.menus[0].titulo.find( "dkong" ) != null, MOCK.menus[0].titulo );
 	ok( "y ensena el valor actual antes de editar",
 		MOCK.menus[0].opciones[0].find( "-" ) != null, MOCK.menus[0].opciones[0] );
+}
+
+print( "\n7b. la tecla directa abre el menu al soltarla\n" );
+{
+	escribe( ORIGINAL );
+	local p = cargar();
+	MOCK.juego = "frogger"; MOCK.titulo = "Frogger";
+
+	MOCK.elecciones = [ 1, 6 ];        // "Segundos de carga", luego "Salir"
+	MOCK.escrituras = [ "12" ];
+
+	// pulsar y soltar: el menu sale al soltar
+	MOCK.inputs[ "Num8" ] <- true;  MOCK.tick( 100 );
+	igual( "pulsando no abre nada", MOCK.menus.len(), 0 );
+	MOCK.inputs[ "Num8" ] <- false; MOCK.tick( 110 );
+
+	// el menu se vuelve a pintar tras cada edicion, asi que quedan dos
+	ok( "al soltar si", MOCK.menus.len() >= 1, MOCK.menus.len() );
+	igual( "y guarda lo escrito", p.ajustes_de( "frogger" )[ "arranque" ], "12" );
 }
 
 print( "\n7. no se abre encima de un menu del frontend\n" );
