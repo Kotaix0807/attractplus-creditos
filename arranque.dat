@@ -56,4 +56,5 @@ mwalk nvram=0 segundos=10
 rbtapper velocidad=0 indicador=1 segundos=3 nvram=0
 pacman velocidad=0 indicador=1 segundos=5
 qbert segundos=1 velocidad=0 negro=0
-nrallyx auto=1
+nrallyx segundos=13 velocidad=0 indicador=0
+mappy segundos=15 velocidad=0 indicador=0
