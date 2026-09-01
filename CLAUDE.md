@@ -1008,6 +1008,21 @@ captura fija — **AM+ prefiere el vídeo cuando existe**.
 - Sin audio (`-an`): grabar sonido sin tarjeta no es fiable bajo Xvfb.
 - Las 20 roms: **2,5 MB en total** y unos 8 minutos de grabación.
 
+**El salto por juego no se adivina, se mide.** Eloy volvió el 2026-09-01 con
+Simpsons, New Rally-X y Mappy enseñando la pantalla de test de la placa. Con
+`./videos.sh --tira <juego>` sale una tira de doce fotogramas etiquetados por
+segundo, y ahí se ve cuándo empieza lo que quieres:
+
+| juego | qué pasa | salto |
+|---|---|---|
+| `simpsons` | 4 s «RAM ROM CHECK», 10 s patrón de test, atracción a los 14 | 16 |
+| `nrallyx` | test hasta los 12, lista de personajes, juego a los 28 | 28 |
+| `mappy` | título y personajes hasta los 35, demo a los 38 | 38 |
+
+Los valores viven en la tabla `SALTOS` del script. Y **`FORZAR=1` para rehacer
+uno que ya tiene vídeo**: sin eso el script lo salta, que es lo que hizo pensar
+a Eloy que cambiar el salto no servía de nada.
+
 **Verificado que AM+ los reproduce**, no que existan: dos capturas del frontend
 separadas dos segundos con Donkey Kong seleccionado difieren en 63.948 píxeles.
 Con la imagen fija serían idénticas.
