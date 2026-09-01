@@ -16,10 +16,13 @@
 ///////////////////////////////////////////////////
 
 class UserConfig </ help="Ajusta la carga acelerada de cada juego (velocidad y segundos) desde la propia cabina" /> {
-	</ label="Senal para abrir el menu", help="Accion del frontend que abre los ajustes del juego seleccionado. Se mapea en Controls > Custom", options="custom1,custom2,custom3,custom4,custom5,custom6,custom7,custom8,custom9,custom10", order=1 />
-	senal="custom2";
+	</ label="Tecla del menu", help="Tecla o boton que abre los ajustes del juego seleccionado. Es la via directa: no hay que mapear nada en Controls", is_input=true, order=1 />
+	boton="";
 
-	</ label="Fichero de ajustes", help="Debe ser el mismo arranque.dat que lee creditos.lua", order=2 />
+	</ label="Senal alternativa", help="Abre el menu tambien con esta accion del frontend. OJO: hay que mapearla antes en Controls > Custom, o no se emite nunca y parece que el plugin no funciona. 'ninguna' para no usarla", options="ninguna,custom1,custom2,custom3,custom4,custom5,custom6,custom7,custom8,custom9,custom10", order=2 />
+	senal="ninguna";
+
+	</ label="Fichero de ajustes", help="Debe ser el mismo arranque.dat que lee creditos.lua", order=3 />
 	fichero="/home/eloy/groovyarcade-creditos/arranque.dat";
 }
 
@@ -38,22 +41,47 @@ class Arranque
 		[ "turbo",     "Acelerar",           "0 = no acelerar ni silenciar este juego" ],
 	];
 
-	m_senal    = "custom2";
+	m_boton    = "";
+	m_senal    = "ninguna";
 	m_fichero  = "";
+	m_pulsado  = false;
 
 	constructor()
 	{
 		local c = fe.get_config();
-		m_senal   = c[ "senal" ];
+		m_boton   = c[ "boton" ];
+		m_senal   = ( c[ "senal" ] == "ninguna" ) ? "" : c[ "senal" ];
 		m_fichero = fs.path_expand( c[ "fichero" ] );
 
+		if ( m_boton.len() > 0 )
+			fe.add_ticks_callback( this, "en_tick" );
+
 		fe.add_signal_handler( this, "en_senal" );
+
+		fe.log( "Arranque: listo (tecla=[" + m_boton + "] senal=[" + m_senal
+			+ "] fichero=" + m_fichero + ")\n" );
+	}
+
+	// El menu se abre al SOLTAR la tecla, para que mantenerla pulsada no lo
+	// reabra en bucle al cerrarlo.
+	function en_tick( ttime )
+	{
+		if ( fe.overlay.is_up )
+			return;
+
+		local abajo = fe.get_input_state( m_boton );
+
+		if ( abajo )
+			m_pulsado = true;
+		else if ( m_pulsado )
+		{
+			m_pulsado = false;
+			menu();
+		}
 	}
 
 	// ---- fichero ----
 
-	// Squirrel no tiene readline: se lee el fichero entero como blob y se
-	// convierte byte a byte.
 	function formatBlobToString(blobFile){
 
         local numbOfBytes = blobFile.len();
@@ -66,6 +94,22 @@ class Arranque
             parsedData += format("%c", fileData[i]);
         return parsedData;
     }
+
+	// Squirrel no tiene readline: se lee el fichero entero como blob y se
+	// convierte byte a byte.
+	//
+	// Ojo: formatBlobToString espera el fichero ABIERTO, no la ruta. Pasarle la
+	// ruta da "the index 'readblob' does not exist", porque una cadena no tiene
+	// ese metodo.
+	function leer_texto()
+	{
+		try {
+			return formatBlobToString( file( m_fichero, "rb" ) );
+		} catch ( e ) {
+			fe.log( "Arranque: no puedo leer " + m_fichero + " (" + e + ")\n" );
+			return null;
+		}
+	}
 
 	// Al temporal y luego rename, que es atomico: si algo muere a media
 	// escritura, el fichero de ajustes no se queda a medias.
@@ -187,7 +231,7 @@ class Arranque
 
 	function en_senal( sig )
 	{
-		if ( sig != m_senal )
+		if ( ( m_senal.len() == 0 ) || ( sig != m_senal ) )
 			return false;
 
 		// Dentro de un menu del frontend esa pulsacion significa otra cosa
