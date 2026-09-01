@@ -3,6 +3,10 @@
 Contexto traspasado desde otra sesión. Todo lo marcado como **verificado** se
 comprobó ejecutando código y mirando capturas de pantalla reales, no de memoria.
 
+**Mapa del proyecto: `ESTRUCTURA.md`** — qué hay en cada directorio, quién lee
+qué fichero de configuración y las trampas de sincronización. Este documento
+(`CLAUDE.md`) es el *por qué* de cada decisión; `ESTRUCTURA.md` es el *dónde*.
+
 ## Decisión de Eloy (2026-08-29): monedas de verdad — ES LO QUE HAY AHORA
 
 El flujo de la cabina es el de una recreativa de toda la vida:
