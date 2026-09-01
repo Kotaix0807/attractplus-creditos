@@ -991,6 +991,27 @@ flojo.
 
 
 
+## Los vídeos de muestra los grabamos nosotros
+
+Pedidos por Eloy el 2026-09-01. **No hay de dónde bajarlos**: la fuente que AM+
+trae incrustada devuelve 404 (`progettosnaps.net/videosnaps/mp4/pacman.mp4`,
+`scraper_net.cpp:218`) y arcadeitalia no sirve vídeos, sólo imágenes.
+
+Pero las roms y el emulador ya están aquí, así que `videos.sh` los graba:
+MAME con `-aviwrite` durante unos segundos, y ffmpeg recorta la carga y comprime
+a h264. Salen a `<config>/scraper/<emu>/snap/<juego>.mp4`, el mismo sitio que la
+captura fija — **AM+ prefiere el vídeo cuando existe**.
+
+- El AVI de MAME es **sin comprimir**, unos 11 MB por segundo: va a un temporal
+  y se borra en cuanto se convierte.
+- `-ss 8` descarta el arranque de la placa y toma el modo de atracción.
+- Sin audio (`-an`): grabar sonido sin tarjeta no es fiable bajo Xvfb.
+- Las 20 roms: **2,5 MB en total** y unos 8 minutos de grabación.
+
+**Verificado que AM+ los reproduce**, no que existan: dos capturas del frontend
+separadas dos segundos con Donkey Kong seleccionado difieren en 63.948 píxeles.
+Con la imagen fija serían idénticas.
+
 ## API Lua de MAME (verificada en el código fuente)
 
 ```lua

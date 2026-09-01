@@ -115,6 +115,7 @@ falta para el barrido de créditos y para `auto=1`.
 | Herramienta | Qué hace |
 |---|---|
 | `arte.sh` | Baja marquesina, captura, flyer y rueda de un juego |
+| `videos.sh` | Graba con el emulador un vídeo de muestra de cada juego |
 | `buscar_creditos.sh` | Encuentra la dirección de los créditos ejecutando el juego |
 | `poner_1c1c.sh` | Deja el DIP de tarifa en 1 moneda = 1 crédito |
 | `importar_cheats.py` | Saca direcciones de la colección de cheats de MAME |
