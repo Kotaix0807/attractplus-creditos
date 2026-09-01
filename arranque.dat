@@ -46,13 +46,13 @@
 # Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto velocidad=0 segundos=5
-simpsons segundos=5 velocidad=500
+simpsons segundos=11 velocidad=0
 kungfum segundos=0 velocidad=100
-tapper segundos=3 velocidad=0 nvram=0
+tapper velocidad=0 segundos=3 nvram=0
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
 mwalk nvram=0 segundos=10
-rbtapper nvram=0
-pacman segundos=5 velocidad=0
-qbert velocidad=0
+rbtapper velocidad=0 indicador=1 segundos=3 nvram=0
+pacman velocidad=0 indicador=1 segundos=5
+qbert segundos=1 velocidad=0 negro=0
