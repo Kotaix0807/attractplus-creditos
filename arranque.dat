@@ -17,6 +17,10 @@
 # Y con segundos=0 no hay ventana de arranque, asi que la velocidad TAMPOCO se
 # aplica: el ajuste entero queda desactivado.
 #
+#   indicador=1 muestra ">> CARGANDO AL 300%" en pantalla mientras la emulacion
+#               va acelerada, para ver de un vistazo si el ajuste hace algo.
+#               Apagado por defecto: en una cabina no pinta nada
+#
 #   negro=0     acelera igual pero NO tapa la pantalla. Es como se ve el efecto
 #               de la velocidad mientras se ajusta un juego:
 #                 tapper segundos=10 velocidad=500 negro=0
@@ -44,10 +48,11 @@
 defecto velocidad=0 segundos=5
 simpsons segundos=5 velocidad=500
 kungfum segundos=0 velocidad=100
-tapper segundos=0 velocidad=300 nvram=0
-
+tapper segundos=3 velocidad=0 nvram=0
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
 mwalk nvram=0 segundos=10
 rbtapper nvram=0
+pacman segundos=5 velocidad=0
+qbert velocidad=0

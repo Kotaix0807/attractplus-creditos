@@ -49,6 +49,8 @@
 --   GA_COMPROBAR frames de gracia para ver si la moneda llego; si no, se devuelve (90)
 --   GA_ANTIRREBOTE frames que se ignoran tras una moneda, contra el rebote (8)
 --   GA_VELOCIDAD velocidad al arrancar, en %: 100 normal, 200 el doble, 0 sin freno
+--   GA_NEGRO     0 para acelerar sin tapar la pantalla
+--   GA_INDICADOR 1 para avisar en pantalla mientras la emulacion va acelerada
 --   GA_AUTO      1 para alargar el arranque solo hasta que la placa este lista
 --   GA_AJUSTES   ruta del fichero de ajustes por juego (arranque.dat)
 --
@@ -127,6 +129,7 @@ local COLOR_FONDO  = 0xf4000000
 local COLOR_TEXTO  = 0xffffffff
 local COLOR_TITULO = 0xffffdd44
 local COLOR_NEGRO  = 0xff000000
+local COLOR_INDICADOR = 0xff44ff44
 local PASO = 0.075          -- alto de linea, en fraccion de pantalla
 
 local BUZON = os.getenv('GA_ARCHIVO')
@@ -224,6 +227,10 @@ local ESTABLE = math.max(1, ajuste_frames('estable', 'GA_ESTABLE', 120))
 -- negro=0: se acelera igual, pero SIN tapar la pantalla. Sirve para ver el
 -- efecto de la velocidad mientras se ajusta un juego.
 local NEGRO = ajuste('negro', 'GA_NEGRO', 1) ~= 0
+-- indicador=1: un aviso en pantalla mientras la emulacion va acelerada, para
+-- ver de un vistazo si el ajuste esta haciendo algo. Apagado por defecto: en
+-- una cabina no pinta nada, es para ajustar.
+local INDICADOR = ajuste('indicador', 'GA_INDICADOR', 0) ~= 0
 local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
 local FIJO = not AUTO
 
@@ -1139,8 +1146,18 @@ GA_ESTADO.pintor = function()
 	if e.arranque then
 		if NEGRO then
 			contenedor:draw_box(0.0, 0.0, 1.0, 1.0, COLOR_NEGRO, COLOR_NEGRO)
-			return
 		end
+
+		if INDICADOR then
+			local etiqueta = (not e.turbo) and 'CARGANDO'
+				or ((VELOCIDAD_PCT == 0) and '>> CARGANDO SIN FRENO'
+					or string.format('>> CARGANDO AL %d%%', VELOCIDAD_PCT))
+
+			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
+			contenedor:draw_text('right', 0.03, etiqueta .. ' ', COLOR_INDICADOR)
+		end
+
+		if NEGRO then return end
 	end
 
 	-- Mensaje corto al meter una moneda. Es la pieza que de verdad evita el

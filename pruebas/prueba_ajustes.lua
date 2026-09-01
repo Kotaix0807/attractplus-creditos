@@ -163,6 +163,14 @@ do
 	igual('los demas siguen tapando', A.para(t, 'dkong', sin_entorno).valor('negro', nil, 1), 1)
 end
 
+print('\n12. el indicador en pantalla')
+do
+	escribe('defecto velocidad=0 segundos=5\ntapper indicador=1 velocidad=300\n')
+	local t = A.leer(TMP)
+	igual('se enciende por juego', A.para(t, 'tapper', sin_entorno).valor('indicador', nil, 0), 1)
+	igual('y esta apagado por defecto', A.para(t, 'dkong', sin_entorno).valor('indicador', nil, 0), 0)
+end
+
 os.remove(TMP)
 print(string.format('\n=== ajustes: %d ok, %d fallos ===', ok, fallos))
 os.exit(fallos == 0 and 0 or 1)
