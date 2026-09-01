@@ -114,6 +114,7 @@ falta para el barrido de créditos y para `auto=1`.
 
 | Herramienta | Qué hace |
 |---|---|
+| `arte.sh` | Baja marquesina, captura, flyer y rueda de un juego |
 | `buscar_creditos.sh` | Encuentra la dirección de los créditos ejecutando el juego |
 | `poner_1c1c.sh` | Deja el DIP de tarifa en 1 moneda = 1 crédito |
 | `importar_cheats.py` | Saca direcciones de la colección de cheats de MAME |
@@ -151,7 +152,7 @@ cd ~/groovymame_src && PATH=/usr/lib/ccache:$PATH mold -run make -j10 NOWERROR=1
 | `emulators/groovymame.cfg` | Cómo se lanza MAME | Aquí van `-autoboot_script` y `-autoboot_delay 0` |
 | `plugins/*.nut` | Los plugins **que de verdad corren** | Copias, no enlaces: hay que sincronizar |
 | `romlists/groovymame.txt` | La lista de juegos | La regenera AM+ |
-| `scraper/groovymame/…` | Marquesinas, capturas, flyers y ruedas | AM+ mira aquí solo, sin configurar rutas |
+| `scraper/groovymame/…` | Marquesinas, capturas, flyers y ruedas | AM+ mira aquí solo, sin configurar rutas. Para un clon, el arte va con el nombre del **padre** |
 | `creditos.txt` | El monedero compartido | Hoy no se usa (monedas de verdad) |
 
 Las copias `*.antes*` son respaldos de cuando algo se rompió. Se pueden borrar.
