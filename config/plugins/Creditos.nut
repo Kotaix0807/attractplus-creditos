@@ -70,6 +70,7 @@ class UserConfig </ help="Contador de creditos estilo recreativa: un boton mete 
 
 	</ label="Texto sin creditos", help="Se muestra parpadeando cuando el contador esta a cero", order=14 />
 	vacio="INSERTA MONEDA";
+
 }
 
 
@@ -317,6 +318,7 @@ class Creditos
 
 		return null;
 	}
+
 
 	// ---- marcador ----
 
