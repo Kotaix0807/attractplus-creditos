@@ -143,6 +143,26 @@ do
 	igual('y sus segundos', d.frames('segundos', nil, 0), 300)
 end
 
+print('\n11. negro=0 y el caso de segundos=0')
+do
+	escribe('defecto velocidad=0 segundos=5\n'
+		.. 'tapper segundos=10 velocidad=500 negro=0\n'
+		.. 'kungfum segundos=0 velocidad=300\n')
+	local t = A.leer(TMP)
+
+	local tp = A.para(t, 'tapper', sin_entorno)
+	igual('negro=0 se lee', tp.valor('negro', nil, 1), 0)
+	igual('con sus segundos', tp.frames('segundos', nil, 0), 600)
+
+	-- segundos=0 desactiva la ventana, y con ella la velocidad: quien lo lee
+	-- tiene que poder darse cuenta y avisar.
+	local kf = A.para(t, 'kungfum', sin_entorno)
+	igual('segundos=0 se lee como 0', kf.frames('segundos', nil, 999), 0)
+	igual('aunque tenga velocidad puesta', kf.valor('velocidad', nil, 0), 300)
+
+	igual('los demas siguen tapando', A.para(t, 'dkong', sin_entorno).valor('negro', nil, 1), 1)
+end
+
 os.remove(TMP)
 print(string.format('\n=== ajustes: %d ok, %d fallos ===', ok, fallos))
 os.exit(fallos == 0 and 0 or 1)

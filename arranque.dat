@@ -10,8 +10,18 @@
 #   segundos    cuanto dura eso: los segundos que la pantalla esta en negro
 #               mientras el juego carga. Es EXACTO, no una estimacion.
 #
-# Ejemplo: "velocidad=200 segundos=2" deja la pantalla en negro dos segundos
-# con el emulador al doble de velocidad.
+# OJO CON LOS SEGUNDOS: son segundos DEL JUEGO, no de reloj. Acelerar no tapa
+# mas carga, tapa la misma en menos espera. Con "segundos=10 velocidad=500" el
+# juego avanza 10 segundos suyos y tu esperas unos 2.
+#
+# Y con segundos=0 no hay ventana de arranque, asi que la velocidad TAMPOCO se
+# aplica: el ajuste entero queda desactivado.
+#
+#   negro=0     acelera igual pero NO tapa la pantalla. Es como se ve el efecto
+#               de la velocidad mientras se ajusta un juego:
+#                 tapper segundos=10 velocidad=500 negro=0
+#               (medido: esos 10 s de juego tardan 14,9 s reales al 100% y 3,7
+#               al 500%)
 #
 # Mientras la pantalla esta en negro, el boton de moneda esta cerrado: durante
 # su test de arranque la placa TIRA las monedas, asi que dejar pulsar ahi seria
@@ -33,3 +43,11 @@
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto velocidad=0 segundos=5
 simpsons segundos=5 velocidad=500
+kungfum segundos=0 velocidad=100
+tapper segundos=0 velocidad=300 nvram=0
+
+# Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
+# nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
+# precio: tampoco conservan las puntuaciones.
+mwalk nvram=0 segundos=10
+rbtapper nvram=0

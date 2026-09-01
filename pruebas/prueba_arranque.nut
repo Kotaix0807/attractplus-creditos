@@ -98,7 +98,7 @@ print( "\n6. el menu edita el juego seleccionado\n" );
 	local p = cargar();
 	MOCK.juego = "dkong"; MOCK.titulo = "Donkey Kong";
 
-	MOCK.elecciones = [ 0, 5 ];        // "Velocidad de carga", luego "Salir"
+	MOCK.elecciones = [ 0, 6 ];        // "Velocidad de carga", luego "Salir"
 	MOCK.escrituras = [ "3" ];
 	MOCK.senal( "custom2" );
 
@@ -115,7 +115,7 @@ print( "\n7b. la tecla directa abre el menu al soltarla\n" );
 	local p = cargar();
 	MOCK.juego = "frogger"; MOCK.titulo = "Frogger";
 
-	MOCK.elecciones = [ 1, 5 ];        // "Segundos en negro", luego "Salir"
+	MOCK.elecciones = [ 1, 6 ];        // "Segundos en negro", luego "Salir"
 	MOCK.escrituras = [ "12" ];
 
 	// pulsar y soltar: el menu sale al soltar

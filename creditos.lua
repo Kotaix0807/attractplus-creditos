@@ -221,6 +221,9 @@ local ESTABLE = math.max(1, ajuste_frames('estable', 'GA_ESTABLE', 120))
 -- diga el fichero, ni uno mas. 'auto=1' deja que se alargue sola hasta detectar
 -- que la placa esta lista, pero eso necesita saber donde guarda el juego sus
 -- creditos (creditos.dat), asi que es opcional y va apagado.
+-- negro=0: se acelera igual, pero SIN tapar la pantalla. Sirve para ver el
+-- efecto de la velocidad mientras se ajusta un juego.
+local NEGRO = ajuste('negro', 'GA_NEGRO', 1) ~= 0
 local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
 local FIJO = not AUTO
 
@@ -997,6 +1000,14 @@ if not GUARDAR_NVRAM then
 	end
 end
 
+-- Con segundos=0 no hay ventana de arranque, y por tanto tampoco hay cambio de
+-- velocidad: la velocidad se aplica DURANTE esa ventana. Es un error facil al
+-- ajustar (poner 0 segundos para "ver la velocidad" la desactiva).
+if (ARRANQUE <= 0) and (VELOCIDAD_PCT ~= 100) then
+	log('OJO: segundos=0, asi que no hay arranque y la velocidad NO se aplica. '
+		.. 'Para ver la velocidad, pon segundos>0 y negro=0')
+end
+
 -- --- arranque tapado ---
 --
 -- Idea de Eloy. Durante su test de RAM/ROM la placa IGNORA las monedas: es lo
@@ -1057,7 +1068,8 @@ if ARRANQUE > 0 then
 	local reales = (VELOCIDAD_PCT == 0) and '?'
 		or string.format('%.1f', (ARRANQUE / 60.0) / (VELOCIDAD_PCT / 100.0))
 
-	log('arranque tapado: %.1f s de juego%s, emulador %s -> unos %s s de espera real',
+	log('arranque %s: %.1f s de juego%s, emulador %s -> unos %s s de espera real',
+		NEGRO and 'tapado' or 'SIN tapar (negro=0)',
 		ARRANQUE / 60.0,
 		AUTO and string.format(' (minimo; se alarga solo hasta %.1f s)', ARRANQUE_MAX / 60.0) or '',
 		(not GA_ESTADO.turbo) and 'sin tocar'
@@ -1125,8 +1137,10 @@ GA_ESTADO.pintor = function()
 	-- RAM/ROM y no hay nada que ver; ademas asi el jugador no se pone a pulsar
 	-- la moneda contra una placa que la va a ignorar.
 	if e.arranque then
-		contenedor:draw_box(0.0, 0.0, 1.0, 1.0, COLOR_NEGRO, COLOR_NEGRO)
-		return
+		if NEGRO then
+			contenedor:draw_box(0.0, 0.0, 1.0, 1.0, COLOR_NEGRO, COLOR_NEGRO)
+			return
+		end
 	end
 
 	-- Mensaje corto al meter una moneda. Es la pieza que de verdad evita el
