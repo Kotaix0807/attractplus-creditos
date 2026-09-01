@@ -913,7 +913,19 @@ bool FeSettings::scrape_artwork( const std::string &emu_name, UiUpdate uiu, void
 	case FeEmulatorInfo::Listsoftware:
 	case FeEmulatorInfo::Thegamesdb:
 		if ( ctx.use_net )
-			cancelled = !thegamesdb_scraper( ctx );
+		{
+			// PARCHE cabina: con un emulador de MAME se prueban primero los
+			// scrapers especificos de MAME (adb.arcadeitalia.net), que van por
+			// nombre de set y no necesitan clave de API.
+			//
+			// Sin esto, info_source=listxml se iba derecho a thegamesdb.net,
+			// cuya clave publica incrustada devuelve HTTP 403 desde hace
+			// tiempo, y no se descargaba ni una imagen.
+			if ( general_mame_scraper( ctx ) )
+				cancelled = !thegamesdb_scraper( ctx );
+			else
+				cancelled = true;
+		}
 		break;
 
 	default:

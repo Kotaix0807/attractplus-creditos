@@ -892,15 +892,42 @@ De ahí toda la cascada del log: `Platform :Arcade (-1)`, `Unable to get platfor
 information` y los 19 juegos sin emparejar. **No es un fallo de configuración de
 la cabina.**
 
-Salidas, de mejor a peor para una recreativa:
+**Resuelto el 2026-09-01, y sin depender de thegamesdb.** AM+ ya traía otro
+scraper que sirve mucho mejor para una recreativa: `general_mame_scraper`
+(`scraper_net.cpp:176`) baja de **adb.arcadeitalia.net** marquesinas, capturas,
+flyers y ruedas, **por nombre de set y sin clave de API**.
 
-1. **Un pack de artes de MAME** (progetto-SNAPS y similares: snaps, marquesinas,
-   títulos, flyers) y apuntar las rutas de artwork del emulador en AM+. Es lo
-   que hace todo el mundo con MAME: cobertura completa y nombres que coinciden
-   exactamente con los sets, sin depender de que un servidor empareje títulos.
-2. **Una clave propia de thegamesdb.net** (gratis, se pide en su foro) en
-   `Configure > General`, ajuste `thegamesdb_key`. Aun así el emparejamiento por
-   título con nombres de set (`nrallyx`, `rbtapper`) sería flojo.
+El problema era el enrutado: `scrape_artwork()` elige scraper según el
+`info_source` del emulador (`scraper_general.cpp`), y con `listxml` se iba
+derecho a thegamesdb. **Parche de una rama del `switch`**: con un emulador de
+MAME se prueba primero el scraper de MAME y luego thegamesdb como respaldo.
+
+Verificado ejecutando `./attractplus --scrape-art groovymame`:
+
+```
+ - Scraping http://adb.arcadeitalia.net [marquee]
+ - Scraping http://adb.arcadeitalia.net [snap]
+ - Scraping http://adb.arcadeitalia.net [wheel]
+```
+
+...y con captura del frontend: la marquesina de Ms. Pac-Man arriba y la captura
+del juego a la derecha.
+
+Dos detalles del mecanismo, por si hay que tocarlo:
+
+- Las imágenes van a `<config>/scraper/<emulador>/<tipo>/<set>.png`, y
+  `internal_get_best_artwork_file` (`fe_settings.cpp:4676`) mira ahí **sola**:
+  no hay que configurar ninguna ruta de artwork.
+- El sitio redirige `http`→`https`, y AM+ lo sigue porque pone
+  `CURLOPT_FOLLOWLOCATION` (`fe_net.cpp:110`). Con `curl` a pelo hay que usar
+  `-L` o se recibe un 301 vacío.
+
+De las 20 roms se bajaron 79 de 80 imágenes (falta la rueda de `spaceinv`).
+
+La otra salida, si algún día se quiere thegamesdb: **una clave propia** (gratis,
+se pide en su foro) en `Configure > General`, ajuste `thegamesdb_key`. Aun así
+el emparejamiento por título con nombres de set (`nrallyx`, `rbtapper`) sería
+flojo.
 
 
 
