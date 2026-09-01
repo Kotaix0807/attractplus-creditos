@@ -38,6 +38,8 @@ class Arranque
 			"100 = normal, 200 = el doble, 1000 = diez veces. 0 = sin freno" ],
 		[ "segundos",  "Segundos en negro",
 			"Cuanto dura la carga tapada. Es exacto, no una estimacion" ],
+		[ "negro",     "Tapar la pantalla",
+			"0 = acelera igual pero NO tapa la pantalla. Util para ver el efecto de la velocidad mientras ajustas" ],
 		[ "nvram",     "Guardar NVRAM",
 			"0 = este juego no guarda creditos ni puntuaciones entre sesiones" ],
 		[ "auto",      "Alargar solo",

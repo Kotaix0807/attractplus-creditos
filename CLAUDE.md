@@ -483,6 +483,14 @@ mwalk    nvram=0 segundos=10
 
   Medido en Simpsons, 5 s de juego según la velocidad: 100% → 5,7 s reales;
   200% → 3,2 s; 500% → 1,7 s; sin freno → 1,0 s.
+
+  **Y `segundos=0` desactiva el ajuste entero**, velocidad incluida: la
+  velocidad se aplica *durante* esa ventana, y sin ventana no hay nada. Eloy
+  cayó ahí el 2026-09-01 poniendo 0 segundos precisamente «para ver el cambio de
+  velocidad». Ahora el script lo avisa por el log.
+- **`negro=0`** — acelera igual pero **no tapa la pantalla**. Es la forma de ver
+  el efecto de la velocidad mientras se ajusta un juego. Medido en Tapper con
+  `segundos=10`: 14,9 s reales al 100% y 3,7 s al 500%.
 - `nvram=0` — ese juego no guarda su NVRAM (ver la sección de la NVRAM).
 - `auto=1` — **opcional y apagado**: en vez de usar los segundos tal cual, se
   alarga solo hasta detectar que la placa está lista.
