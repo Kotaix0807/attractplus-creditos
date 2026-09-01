@@ -62,6 +62,10 @@ echo "### creditos leidos de la memoria ###"
 $LUA prueba_memoria.lua
 
 echo
+echo "### editor de ajustes en la cabina (plugin Arranque) ###"
+./sqhost prueba_arranque.nut
+
+echo
 echo "### ajustes de arranque por juego ###"
 $LUA prueba_ajustes.lua
 

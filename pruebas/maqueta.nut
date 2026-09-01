@@ -16,6 +16,7 @@ Transition <- {
 	ShowOverlay = 8, HideOverlay = 9, NewSelOverlay = 10, ChangedTag = 11
 };
 FromTo <- { NoValue = 0, Frontend = 1, ScreenSaver = 2 };
+Info <- { Name = 0, Title = 1, Emulator = 2 };
 Align  <- { Left = 0, Centre = 1, Right = 2, Top = 3, Bottom = 4, TopLeft = 5 };
 Style  <- { Regular = 0, Bold = 1, Italic = 2 };
 Grid   <- { Pixel = 0, Percent = 1, Normalised = 2 };
@@ -39,6 +40,13 @@ MOCK <- {
 	inputs = {},
 	ticks = [],
 	reloj = 0,
+	menus = [],
+	edits = [],
+	splashes = [],
+	elecciones = [],
+	escrituras = [],
+	juego = "pacman",
+	titulo = "Pac-Man",
 	senales = [],
 	transiciones = [],
 	textos = [],
@@ -51,6 +59,7 @@ MOCK <- {
 		inputs = {};
 		ticks = []; senales = []; transiciones = []; textos = []; logs = []; comandos = [];
 		reloj = 0;
+		menus = []; edits = []; splashes = []; elecciones = []; escrituras = [];
 		fe.overlay.is_up = false;
 	}
 
@@ -108,7 +117,37 @@ fs <- {
 fe <- {
 	nv = {},
 	plugin = {},
-	overlay = { is_up = false },
+	overlay = {
+		is_up = false,
+
+		// Respuestas preparadas por la prueba: MOCK.elecciones y MOCK.textos_menu
+		function list_dialog( ops, titulo, ... )
+		{
+			MOCK.menus.append( { titulo = titulo, opciones = ops } );
+			if ( MOCK.elecciones.len() == 0 ) return ops.len() - 1;   // salir
+			local e = MOCK.elecciones[0];
+			MOCK.elecciones.remove( 0 );
+			return e;
+		}
+
+		function edit_dialog( msg, txt )
+		{
+			MOCK.edits.append( { msg = msg, antes = txt } );
+			if ( MOCK.escrituras.len() == 0 ) return txt;
+			local e = MOCK.escrituras[0];
+			MOCK.escrituras.remove( 0 );
+			return e;
+		}
+
+		function splash_message( a, b = "" ) { MOCK.splashes.append( a ); return true; }
+	},
+
+	function game_info( idx, desfase = 0 )
+	{
+		if ( idx == Info.Name ) return MOCK.juego;
+		if ( idx == Info.Title ) return MOCK.titulo;
+		return "";
+	},
 	layout = { width = 640, height = 480 },
 	list = { index = 0, size = 10 },
 	script_dir = "",
