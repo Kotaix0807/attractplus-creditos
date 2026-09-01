@@ -474,8 +474,15 @@ mwalk    nvram=0 segundos=10
   **porcentaje**: `100` normal, `200` el doble, `1000` diez veces, `0` sin
   freno. Se aplica a `video.throttle_rate` (verificado: `rate=2.0` durante el
   arranque y `1.0` después).
-- **`segundos`** — cuánto dura eso, o sea los segundos que la pantalla está en
-  negro. **Es exacto.** `arranque` se sigue aceptando como sinónimo.
+- **`segundos`** — cuánto dura eso. **Son segundos DEL JUEGO** (frames de
+  emulación), no de reloj de pared, y es la confusión natural de este ajuste:
+  acelerar el emulador no tapa más carga, tapa la misma en menos espera. Con
+  `segundos=5 velocidad=500` la pantalla está en negro **un segundo real**.
+  Por eso el log enseña los dos: `5.0 s de juego, emulador al 500% -> unos 1.0 s
+  de espera real`. `arranque` se sigue aceptando como sinónimo.
+
+  Medido en Simpsons, 5 s de juego según la velocidad: 100% → 5,7 s reales;
+  200% → 3,2 s; 500% → 1,7 s; sin freno → 1,0 s.
 - `nvram=0` — ese juego no guarda su NVRAM (ver la sección de la NVRAM).
 - `auto=1` — **opcional y apagado**: en vez de usar los segundos tal cual, se
   alarga solo hasta detectar que la placa está lista.
@@ -626,6 +633,32 @@ había corrompido y el separador era un `?` literal en vez de un espacio
 (`pacman?arranque=5`). El parser lo tomaba como el nombre del juego, así que
 **ninguno de sus ajustes se aplicaba, sin decir nada**. Ahora `ajustes.lua`
 avisa de las líneas cuyo nombre contiene un `=`.
+
+## El cerrojo falla en los juegos con mapeo propio de la moneda
+
+Visto el 2026-09-01 en Simpsons. El log lo canta, porque `bloquear()` comprueba
+que surtió efecto:
+
+```
+AVISO: el cerrojo no ha surtido efecto (la secuencia sigue con 1 codigos).
+```
+
+La causa está en `ioport_field::seq()`: devuelve `m_live->seq[tipo]` **si no es
+la de por defecto**, y sólo entonces cae en `defseq()`. `set_default_input_seq`
+toca `defseq`, así que **no manda cuando el juego tiene una secuencia propia
+cargada de su `.cfg`**.
+
+De las roms instaladas, tienen mapeo propio de COIN1: `kungfum`, `pacman`,
+`simpsons`. Curiosamente en Pac-Man el cerrojo sí funciona (3 códigos → 0):
+su `newseq` es un `JOYCODE` y sin joystick presente MAME no lo aplica, así que
+queda la de por defecto. En Simpsons sí está activa (`JOYCODE_1_SELECT`).
+
+Arreglarlo con `set_input_seq` **no es aceptable**: escribe `"NONE"` en el
+`.cfg` y ese fichero se guarda antes de los notificadores de salida, así que
+salir durante el arranque dejaría la moneda muerta para ese juego.
+
+La salida buena es quitar el mapeo por juego (`Input (this Machine)` en MAME) y
+dejar el general, que es el que la cabina usa de todas formas.
 
 ## El cerrojo del botón de moneda
 
