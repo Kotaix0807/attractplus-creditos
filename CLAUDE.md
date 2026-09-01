@@ -491,6 +491,10 @@ mwalk    nvram=0 segundos=10
 - **`negro=0`** — acelera igual pero **no tapa la pantalla**. Es la forma de ver
   el efecto de la velocidad mientras se ajusta un juego. Medido en Tapper con
   `segundos=10`: 14,9 s reales al 100% y 3,7 s al 500%.
+- **`indicador=1`** — pinta `>> CARGANDO AL 300%` arriba a la derecha mientras
+  la emulación va acelerada. Apagado por defecto: en una cabina no pinta nada,
+  es para ajustar. **Verificado con captura** en los tres estados: sobre el
+  juego con `negro=0`, sobre la pantalla negra, y desaparecido al terminar.
 - `nvram=0` — ese juego no guarda su NVRAM (ver la sección de la NVRAM).
 - `auto=1` — **opcional y apagado**: en vez de usar los segundos tal cual, se
   alarga solo hasta detectar que la placa está lista.

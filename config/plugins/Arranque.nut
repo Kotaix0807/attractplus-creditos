@@ -40,6 +40,8 @@ class Arranque
 			"Cuanto dura la carga tapada. Es exacto, no una estimacion" ],
 		[ "negro",     "Tapar la pantalla",
 			"0 = acelera igual pero NO tapa la pantalla. Util para ver el efecto de la velocidad mientras ajustas" ],
+		[ "indicador", "Avisar en pantalla",
+			"1 = muestra '>> CARGANDO AL 300%' mientras la emulacion va acelerada. Para ajustar" ],
 		[ "nvram",     "Guardar NVRAM",
 			"0 = este juego no guarda creditos ni puntuaciones entre sesiones" ],
 		[ "auto",      "Alargar solo",
