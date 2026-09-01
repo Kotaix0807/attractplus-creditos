@@ -31,13 +31,5 @@
 #
 # Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
-
 defecto velocidad=0 segundos=5
-
-pacman segundos=5
-
-# Michael Jackson's Moonwalker y los Tapper arrancan con los creditos de la
-# sesion anterior, guardados en su NVRAM.
-mwalk nvram=0 segundos=10
-tapper nvram=0
-rbtapper nvram=0
+simpsons segundos=5 velocidad=500

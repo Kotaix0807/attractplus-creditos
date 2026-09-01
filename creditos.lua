@@ -1049,12 +1049,21 @@ if ARRANQUE > 0 then
 		end
 	end
 
-	log('arranque tapado: %.1f s%s, emulador %s',
+	-- Se enseñan los dos tiempos porque es la confusion natural de este
+	-- ajuste: 'segundos' son segundos DEL JUEGO (frames de emulacion), y
+	-- acelerar el emulador no cambia esos, cambia lo que tardan en pasar. O
+	-- sea que subir la velocidad no tapa mas carga: tapa lo mismo en menos
+	-- tiempo de espera.
+	local reales = (VELOCIDAD_PCT == 0) and '?'
+		or string.format('%.1f', (ARRANQUE / 60.0) / (VELOCIDAD_PCT / 100.0))
+
+	log('arranque tapado: %.1f s de juego%s, emulador %s -> unos %s s de espera real',
 		ARRANQUE / 60.0,
 		AUTO and string.format(' (minimo; se alarga solo hasta %.1f s)', ARRANQUE_MAX / 60.0) or '',
 		(not GA_ESTADO.turbo) and 'sin tocar'
 			or ((VELOCIDAD_PCT == 0) and 'sin freno'
-				or string.format('al %d%%', VELOCIDAD_PCT)))
+				or string.format('al %d%%', VELOCIDAD_PCT)),
+		reales)
 end
 
 -- Deja el emulador como estaba y abre el boton. Se llama una sola vez.
