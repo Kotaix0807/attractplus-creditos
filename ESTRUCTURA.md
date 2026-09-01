@@ -15,8 +15,8 @@ la que corre.
 |---|---|---|
 | `~/attractplus/` | El frontend (código de AM+) + lo nuestro en Squirrel y Python | **sí** |
 | `~/groovyarcade-creditos/` | Todo lo de MAME, en Lua, y las pruebas | **sí** |
-| `~/groovymame_src/` | El emulador, con un parche de 22 líneas | sólo el parche, sin commitear |
-| `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | no |
+| `~/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
+| `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
 Y un quinto que **no es código pero manda más que el código**:
 
@@ -166,6 +166,39 @@ Las copias `*.antes*` son respaldos de cuando algo se rompió. Se pueden borrar.
 | `~/.mame/nvram/<juego>/nvram` | La memoria del juego. Algunos guardan **créditos** ahí: `nvram=0` en `arranque.dat` |
 
 ---
+
+## Instalar en otra máquina
+
+```bash
+git clone <este repo>              ~/attractplus
+git clone <groovyarcade-creditos>  ~/groovyarcade-creditos
+cd ~/attractplus && ./instalar.sh
+```
+
+`instalar.sh` crea `~/.attract`, copia plugins, layout, módulos y configuración,
+y **sustituye las rutas absolutas** por las de esa máquina (el emulador, las
+roms y el repo de créditos se detectan solos, o se pasan por entorno:
+`MAME=… ROMS=… CREDITOS=… ./instalar.sh`).
+
+Luego dice lo que falta: compilar el frontend, aplicar el parche del emulador
+(`parches/groovymame-sin-avisos.patch`), construir la romlist y generar artes y
+vídeos.
+
+**Lo que NO lleva el repo, a propósito:**
+
+| | por qué |
+|---|---|
+| Artes y vídeos (40 MB) | se regeneran en ~10 minutos con `--scrape-art` y `videos.sh`, y sólo necesitan las roms |
+| El binario de AM+ | se compila |
+| Las roms | no son nuestras |
+
+**Lo que respeta si ya existe**: `config/attract.cfg` (ahí están tus teclas) y
+`config/displays.cfg`. Lo demás lo reescribe, guardando `*.antes_instalar`.
+
+**Probado en un `HOME` vacío**, no leído: instala, construye la romlist y AM+
+arranca con el layout, los logos y la lista sin un solo error. Esa prueba
+destapó que faltaba copiar `modules/` — sin él el layout revienta con un
+`the index 'FadeArt' does not exist` que no dice nada del módulo que falta.
 
 ## Las pruebas
 

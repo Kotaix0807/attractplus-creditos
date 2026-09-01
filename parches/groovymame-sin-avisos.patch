@@ -1,0 +1,55 @@
+diff --git a/src/frontend/mame/ui/info.cpp b/src/frontend/mame/ui/info.cpp
+index 9d6510941eb..025f9f274b2 100644
+--- a/src/frontend/mame/ui/info.cpp
++++ b/src/frontend/mame/ui/info.cpp
+@@ -355,6 +355,18 @@ machine_static_info::machine_static_info(const ui_options &options, machine_conf
+ 				m_has_analog = true;
+ 		}
+ 	}
++
++	// GroovyMAME: suppress every emulation warning at the source, so the startup
++	// screens, the main menu entry, the status text and the status colours all
++	// report a clean system.  The machine filters read game_driver::flags
++	// directly, so working/mechanical/BIOS filtering is unaffected.
++	m_flags &= ~(MACHINE_ERRORS | MACHINE_WARNINGS | MACHINE_BTANB);
++	m_emulation_flags &= ~DEVICE_ERRORS;
++	m_unemulated_features = device_t::feature::NONE;
++	m_imperfect_features = device_t::feature::NONE;
++	m_has_nonworking_devices = false;
++	m_media_warnings = false;
++	m_severe_media_warnings = false;
+ }
+ 
+ 
+diff --git a/src/frontend/mame/ui/ui.cpp b/src/frontend/mame/ui/ui.cpp
+index bb901b56ffd..f69725c7950 100644
+--- a/src/frontend/mame/ui/ui.cpp
++++ b/src/frontend/mame/ui/ui.cpp
+@@ -661,8 +661,8 @@ void mame_ui_manager::display_startup_screens(bool first_time)
+ {
+ 	const int maxstate = 3;
+ 	int const str = machine().options().seconds_to_run();
+-	bool show_gameinfo = !machine().options().skip_gameinfo();
+-	bool show_warnings = true;
++	bool show_gameinfo = false;
++	bool show_warnings = false;
+ 	bool video_none = strcmp(downcast<osd_options &>(machine().options()).video(), OSDOPTVAL_NONE) == 0;
+ 
+ 	// disable everything if we are using -str for 300 or fewer seconds, or if we're the empty driver,
+@@ -917,8 +917,14 @@ void mame_ui_manager::display_startup_screens(bool first_time)
+ 
+ void mame_ui_manager::set_startup_text(const char *text, bool force)
+ {
+-	// copy in the new text
+-	messagebox_text.assign(text);
++	// PARCHE cabina: sin mensajes de arranque en pantalla.
++	//
++	// Aqui pasan los tres: "Initializing..." (emu/machine.cpp), y
++	// "Loading Machine (N%)" / "Loading Complete" (emu/romload.cpp). Se deja
++	// el frame_update de abajo, que es lo que mantiene la pantalla viva
++	// mientras se cargan las ROMs; lo unico que se quita es el texto.
++	messagebox_text.clear();
++	(void)text;
+ 
+ 	// don't update more than 10 times per second
+ 	if (force || (osd_ticks() - m_last_frame_update) > (osd_ticks_per_second() / 10))
