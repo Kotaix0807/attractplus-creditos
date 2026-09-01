@@ -152,10 +152,12 @@ comprobar "el monedero sigue intacto" \
 	"$(cat "$T/w_arranque.txt" 2>/dev/null | tr '\n' ' ')"
 
 echo "# 6d. la moneda metida mientras la placa se asienta NO se le quita"
-# Arranque corto y asentamiento largo a proposito, para que la moneda caiga en
-# la ventana en la que el boton ya esta abierto pero la RAM aun no es de fiar.
+# SIN arranque tapado y con asentamiento largo, para que la moneda caiga en la
+# ventana en la que el boton ya esta abierto pero la RAM aun no es de fiar. Con
+# arranque tapado esto no puede pasar: ahi el boton esta cerrado y el barrido va
+# justo al terminar.
 printf 'saldo 3\ninserta 0\n' > "$T/w_pronto.txt"
-correr pronto GA_ARCHIVO="$T/w_pronto.txt" GA_PRUEBA_MONEDA=420 GA_ARRANQUE=30 GA_ASENTAR=600
+correr pronto GA_ARCHIVO="$T/w_pronto.txt" GA_PRUEBA_MONEDA=420 GA_ARRANQUE=0 GA_ASENTAR=600
 comprobar "la moneda entra aunque sea pronto" \
 	"$(tiene pronto 'entra en la maquina')" "ver log"
 comprobar "y la limpieza le respeta su credito" \

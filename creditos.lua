@@ -48,8 +48,8 @@
 --   GA_ESTABLE   frames que el contador debe estar quieto para darlo por listo (120)
 --   GA_COMPROBAR frames de gracia para ver si la moneda llego; si no, se devuelve (90)
 --   GA_ANTIRREBOTE frames que se ignoran tras una moneda, contra el rebote (8)
---   GA_VELOCIDAD velocidad del emulador al arrancar: 0 sin freno, 2 el doble...
---   GA_FIJO      1 para usar GA_ARRANQUE tal cual, sin deteccion
+--   GA_VELOCIDAD velocidad al arrancar, en %: 100 normal, 200 el doble, 0 sin freno
+--   GA_AUTO      1 para alargar el arranque solo hasta que la placa este lista
 --   GA_AJUSTES   ruta del fichero de ajustes por juego (arranque.dat)
 --
 -- Casi todo esto se puede poner por juego en arranque.dat, en segundos.
@@ -210,13 +210,25 @@ local function ajuste_frames(clave, var, defecto)
 	return num(var, defecto)
 end
 
-local ARRANQUE = math.max(0, ajuste_frames('arranque', 'GA_ARRANQUE', 300))
+-- 'segundos' es el nombre bueno; 'arranque' se acepta como sinonimo por los
+-- ficheros que ya estuvieran escritos.
+local ARRANQUE = math.max(0, ajuste_frames('segundos', 'GA_ARRANQUE',
+	ajuste_frames('arranque', nil, 300)))
 local ARRANQUE_MAX = math.max(0, ajuste_frames('max', 'GA_ARRANQUE_MAX', 1800))
 local ARRANQUE_SIN = math.max(0, ajuste_frames('sin', 'GA_ARRANQUE_SIN', 900))
 local ESTABLE = math.max(1, ajuste_frames('estable', 'GA_ESTABLE', 120))
-local FIJO = ajuste('fijo', 'GA_FIJO', 0) ~= 0
--- Velocidad del emulador durante el arranque: 0 = sin freno
-local VELOCIDAD = math.max(0, ajuste('velocidad', 'GA_VELOCIDAD', 0))
+-- La duracion es EXACTA por defecto: la pantalla esta en negro los segundos que
+-- diga el fichero, ni uno mas. 'auto=1' deja que se alargue sola hasta detectar
+-- que la placa esta lista, pero eso necesita saber donde guarda el juego sus
+-- creditos (creditos.dat), asi que es opcional y va apagado.
+local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
+local FIJO = not AUTO
+
+-- Velocidad del emulador durante el arranque, en PORCENTAJE:
+--   100 = normal, 200 = el doble, 1000 = diez veces
+--     0 = sin freno, lo mas rapido que la maquina pueda
+local VELOCIDAD_PCT = math.max(0, ajuste('velocidad', 'GA_VELOCIDAD', 0))
+local VELOCIDAD = (VELOCIDAD_PCT == 0) and 0 or (VELOCIDAD_PCT / 100.0)
 local TURBO = (os.getenv('GA_TURBO') ~= '0') and (ajuste('turbo', nil, 1) ~= 0)
 
 -- nvram=0 en arranque.dat: la placa no guarda su NVRAM al salir.
@@ -483,8 +495,8 @@ end
 local function ya_arranco(e)
 	if e.arranque_frames < ARRANQUE then return false end
 
-	-- 'fijo=1' en arranque.dat: el plazo lo pone el usuario y no se discute.
-	-- Es la valvula de escape para un juego que se porte raro.
+	-- Por defecto el plazo lo pone el usuario y no se discute: es el ajuste
+	-- fino por juego. Solo con auto=1 se alarga solo.
 	if FIJO then return true end
 
 	if e.arranque_frames >= ARRANQUE_MAX then
@@ -1037,12 +1049,12 @@ if ARRANQUE > 0 then
 		end
 	end
 
-	log('arranque tapado: %s%d frames, tope %d%s',
-		FIJO and 'fijo ' or 'minimo ', ARRANQUE, ARRANQUE_MAX,
-		GA_ESTADO.turbo
-			and ((VELOCIDAD == 0) and ', emulador sin freno'
-				or string.format(', emulador al %d00%%', VELOCIDAD))
-			or '')
+	log('arranque tapado: %.1f s%s, emulador %s',
+		ARRANQUE / 60.0,
+		AUTO and string.format(' (minimo; se alarga solo hasta %.1f s)', ARRANQUE_MAX / 60.0) or '',
+		(not GA_ESTADO.turbo) and 'sin tocar'
+			or ((VELOCIDAD_PCT == 0) and 'sin freno'
+				or string.format('al %d%%', VELOCIDAD_PCT)))
 end
 
 -- Deja el emulador como estaba y abre el boton. Se llama una sola vez.

@@ -129,6 +129,20 @@ do
 	igual('y sus segundos van aparte', A.para(t, 'mwalk', sin_entorno).frames('arranque', nil, 0), 600)
 end
 
+print('\n10. los dos parametros del ajuste fino')
+do
+	escribe('defecto velocidad=0 segundos=5\nfrogger velocidad=200 segundos=2\n')
+	local t = A.leer(TMP)
+	local f = A.para(t, 'frogger', sin_entorno)
+
+	igual('la velocidad va en porcentaje', f.valor('velocidad', nil, 0), 200)
+	igual('y los segundos se pasan a frames', f.frames('segundos', nil, 0), 120)
+
+	local d = A.para(t, 'dkong', sin_entorno)
+	igual('sin linea propia, el defecto', d.valor('velocidad', nil, 999), 0)
+	igual('y sus segundos', d.frames('segundos', nil, 0), 300)
+end
+
 os.remove(TMP)
 print(string.format('\n=== ajustes: %d ok, %d fallos ===', ok, fallos))
 os.exit(fallos == 0 and 0 or 1)
