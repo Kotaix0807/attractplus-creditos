@@ -66,8 +66,11 @@ local pres_ar = (::AM_CONFIG["art_mode"]=="Preserve Aspect Ratio");
 //
 // Initialize the layout's frontend-related graphic elements
 //
-fe.layout.width=456;
-fe.layout.height=336;
+const WIDTH = 436;
+const HEIGHT = 336;
+
+fe.layout.width = WIDTH;
+fe.layout.height = HEIGHT;
 fe.layout.preserve_aspect_ratio=true;
 fe.image_cache.bg_load = true;
 
