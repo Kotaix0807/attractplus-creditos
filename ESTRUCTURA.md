@@ -13,9 +13,9 @@ la que corre.
 
 | Sitio | Qué hay | ¿Git? |
 |---|---|---|
-| `~/attractplus/` | El frontend (código de AM+) + lo nuestro en Squirrel y Python | **sí** |
-| `~/groovyarcade-creditos/` | Todo lo de MAME, en Lua, y las pruebas | **sí** |
-| `~/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
+| `~/Dev/arcade/attractplus/` | El frontend (código de AM+) + lo nuestro en Squirrel y Python | **sí** |
+| `~/Dev/arcade/groovyarcade-creditos/` | Todo lo de MAME, en Lua, y las pruebas | **sí** |
+| `~/Dev/arcade/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
 | `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
 Y un quinto que **no es código pero manda más que el código**:
@@ -47,7 +47,7 @@ rama `monedero-frontend` de los dos repos.
 
 ---
 
-## `~/attractplus/` — el frontend
+## `~/Dev/arcade/attractplus/` — el frontend
 
 Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 
@@ -58,12 +58,18 @@ Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 | `config/plugins/Creditos.nut` | El monedero del frontend. **Desactivado** |
 | `config/plugins/Arranque.nut` | Menú en la cabina para ajustar la carga de cada juego |
 | `daemon.py` | Vigila el monedero y lo manda al Arduino por el puerto serie |
+| `instalar.sh` | Instalador guiado con whiptail: dependencias, compilación, configuración, artes |
+| `cabina.sh` | Arranca el frontend en el CRT y devuelve el escritorio al salir |
+| `pantalla.py` | Cambia la disposición de monitores (bajo Wayland, `xrandr` no manda) |
+| `patron.py` | Patrón de ajuste del CRT: geometría y si resuelve líneas de 1 px |
+| `parches/groovymame-guardar-ajustes-video.patch` | Que MAME guarde `keepaspect` y el escalado del menú Video Options |
+| `config/cabina/crt-real.json` | Shader crt-geom ajustado para una pantalla que ya es CRT |
 | `src/scraper_general.cpp` | Parcheado: usa el scraper de MAME y no thegamesdb |
 
 Compilar (unos 2 minutos):
 
 ```bash
-cd ~/attractplus && PATH=/usr/lib/ccache:$PATH mold -run make -j10
+cd ~/Dev/arcade/attractplus && PATH=/usr/lib/ccache:$PATH mold -run make -j10
 ```
 
 ### ⚠️ Los plugins hay que COPIARLOS
@@ -72,20 +78,20 @@ El que corre **no** es el del repo, es el de `~/.attract/plugins/`. Editar el
 repo y no copiar es la forma más rápida de volverse loco:
 
 ```bash
-cp ~/attractplus/config/plugins/*.nut ~/.attract/plugins/
+cp ~/Dev/arcade/attractplus/config/plugins/*.nut ~/.attract/plugins/
 ```
 
 Para comprobar si están desincronizados:
 
 ```bash
 for f in Creditos.nut Arranque.nut; do
-  diff -q ~/attractplus/config/plugins/$f ~/.attract/plugins/$f || echo "  ^ $f desincronizado"
+  diff -q ~/Dev/arcade/attractplus/config/plugins/$f ~/.attract/plugins/$f || echo "  ^ $f desincronizado"
 done
 ```
 
 ---
 
-## `~/groovyarcade-creditos/` — todo lo de MAME
+## `~/Dev/arcade/groovyarcade-creditos/` — todo lo de MAME
 
 `creditos.lua` es el que arranca (lo lanza el emulador con `-autoboot_script`) y
 carga a los demás con `dofile`.
@@ -122,7 +128,7 @@ falta para el barrido de créditos y para `auto=1`.
 
 ---
 
-## `~/groovymame_src/` — el emulador
+## `~/Dev/arcade/groovymame_src/` — el emulador
 
 Compilado desde fuente, con **un parche de 22 líneas en dos ficheros**, sin
 commitear (`git diff` para verlo):
@@ -134,7 +140,7 @@ commitear (`git diff` para verlo):
 Recompilar:
 
 ```bash
-cd ~/groovymame_src && PATH=/usr/lib/ccache:$PATH mold -run make -j10 NOWERROR=1 USE_QTDEBUG=0
+cd ~/Dev/arcade/groovymame_src && PATH=/usr/lib/ccache:$PATH mold -run make -j10 NOWERROR=1 USE_QTDEBUG=0
 ```
 
 ---
@@ -170,9 +176,9 @@ Las copias `*.antes*` son respaldos de cuando algo se rompió. Se pueden borrar.
 ## Instalar en otra máquina
 
 ```bash
-git clone <este repo>              ~/attractplus
-git clone <groovyarcade-creditos>  ~/groovyarcade-creditos
-cd ~/attractplus && ./instalar.sh
+git clone <este repo>              ~/Dev/arcade/attractplus
+git clone <groovyarcade-creditos>  ~/Dev/arcade/groovyarcade-creditos
+cd ~/Dev/arcade/attractplus && ./instalar.sh
 ```
 
 `instalar.sh` crea `~/.attract`, copia plugins, layout, módulos y configuración,
@@ -203,7 +209,7 @@ destapó que faltaba copiar `modules/` — sin él el layout revienta con un
 ## Las pruebas
 
 ```bash
-cd ~/groovyarcade-creditos/pruebas
+cd ~/Dev/arcade/groovyarcade-creditos/pruebas
 ./correr.sh          # 390 comprobaciones, sin emulador ni frontend (segundos)
 ./aviso_mame.sh      # 56 dentro de MAME de verdad (minutos)
 ./integracion.sh     # 9 con AM+ de verdad, bajo Xvfb (minutos)

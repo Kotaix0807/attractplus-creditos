@@ -147,7 +147,7 @@ Attract-Mode NO usa Lua. Es un error fácil de cometer.
 
 ## Estado actual
 
-- [x] GroovyMAME compilado: `/home/eloy/groovymame_src/mame` (417 MB)
+- [x] GroovyMAME compilado: `~/Dev/arcade/groovymame_src/mame` (417 MB)
 - [x] Avisos de emulación eliminados (ver más abajo)
 - [x] Inserción de créditos funcionando y verificada con captura
 - [x] Plugin Squirrel escrito: `config/plugins/Creditos.nut` (sin commitear)
@@ -173,7 +173,7 @@ comentado, linea 57). La 2.6.1 del sistema no se usa. Lo confirma
 Compilar, unos 2 minutos con 12 nucleos:
 
 ```bash
-cd /home/eloy/attractplus
+cd ~/Dev/arcade/attractplus
 PATH=/usr/lib/ccache:$PATH mold -run make -j10
 ```
 
@@ -210,7 +210,7 @@ jugador mete durante la partida -> al volver, el plugin lee "saldo"
   veces. (Ese error estuvo escrito y se quitó.)
 - Nada de generar un `.lua` por lanzamiento, como ya decía este documento.
 
-Ficheros en `/home/eloy/groovyarcade-creditos/`: `creditos.lua`, `monedero.lua`
+Ficheros en `~/Dev/arcade/groovyarcade-creditos/`: `creditos.lua`, `monedero.lua`
 (la cuenta), `tarifa.lua` (el DIP), `poner_1c1c.lua` + `.sh` (pasada única),
 `groovymame.cfg` (emulador de ejemplo), `README.md`, `pruebas/`.
 
@@ -908,7 +908,7 @@ tipo 7, `START2` = 8, `UI_CANCEL` = 172.
 
 ## Parche de avisos en GroovyMAME (sin commitear)
 
-Dos ficheros modificados en `/home/eloy/groovymame_src`, 22 líneas:
+Dos ficheros modificados en `~/Dev/arcade/groovymame_src`, 22 líneas:
 
 - `src/frontend/mame/ui/ui.cpp` — en `display_startup_screens()`, `show_gameinfo`
   y `show_warnings` forzados a `false`.
@@ -1137,12 +1137,12 @@ ROMs en `/usr/share/games/mame/roms` (24 sets: pacman, dkong, qbert, frogger,
 asteroid, spaceinv…). Prueba con captura, que es la única forma fiable:
 
 ```bash
-cd /home/eloy/groovymame_src
+cd ~/Dev/arcade/groovymame_src
 Xvfb :99 -screen 0 800x600x24 & 
 GA_CREDITOS=3 GA_VERBOSO=1 DISPLAY=:99 ./mame pacman \
   -rompath /usr/share/games/mame/roms -video soft -sound none -nothrottle \
   -noswitchres -window -resolution 640x480 -seconds_to_run 14 \
-  -autoboot_script /home/eloy/groovyarcade-creditos/creditos.lua -autoboot_delay 6
+  -autoboot_script ~/Dev/arcade/groovyarcade-creditos/creditos.lua -autoboot_delay 6
 ```
 
 Para matar Xvfb sin suicidarse: `pkill -f "[X]vfb :99"` (con corchete, si no el
@@ -1160,7 +1160,7 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 
 ## El script de créditos
 
-`/home/eloy/groovyarcade-creditos/creditos.lua`, configurable por entorno:
+`~/Dev/arcade/groovyarcade-creditos/creditos.lua`, configurable por entorno:
 
 | Variable | Por defecto | Qué hace |
 |---|---|---|
@@ -1267,7 +1267,7 @@ Con AM+ compilado, esto ya no es lectura de código sino medición:
 
 ## Cómo se prueba el plugin
 
-`/home/eloy/groovyarcade-creditos/pruebas/correr.sh` — 84 comprobaciones del
+`~/Dev/arcade/groovyarcade-creditos/pruebas/correr.sh` — 84 comprobaciones del
 plugin, 24 del analizador de tarifas, 46 del monedero, 53 del cuadro de aviso,
 46 de la lectura y escritura en memoria, 23 de los ajustes por juego, 37 del
 cerrojo de la moneda y 7 del importador de cheats, y no
@@ -1307,6 +1307,494 @@ que en el caso «no avisar» sólo se comprueba que no frenamos la salida.
 
 Lo que **no** cubre: el mando físico de la cabina y el CRT.
 
+## La sesión es Wayland, y eso rompe el modo pantalla completa
+
+Encontrado el 2026-09-02 con el CRT de escritorio (HDMI + adaptador a VGA), a
+raíz de esto:
+
+```
+X Error of failed request:  BadMatch
+  Major opcode of failed request:  139 (RANDR)
+  Minor opcode of failed request:  21 (RRSetCrtcConfig)
+```
+
+Parece un problema de resolución del CRT y **no lo es**. Son dos causas
+independientes, y ninguna es la pantalla:
+
+**1. Se lanzó con `sudo`.** Root no tiene `~/.attract`, así que AM+ arrancó con
+la configuración por defecto e ignoró la cabina entera (`Config file not found:
+/root/.attract/attract.cfg`). Y todos los errores de PulseAudio/ALSA son lo
+mismo: el servidor de sonido es del usuario. **AM+ no necesita sudo.**
+
+**2. `window_mode fullscreen` bajo GNOME Wayland.** La sesión es
+`XDG_SESSION_TYPE=wayland`; AM+ corre sobre Xwayland, que expone RandR en
+**solo lectura**. En modo `fullscreen` SFML pide cambiar el modo de vídeo
+(`RRSetCrtcConfig`) y siempre le responden `BadMatch`. El arreglo es
+**`fillscreen`** (ventana sin bordes, sin cambio de modo), que además es el
+valor por defecto de AM+.
+
+### Bajo Wayland, AM+ no puede elegir monitor
+
+Medido, no supuesto: mutter **ignora el `setPosition()`** del cliente X. Con
+las dos pantallas encendidas la ventana acabó en `+973+32`, a caballo entre
+ambas, dijera lo que dijera `fe_window.cpp`. Y `xrandr --pos` tampoco hace
+nada: la disposición la decide mutter y se cambia por D-Bus
+(`org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig`).
+
+De ahí `pantalla.py` y `cabina.sh`: **el CRT se queda como única pantalla**
+mientras dura la partida. Si no hay otro sitio donde caer, la ventana cae
+donde tiene que caer. Verificado: `1024x768 @ 0,0`, y el escritorio vuelve
+igual al salir.
+
+Detalles que costaron una iteración:
+
+- **La escala no se adivina, se guarda.** El primer intento elegía «la escala
+  entera más alta» y ponía el panel 4K al 400%. `pantalla.py cabina` apunta la
+  disposición previa en `~/.attract/pantalla_previa.json` y la devuelve tal
+  cual.
+- **Con el portátil cerrado mutter se niega a reactivarlo** («Refusing to
+  activate a closed laptop panel»), así que la restauración fallaba y dejaba
+  la pantalla a medias. Ahora se reintenta sin el panel.
+- `pkill -f attractplus` **se mata a sí mismo**: el patrón encaja con la propia
+  línea de comandos. Y el truco del corchete (`[a]ttractplus`) tampoco vale si
+  la orden menciona el nombre en otro sitio. Usar `pkill -x attractplus`.
+
+### Y switchres tampoco puede
+
+Comprobado lanzando el emulador en esta sesión:
+
+```
+Switchres/SDL2: (sdl2_display): SDL2 is only available for KMSDRM for now.
+Switchres: could not find a video mode that meets your specs
+```
+
+MAME arranca igual, pero a la resolución fija del escritorio y sin modeline.
+Para la cabina de verdad conviene una **sesión Xorg** (`ubuntu-xorg.desktop`
+está instalado, se elige en la rueda dentada del login): ahí funcionan las dos
+cosas, el `fullscreen` de AM+ y switchres.
+
+## La salida de vídeo en el CRT: tres cosas distintas que parecían una
+
+Traídas por Eloy el 2026-09-02 con el CRT de escritorio (HDMI + adaptador VGA):
+no se ven las scanlines, los juegos verticales salen estirados, y los ajustes
+de pantalla de MAME no se guardan. Son **tres causas independientes**.
+
+### 1. Los ajustes de vídeo que no se guardaban: parcheado
+
+*«en Kung-Fu Master lo configuré para no mantener el aspect ratio, pero no se
+guarda»*. La causa, leída en el código:
+
+- **`render_target::config_save`** (`src/emu/render.cpp`) escribía en el `.cfg`
+  la vista, el `zoom`, la rotación y la visibilidad de capas. **`keepaspect` y
+  `scale_mode` no estaban en esa lista**, así que «Maintain Aspect Ratio» y
+  «Non-Integer Scaling» del menú Video Options se cambiaban sólo en memoria.
+- **`sliders_save`** (`ui.cpp:3107`) filtra por nombre y sólo conserva los
+  deslizadores con «Frame Delay», «V-Sync Offset», «Overclock», «Screen Refresh
+  Rate» o «CRT». Por eso **tocar crt-geom a mano tampoco persiste**: de sus 17
+  ajustes el único que se guardaría es «Gamma of simulated CRT», por llevar
+  «CRT» en el nombre. De ahí que la cadena se configure por JSON.
+
+**Arreglado con un parche**, `parches/groovymame-guardar-ajustes-video.patch`
+(33 líneas). Añade `m_base_keepaspect` y `m_base_scale_mode` — cómo estaban al
+arrancar — y guarda cada uno **sólo si el usuario lo cambió**, igual que MAME ya
+hacía con la vista y la rotación. En una cabina no hay teclado para editar
+ficheros: el ajuste tiene que quedarse desde el propio menú.
+
+Verificado en las dos direcciones, y la prueba se apoya en que MAME **reescribe
+el `.cfg` entero al salir y tira lo que no reconoce**:
+
+- Con `<video><target index="0" keepaspect="0"/></video>` metido a mano,
+  Pac-Man pasa de 575 a 910 px de ancho: `config_load` lo aplica.
+- Tras una salida limpia el nodo **sigue ahí**: `config_save` lo escribió.
+- Sin tocar nada, no aparece ningún nodo: no ensucia los `.cfg`.
+
+**Y había un segundo dueño de esos ajustes: switchres.** Con el parche puesto,
+Eloy seguía perdiendo el cambio de aspecto. La causa está en
+`switchres_module::set_options()` (`src/osd/modules/switchres/switchres_module.cpp:488`),
+que con `autostretch 1` **recalcula y sobrescribe** `keepaspect` y `scale_mode`
+en cada arranque:
+
+```cpp
+set_option(OPTION_KEEPASPECT, force_aspect);
+...
+target->set_keepaspect(options.keep_aspect());
+```
+
+Medido en el CRT, poniendo `keepaspect="0"` a mano y arrancando:
+
+| | queda en el `.cfg` |
+|---|---|
+| `switchres 1` | `keepaspect="0" scalemode="4"` <- el `scalemode` **lo mete switchres** |
+| `-noswitchres` | `keepaspect="0"` y nada más |
+
+O sea que el parche funcionaba, pero switchres pisaba el valor y encima ensuciaba
+el `.cfg` con decisiones suyas. **Bajo Xvfb no se reproduce**: switchres no llega
+a abrir pantalla y la rama de `autostretch` no corre. Hay que probarlo en la
+pantalla de verdad.
+
+Arreglo para esta cabina: **`switchres 0` en `mame.ini`**. Aquí no puede hacer su
+trabajo de todas formas (ver «Y switchres tampoco puede») y encima estaba
+apuntado a `monitor generic_15`, que no es este CRT VGA de 31 kHz. Cuando se
+monte una sesión Xorg con un monitor arcade de verdad, se vuelve a encender.
+
+**Ojo con probarlo en un juego horizontal.** En una pantalla 4:3, `keepaspect`
+en Kung-Fu Master (que ya es 4:3) no cambia **nada**: con y sin él la imagen
+llena la pantalla igual. Sólo se nota en los verticales. Es otra razón por la
+que parecía que no se guardaba.
+
+**La alternativa sin parche**, por si algún día se compila MAME limpio: un
+`.ini` por juego. MAME los lee de `inipath` (`$HOME/.mame;/etc/mame`) en este
+orden, comprobado con `-verbose`:
+
+```
+mame.ini -> horizont.ini / vertical.ini -> raster.ini -> source/<driver>.ini -> <juego>.ini
+```
+
+O sea que `~/.mame/kungfum.ini` con `keepaspect 0` funciona, y `vertical.ini`
+vale para **todos** los verticales de golpe. Detalle: `-showconfig` **no** lee
+los `.ini` por juego, sólo `mame.ini`, así que no sirve para comprobarlo; hay
+que lanzar el juego con `-verbose` y buscar `Parsing .../<juego>.ini`.
+
+### Recompilar tras la mudanza de carpetas
+
+Los makefiles generados por genie llevaban dentro la ruta **absoluta vieja**:
+
+```
+fatal error: /home/eloy/groovymame_src/src/osd/sdl/sdlprefix.h: No such file or directory
+```
+
+No están en `src/` sino en `build/projects/sdl/mame/gmake-linux/*.make`, y no se
+arreglan solos. Hay que regenerarlos:
+
+```bash
+cd ~/Dev/arcade/groovymame_src
+PATH=/usr/lib/ccache:$PATH mold -run make REGENIE=1 -j10 NOWERROR=1 USE_QTDEBUG=0
+```
+
+### 2. Los verticales estirados: el arte, no la emulación
+
+Medido: Pac-Man en el CRT ocupa 575x754 px, o sea 0.763. Correcto. **MAME lo
+hace bien.** El estirado estaba en las capturas y los vídeos del frontend.
+
+La regla que faltaba: **el monitor de una recreativa es 4:3 FÍSICO**, así que un
+juego vertical se ve a 3:4 = 0.750 y uno horizontal a 4:3 = 1.333, *diga lo que
+diga el tamaño del bitmap*. Tanto `-aviwrite` de MAME como las capturas de
+arcadeitalia guardan los píxeles crudos:
+
+| juego | guardado | debía verse | error |
+|---|---|---|---|
+| `qbert` | 240x256 = 0.938 | 0.750 | **25% más ancho** |
+| `dkong` | 224x256 = 0.875 | 0.750 | 17% más ancho |
+| `kungfum` | 256x256 = 1.000 | 1.333 | **25% más estrecho** |
+| `pacman` | 224x288 = 0.778 | 0.750 | 4% |
+
+`aspecto.sh` corrige lo ya descargado y `videos.sh` graba ya bien. La corrección
+**agranda un lado en vez de encoger el otro**, para no tirar detalle — con un
+tope de 1.5x, porque Frogger graba 224x768 (la placa da tres líneas por línea
+útil) y agrandar ahí pedía inventar un 2,6x de ancho.
+
+Trampa que costó un rato: **`SNAP` ya existe en el entorno** cuando algo se
+lanza desde un snap (VS Code la pone a `/snap/code/NNN`), y `"${SNAP:-...}"` se
+la come tan tranquilo. El síntoma es mudo: el script no encuentra ningún fichero
+y dice que no hay nada que corregir. La variable se llama `CAPTURAS`.
+
+### 3. Las scanlines: `crt-real`, crt-geom para una pantalla que YA es un CRT
+
+crt-geom está pensado para un LCD: simula el tubo entero. Sobre un CRT de verdad
+la mitad sobra y encima estorba, porque se suma a lo que el tubo ya hace.
+
+`config/cabina/crt-real.json` — se instala en `bgfx/chains/` del emulador:
+
+| | crt-geom | crt-real | por qué |
+|---|---|---|---|
+| `aperture_strength` | 0.40 | **0.0** | el tubo ya tiene máscara física; otra encima da muaré y roba luz |
+| `curvature` | 1 | **0** | el tubo ya es curvo |
+| `cornersize` | 0.01 | **0.0** | el bisel ya está |
+| `spot_size` | 0.30 | **0.18** | el haz se afina: es lo ÚNICO que el CRT no da a 1024x768 |
+| `monitorsRGB` | sRGB | **custom 2.4** | la salida es un CRT, no un panel: así la conversión de gamma sale neutra |
+
+**Medido** en Kung-Fu Master a 1024x768, modulación entre filas contiguas:
+
+| | modulación | nivel medio |
+|---|---|---|
+| sin shader | 2,2% | 138,8 |
+| crt-geom | 29,2% | 104,4 |
+| **crt-real** | **63,1%** | 100,3 |
+
+Más del doble de profundidad **sin perder más brillo**: la luz que se llevan las
+líneas es la que devuelve quitar la máscara.
+
+Para ajustarlo, `spot_size`: 0.10 finísimas y muy marcadas, 0.30 las de
+crt-geom, 0.50 ninguna.
+
+**En los juegos verticales las líneas salen VERTICALES**, y es correcto: el
+shader las dibuja siguiendo el barrido de la placa, que en un mueble vertical
+iba girado. Medido en Pac-Man: 13,5% de modulación entre filas y **51,6% entre
+columnas**. Sobre un tubo horizontal se ven como rayas de arriba abajo, que es
+lo que se vería en el mueble original si lo tumbaras.
+
+### Lo que había mal en `~/.mame/mame.ini`
+
+- `bgfx_path` apuntaba a `/usr/share/games/mame/bgfx`, o sea a los assets del
+  **MAME de la distro (0.264)**, no a los del GroovyMAME 0.289 que corre.
+- `resolution` estaba fija a `1920x1080`, la del portátil. Ahora `auto`.
+- `bgfx_screen_chains` era `crt-geom-deluxe`, que simula hasta la persistencia
+  del fósforo.
+
+Y **25 ficheros de `~/.mame/cfg/` fijaban una cadena por juego** (`<bgfx>`), que
+manda sobre `mame.ini`: quitados, para que el ajuste central valga.
+
+Detalle que despista: `/etc/mame/mame.ini` (del paquete de la distro) también se
+lee, y pone `video opengl`. **Pierde** frente a `~/.mame/mame.ini`, comprobado
+con `-showconfig`, pero está ahí.
+
+### Si aún se ve estirado: es el tubo
+
+`patron.py` saca un patrón a pantalla completa en el CRT con un círculo, una
+rejilla y bandas de líneas de 1, 2 y 3 px. Dos respuestas de una vez:
+
+- **Círculo ovalado** = el tubo estira; se arregla en el H-SIZE del monitor, no
+  por software.
+- **Banda de 1 px gris lisa** = el tubo no resuelve 768 líneas, y entonces
+  ninguna scanline fina se va a ver por mucho shader que se ponga.
+
+## Juegos que no son un `.zip`: Street Fighter III y el CHD
+
+Traído por Eloy el 2026-09-02: *«tuve que introducir 2 archivos en un
+directorio, no en un .zip»*. Los dos ficheros estaban bien —
+`./mame -verifyroms sfiii3` decía `romset sfiii3 is good`— pero el juego no
+aparecía en la cabina. Eran **dos problemas encadenados**.
+
+### 1. AM+ no veía la carpeta
+
+El emulador tenía `romext .zip;.7z`, y AM+ escanea el rompath **por extensión**:
+una carpeta no tiene. Se arregla con el token `<DIR>` (`fe_base.cpp:51`), que
+hace que `gather_rom_names` llame además a `get_subdirectories`:
+
+```
+romext               .zip;.7z;<DIR>
+```
+
+De 23 entradas a 24. Está en la plantilla `config/cabina/groovymame.cfg`, así
+que `instalar.sh` ya lo pone.
+
+Ojo al reconstruir la lista: **sin `-o` AM+ NO sobrescribe**, crea
+`groovymame1.txt`, `groovymame2.txt`… y el frontend sigue leyendo la vieja.
+Hay que pasar `--build-romlist groovymame -o groovymame`.
+
+### 2. CPS3 no arranca del CD: hay que grabar la flash una vez
+
+Lo que salía en pantalla, y no es un fallo de instalación:
+
+```
+You have inserted a new CD-ROM.
+> Rewrite the game     Cancel
+...it will take about 70 minutes to rewrite the new game.
+```
+
+La placa CPS3 copia el juego del CD a la flash del cartucho. Es el procedimiento
+real, y en MAME hay que pasarlo **una vez**: los 81 MB resultantes quedan en
+`~/.mame/nvram/sfiii3/` (`simm1.0`…`simm5.7` y `eeprom`) y los arranques
+siguientes van directos.
+
+- **El botón que confirma es `P1 Jab Punch`** (botón 1), no START. Medido
+  probándolos uno a uno: con START la pantalla no cambiaba.
+- Dura unos 70 minutos **emulados**; sin freno son unos 8 de reloj.
+- Después, el arranque son ~20 s emulados hasta el logo de Capcom y ~25 hasta
+  la atracción. De ahí `sfiii3 segundos=20 velocidad=0` en `arranque.dat`.
+
+**Peligro con `nvram=0`.** Ese ajuste de `arranque.dat` apaga `nvram_save`, y en
+un CPS3 eso tira la flash: volvería a pedir los 70 minutos en cada arranque.
+**Nunca ponérselo a un juego de CPS3.**
+
+`arranque.dat` tenía una línea para `sfiii3n`, que es el set **sin CD** (30
+ficheros SIMM, unos 80 MB) y no está instalado. Corregida a `sfiii3`.
+
+### Y la tarifa de CPS3 no la arregla `tarifa.lua`
+
+El juego marca `INSERT 2 COINS`. **CPS3 no tiene DIP switches** —comprobado
+volcando sus puertos: sólo `:INPUTS` y `:EXTRA`, ningún `dipswitch`— así que la
+tarifa vive en el menú de servicio del propio juego y se guarda en su EEPROM.
+`GA_TARIFA` no puede tocarla; hay que entrar al test menu una vez.
+
+## El instalador: `instalar.sh` con whiptail
+
+Reescrito el 2026-09-02, a raíz de que Eloy intentara compilar en una máquina
+nueva (Linux Mint) y se topara con esto:
+
+```
+Package 'libavformat', required by 'virtual:world', not found
+Makefile:424: *** pkg-config couldn't find some libraries, aborting.
+```
+
+El instalador viejo sólo comprobaba `git make g++` y decía qué faltaba. Ahora lo
+instala él, y va por pasos con **whiptail**.
+
+**Todo tiene valor por defecto.** Enter a secas, o Cancelar, deja el defecto:
+cancelar una pregunta no debe tirar abajo una instalación a medias. Sin
+whiptail, sin terminal, o con `--sin-preguntar`, se usan los defectos sin
+molestar. Las tareas son un checklist: dependencias, compilar AM+, configuración,
+lista de juegos, artes, CRT, parchear GroovyMAME y vídeos.
+
+### Las dependencias no se comprueban por el nombre del paquete
+
+Se comprueban por el **módulo de pkg-config** (o el binario, para las
+herramientas), y sólo entonces se traduce al paquete de esa distro. Preguntar
+por el paquete no vale: se llaman distinto en cada sitio y en Arch las cabeceras
+van dentro del paquete normal, mientras que en Debian van aparte en un `-dev`.
+De las 22 librerías salen 22 paquetes en Debian y **17 en Arch**, porque los
+cinco de FFmpeg son un solo `ffmpeg`.
+
+Verificado con `apt-get install --simulate`: los 26 nombres de Debian existen.
+**Los de Arch no se han podido comprobar** desde aquí, así que el script se
+protege solo: antes de instalar mira cuáles existen de verdad
+(`pacman -Si`, y `pacman -Sg` para `base-devel`, que es un grupo y `-Si` no lo
+ve), avisa de los que no y sigue con el resto — pacman aborta la instalación
+entera si un solo nombre está mal, y perder veinte por una no vale la pena. Si
+**ninguno** aparece, lo que pasa es que la base de datos está sin sincronizar,
+no que estén todos mal: entonces se lanza `pacman -Sy` y que hable él.
+
+Después de instalar **se vuelve a comprobar**, y si algo sigue sin aparecer se
+dice. Así un nombre equivocado se ve en el momento y no cuatro minutos después,
+al fallar la compilación.
+
+### Detalles que costaron una iteración
+
+- **whiptail es justo lo que no está** en una máquina recién instalada. Se
+  ofrece antes que nada, en texto plano, porque todavía no hay con qué dibujar
+  un cuadro. En Arch **lo trae `libnewt`**, no un paquete `whiptail`.
+- **La ruta del emulador se normaliza** (`cd … && pwd`): la detección la
+  encuentra como `$AQUI/../groovymame_src/mame` y ese `..` acabaría escrito en
+  el `.cfg` del emulador y en `mame.ini`.
+- El fallback sin whiptail necesita `printf '%b'`, no `'%s'`, o los `\n` de los
+  mensajes salen literales.
+- `TAREAS="config romlist" ./instalar.sh --sin-preguntar` fija las tareas por
+  entorno. Es como se prueba sin ir tarea por tarea.
+
+### Seis fallos que salieron al probarlo en Mint
+
+Eloy lo lanzó en la otra máquina y el log dio para mucho. Merece la pena
+apuntarlos porque casi todos son mudos:
+
+**1. `sudo ./instalar.sh` escribe en `/root/.attract`.** Con sudo, `HOME` es
+`/root`, así que la configuración entera se instaló donde el frontend —que
+corre como el usuario— no la ve jamás. Es el mismo agujero que ya estaba
+documentado para `sudo ./attractplus`. Ahora el script **se niega a arrancar
+como root**: sudo lo pide él, y sólo para los paquetes.
+
+**2. whiptail toma por opción cualquier texto que empiece por `-`.** El mensaje
+final es una lista de guiones, así que respondía
+`- Los videos de muestra: ...: unknown option` y no dibujaba nada. Se arregla
+metiéndole un salto de línea delante; está en `d_texto`, `d_si` y `d_aviso`.
+
+**3. Un rompath equivocado convierte cada carpeta en un juego.** Con `ROMS` en
+el home y `<DIR>` en `romext`, AM+ encontró **36 «juegos»** llamados `.config`,
+`Descargas`, `.ssh`, `.gnupg`… Por eso ya no basta con que la carpeta exista:
+`hay_roms()` exige un `.zip`, un `.7z` o un `.chd` dentro.
+
+**4. Que falte la carpeta de roms ya no aborta.** Se vuelve a preguntar tantas
+veces como haga falta, con el valor malo delante y diciendo qué le pasa; y
+dejándolo vacío se sigue sin ellas (se saltan solas la lista, los artes y los
+vídeos). Lo mismo para el emulador y el repo de créditos.
+
+**5. Al emulador le faltaban librerías de EJECUCIÓN, no de compilación.**
+
+```
+mame: error while loading shared libraries: libSDL2_ttf-2.0.so.0
+```
+
+pkg-config no lo ve —eso mira cabeceras— así que se le pregunta al binario con
+`ldd … | awk '/not found/'`. El síntoma era feo y callado: MAME no arrancaba,
+`-listxml` no devolvía nada, y la lista salió con 36 entradas **sin un solo
+dato**. De ahí la revisión final, que comprueba las tres cosas que no dan la
+cara hasta mucho después: que el emulador arranque, que la lista tenga datos de
+verdad (si la segunda columna es igual a la primera, faltó el `-listxml`) y que
+haya sesión gráfica.
+
+**6. `convert` no estaba**, así que `aspecto.sh` no corregía nada. `imagemagick`
+está ahora en la tabla.
+
+### «Failed to open X11 display» y un volcado de memoria
+
+AM+ no avisa de esto: aborta. `cabina.sh` lo comprueba antes y dice las tres
+causas posibles (consola de texto, ssh sin `-X`, sesión Wayland sin Xwayland).
+
+### GroovyArcade: la disposición de verdad, medida por SSH
+
+Es el destino final de la cabina, y **no usa `~/.attract`**. Lo que hay
+(comprobado el 2026-09-03 entrando por SSH, no supuesto):
+
+```
+~/shared/roms/mame                 las roms, una carpeta por emulador
+~/shared/frontends/attract         la configuracion de AM+ (config/, plugins/,
+                                   layouts/, emulators/, romlists/, scraper/...)
+~/shared/frontends/groovymame  ->  ../configs/mame     (es un enlace)
+~/shared/media/mame                artes y videos de la distro
+~/shared/configs/ga.conf           configuracion de gasetup
+```
+
+`gasetup` es un guion (`/opt/gasetup/gasetup.sh -p interactive`), y su
+configuracion es la que decide que se lanza:
+
+```
+frontend=attractplus      <- por eso basta con reemplazar /usr/local/bin/attractplus
+video.backend=X           <- Xorg, no Wayland: aqui no hay el problema de la otra maquina
+monitor=lcd               <- OJO
+connector=LVDS-1          <- OJO: es el panel interno del portatil
+```
+
+Binarios:
+
+```
+attractplus  -> /usr/local/bin/attractplus     <- el que lanza gasetup
+groovymame   -> /usr/local/bin/groovymame -> /usr/lib/mame/groovymame
+mame         -> /usr/bin/mame                  (el MAME de la distro, a secas)
+```
+
+Y las rutas de MAME **no son las de siempre**:
+
+| | Ubuntu (esta máquina) | GroovyArcade |
+|---|---|---|
+| `mame.ini` | `~/.mame/mame.ini` | `~/.mame/ini/mame.ini` |
+| `bgfx_path` | junto al ejecutable | `/usr/lib/mame/bgfx` (de root) |
+| `rompath` | `/usr/share/games/mame/roms` | `~/shared/roms/mame` |
+
+Por eso `instalar.sh` ya no las supone: **se las pregunta a MAME** con
+`mame_opcion()` (`-showconfig`), y el `mame.ini` que manda es el primero del
+`inipath`. Con eso el mismo código acierta en las dos máquinas.
+
+**El enlace `~/.attract` es imprescindible.** AM+ busca su configuración ahí y
+punto (`fe_settings.cpp:54-60`); si la cabina la tiene en
+`~/shared/frontends/attract`, el frontend arrancaría con la configuración por
+defecto e ignoraría la cabina entera. `instalar.sh` crea el enlace (y si
+`~/.attract` ya existe como directorio de verdad, avisa en vez de pisarlo).
+
+**Y el binario del sistema tiene que ser el nuestro**, porque gasetup lanza el
+del PATH: la tarea `binario` guarda el suyo en `.antes_instalar` e instala el
+nuestro en `/usr/local/bin/attractplus`. Viene marcada por defecto **sólo** en
+GroovyArcade.
+
+**switchres no se toca ahí, pero hoy tampoco sirve de nada.** En esta máquina se
+apaga porque pisa `keepaspect` y encima no puede poner modelines bajo Wayland.
+En GroovyArcade *podría* hacer su trabajo —sesión Xorg propia— pero `ga.conf`
+trae **`monitor=lcd` y `connector=LVDS-1`**, o sea declarado como panel interno
+de portátil: con eso switchres se queda en las resoluciones del panel y no
+genera ni una modeline de recreativa. Hay que cambiarlo en **gasetup > Setup
+(video)**, no editando `ga.conf` a mano: ese fichero no regenera solo la línea
+del kernel (`kernel_video_cmdline`) ni el `xorg.conf`. `instalar.sh` lo lee y
+avisa, pero no lo toca.
+
+Lo que **no** cubre el instalador ahí: los dos parches de `parches/` no están
+aplicados al GroovyMAME de la distro. Sin ellos siguen saliendo las pantallas
+de aviso y los ajustes del menú Video Options no se guardan. Aplicarlos pide
+recompilar GroovyMAME desde el PKGBUILD de Arch.
+
+### En GroovyArcade no hay que compilar el emulador
+
+Es el destino real de la cabina: una distro Arch con GroovyMAME **ya
+instalado**. La detección lo busca en `/usr/bin/groovymame` y la tarea de
+parchear y compilar MAME viene desmarcada por defecto.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
@@ -1335,5 +1823,5 @@ Attract-Mode Plus **no** — cuando se llegue ahí, contrastar con `Manual.md` y
 - ccache (20 G) y mold instalados. Para que MAME los use de verdad:
   `PATH=/usr/lib/ccache:$PATH mold -run make …` en la MISMA invocación
   (exportarlo antes y lanzar en segundo plano no propaga el entorno).
-- Recompilar MAME: `make -j10 NOWERROR=1 USE_QTDEBUG=0` desde `/home/eloy/groovymame_src`.
+- Recompilar MAME: `make -j10 NOWERROR=1 USE_QTDEBUG=0` desde `~/Dev/arcade/groovymame_src`.
   `USE_QTDEBUG=0` es obligatorio si se usa `REGENIE=1`, si no falla por falta de `moc` de Qt.
