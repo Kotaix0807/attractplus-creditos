@@ -567,10 +567,30 @@ tarea_binario() {
 		return 0
 	fi
 	# gasetup lanza 'attractplus' del PATH, asi que el del sistema tiene que
-	# ser el nuestro. En GroovyArcade ya hay uno en /usr/local/bin.
+	# ser el nuestro.
 	local destino; destino="$( command -v attractplus 2>/dev/null || true )"
 	[ "$destino" = "$AQUI/attractplus" ] && destino=""       # el del repo no vale
 	destino="${destino:-/usr/local/bin/attractplus}"
+
+	# OJO: puede no ser un binario. En GroovyArcade /usr/local/bin/attractplus
+	# es un GUION de ocho lineas que elige entre attractplus-kms y
+	# attractplus-x11 segun haya DISPLAY. Pisarlo se lleva por delante esa
+	# eleccion, y en modo KMS el frontend deja de arrancar.
+	if [ -f "$destino" ] && [ "$( head -c2 "$destino" 2>/dev/null )" = '#!' ]; then
+		aviso "  $destino es un GUION que elige entre varios binarios: no lo toco"
+		if [ -e "${destino}-x11" ]; then
+			echo "  el nuestro va a ${destino}-x11, que es el que usa con X"
+			destino="${destino}-x11"
+			[ -e "${destino%-x11}-kms" ] && {
+				aviso "  hay tambien ${destino%-x11}-kms, para cuando no hay X."
+				aviso "  Ese sigue siendo el suyo: el nuestro esta compilado para"
+				aviso "  X11. Si la cabina arranca sin X, compila con USE_DRM=1."
+			}
+		else
+			rojo "  y no encuentro ${destino}-x11: no se donde poner el nuestro"
+			return 1
+		fi
+	fi
 
 	if [ -e "$destino" ] && [ "$destino" -ef "$AQUI/attractplus" ]; then
 		verde "  $destino ya es el nuestro"
@@ -621,7 +641,50 @@ tarea_config() {
 	echo "  + config/plugins.cfg"
 
 	copiar_si_falta "$AQUI/config/cabina/displays.cfg" "$DESTINO/config/displays.cfg"
-	copiar_si_falta "$AQUI/config/cabina/attract.cfg" "$DESTINO/config/attract.cfg"
+	# Si el displays.cfg ya existia, se respeta -- pero entonces puede que
+	# ningun display use un layout de la cabina, y el frontend arranca con otra
+	# cara sin decir por que. Paso en GroovyArcade, cuyo displays.cfg apunta a
+	# BasicPlus, que es de serie y vive en /usr/local/share.
+	#
+	# La regla NO es "no usa Arcade-UMAG": aqui el layout de la cabina se llama
+	# Attrac-Man porque se edito encima del de serie, y eso es correcto. La
+	# regla es que ningun display use un layout que este en NUESTRO directorio
+	# de layouts.
+	local disp="$DESTINO/config/displays.cfg"
+	if [ -f "$disp" ]; then
+		local usa_uno_nuestro=0 l
+		while read -r l; do
+			[ -n "$l" ] && [ -d "$DESTINO/layouts/$l" ] && usa_uno_nuestro=1
+		done < <( sed -n 's/^[[:space:]]*layout[[:space:]]\+//p' "$disp" )
+
+		if [ "$usa_uno_nuestro" = 0 ]; then
+			aviso "  ningun display usa un layout de los instalados aqui"
+			if d_si "El layout de la cabina" \
+"El displays.cfg que ya habia no usa ninguno de los layouts de la cabina, asi
+que el frontend arrancara con otra cara.
+
+Poner Arcade-UMAG en el display que usa la lista 'groovymame'?
+(se guarda una copia en displays.cfg.antes_instalar)" si
+			then
+				cp "$disp" "$disp.antes_instalar"
+				# Se busca por la LISTA, no por el nombre del display: el
+				# display puede llamarse como quiera.
+				awk -v lista=groovymame -v lay=Arcade-UMAG '
+					function volcar(   i) {
+						for (i = 1; i <= n; i++)
+							if (suyo && bloque[i] ~ /^[ \t]*layout[ \t]/)
+								print "    layout                  " lay
+							else print bloque[i]
+						n = 0; suyo = 0
+					}
+					/^display / { volcar() }
+					{ bloque[++n] = $0; if ($1 == "romlist" && $2 == lista) suyo = 1 }
+					END { volcar() }
+				' "$disp" > "$disp.nuevo" && mv "$disp.nuevo" "$disp"
+				echo "  + el display de 'groovymame' usa ahora Arcade-UMAG"
+			fi
+		fi
+	fi
 
 	# AM+ busca su configuracion en ~/.attract y punto (fe_settings.cpp:54-60).
 	# Si la cabina la tiene en otro sitio -- GroovyArcade la pone en

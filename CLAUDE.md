@@ -1855,6 +1855,62 @@ soltaba `./attractplus: No such file or directory`. Como ya hacía `romlist`.
 compilación reventaba con un error que no dice que el problema son las
 dependencias. Ahora pregunta si seguir, con «no» por defecto.
 
+## Lo que rompi en GroovyArcade: `attractplus` no es un binario
+
+Diagnosticado el 2026-09-03 entrando por ssh a la cabina, que es la unica forma
+de ver esto.
+
+**`/usr/local/bin/attractplus` es un GUION de ocho lineas**, no un ejecutable:
+
+```bash
+if [[ -z $DISPLAY ]] ; then attractplus-kms "$@"; else attractplus-x11 "$@"; fi
+```
+
+GroovyArcade compila **dos** frontends -- uno para KMS/DRM directo y otro para
+X11 -- y ese envoltorio elige segun haya sesion grafica. La tarea `binario` lo
+sustituyo por nuestro ejecutable y se llevo por delante la eleccion: en modo KMS
+el frontend deja de arrancar.
+
+Se noto porque el fichero de respaldo pesaba **161 bytes**. Ahora la tarea mira
+si el destino empieza por `#!` y, si es asi, instala en `attractplus-x11` y
+avisa de que `attractplus-kms` sigue siendo el suyo: nuestro build es de X11, y
+para el otro haria falta `make USE_DRM=1`.
+
+### El layout no se cargaba: `displays.cfg` ya existia
+
+`copiar_si_falta` respeta el fichero que haya, que esta bien -- pero entonces
+los displays de GroovyArcade apuntaban a `BasicPlus`, que es de serie y vive en
+`/usr/local/share/attractplus/layouts`. El frontend arrancaba con otra cara y
+sin decir por que.
+
+La regla para detectarlo **no es** «no usa Arcade-UMAG»: en la maquina de
+desarrollo el layout de la cabina se llama `Attrac-Man`, porque se edito encima
+del de serie, y eso es correcto. La regla es que **ningun display use un layout
+que este en nuestro directorio de layouts**. Y al corregirlo se busca el display
+por su **lista de roms**, no por su nombre, que puede ser cualquiera.
+
+### La pantalla VGA no se usaba
+
+Los tres conectores, leidos de `/sys/class/drm`:
+
+```
+card0-HDMI-A-1   disconnected
+card0-LVDS-1     connected     <- el panel interno, y el que usa la cabina
+card0-VGA-1      connected     <- el CRT
+```
+
+`ga.conf` trae `connector=LVDS-1` y `monitor=lcd`, y el kernel arranca con
+`monitor=lcd`. El CRT del VGA ofrece 1024x768, 1280x1024 y 1152x864: es un
+multisync de **31 kHz**, no un monitor arcade de 15.
+
+Se cambia en **gasetup > Setup > video**, opcion **17 `[VGA-1 31khz]`**
+(`lib-video.sh:571`), que pone `VGA-1:640x480ey` en la linea del kernel. A mano
+no: `ga.conf` no regenera solo ni el cmdline ni el arranque.
+
+Detalle del entorno: el kernel es `7.1.8-arch1-3-15khz`, parcheado para 15 kHz,
+y glibc es **2.44** -- por eso el binario del release (que pide 2.38) arranca
+ahi sin problema.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
