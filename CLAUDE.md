@@ -2028,6 +2028,75 @@ llama `getMaximumAntialiasingLevel`, con otra mayuscula.
 los makefiles de genie en `groovymame_src`: rutas absolutas generadas que
 sobreviven a la mudanza y fallan diciendo otra cosa.
 
+## Los juegos que iban mal en la cabina: tres causas, no una
+
+Traido por Eloy el 2026-09-03 con una lista de juegos y dos sintomas. El patron
+estaba en la lista misma: **los del grupo A eran todos verticales y los del B
+todos horizontales.**
+
+| grupo | juegos | sintoma |
+|---|---|---|
+| A | mappy, centiped, digdug, dkong, frogger, mspacman, ncv2 | sin shader, «va rapidisimo» |
+| B | kungfum, elevator, mwalk | shader si, pero descuadrado |
+
+Medido lanzandolos por ssh, que es lo que lo desenredo:
+
+```
+mappy    Calculating best video mode for 288x224@60.6 orientation: rotated
+         crtc --> 661x496      -waitvsync -syncrefresh    Average speed: 222.72%
+kungfum  256x256@56.3 normal
+         crtc --> 256x256      -nowaitvsync -nosyncrefresh  Average speed: 100.00%
+```
+
+### 1. switchres, en un CRT de PC, hace mas mal que bien
+
+Genera modelines a la resolucion **nativa** del juego. Eso es exactamente lo
+que se quiere en un monitor de recreativa, y un desastre en un multisync VGA:
+a Kung-Fu Master le mandaba un modo de **256x256** —de ahi el «se ve corrido a
+la derecha y no cubre la pantalla»— y a Mappy uno de 661x496 al doble de
+frecuencia, con `-syncrefresh` puesto, asi que el juego corria a **222%**.
+
+Probado con cuatro presets (`pc_31_120`, `arcade_31`, `vesa_1024`,
+`generic_15`): todos dan modos raros y velocidades mal. Con `-noswitchres`,
+mappy, kungfum y centiped a **100.00%** y a 1024x768.
+
+Por eso `tarea_crt` ahora **pregunta que monitor es**: en uno de recreativa
+switchres se deja, y en un CRT de PC se apaga.
+
+### 2. Mi propio parche guardaba las decisiones de switchres
+
+El parche de `parches/groovymame-guardar-ajustes-video.patch` hace que MAME
+conserve `keepaspect` y `scale_mode`. Eso es lo que se quiere cuando los cambia
+una persona... pero **switchres los reescribe en cada arranque** con lo suyo
+(`autostretch`), y quedaban grabados en el `.cfg` como si fueran del usuario:
+
+```
+centiped, dkong, mapacman, mappy, qbert   scalemode="4"
+elevator, kungfum, mwalk                  keepaspect="0" scalemode="4"
+```
+
+Que es **exactamente** la division en grupos que trajo Eloy. `scalemode=4` es
+escalado entero: Mappy salia a 2x (448x576 en una pantalla de 768) en vez de
+llenar, y con dos pixeles por linea el shader no tiene sitio para dibujar nada.
+
+### 3. Y un `.cfg` fijaba la cadena a `default`
+
+`mappy.cfg` tenia `chain="default"`, o sea sin shader. MAME guarda la cadena en
+uso por juego, asi que basto con que una vez corriera sin ella.
+
+### Como quedo, medido
+
+| | antes | despues |
+|---|---|---|
+| mappy, area activa | 448x576 | **574x768** (lo correcto para un vertical) |
+| mappy, modulacion entre columnas | 4.5% | **52.6%** |
+| kungfum | modo 256x256 | **1024x768**, 63.3% de modulacion |
+| velocidad | 222% | **100%** |
+
+`tarea_crt` limpia ahora los `.cfg` por juego: la cadena, el escalado y el
+aspecto. Lo que el usuario elija **despues**, con switchres ya apagado, se
+guarda y se respeta -- que es justo para lo que estaba el parche.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

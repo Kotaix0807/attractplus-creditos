@@ -285,8 +285,19 @@ mame_opcion() {   # $1=clave -> el valor, con $HOME ya expandido
 		sed "s|\$HOME|$HOME|g"
 }
 
-# El mame.ini que manda es el primero del inipath.
+# CUAL de los mame.ini manda. No se puede deducir del inipath: en GroovyArcade
+# hay dos -- ~/.mame/mame.ini (el de verdad, 10 KB) y ~/.mame/ini/mame.ini --
+# y gana el PRIMERO que MAME parsea, que no es el del inipath. Escribir en el
+# otro no da ningun error y no sirve de nada: el sintoma fue quedarse con
+# "video opengl" y sin shader.
+#
+# Asi que se lo preguntamos a MAME: -verbose dice cuales abre, en orden.
 mame_ini() {
+	local primero
+	primero="$( "$MAME" -showconfig -verbose 2>&1 |
+		sed -n 's|^Parsing \(.*mame\.ini\)$|\1|p' | head -1 )"
+	if [ -n "$primero" ]; then echo "$primero"; return; fi
+	# Si no lo dice (no hay ninguno todavia), se crea donde apunte el inipath.
 	local rutas; rutas="$( mame_opcion inipath )"
 	[ -n "$rutas" ] || { echo "$HOME/.mame/mame.ini"; return; }
 	echo "${rutas%%;*}/mame.ini"
@@ -702,6 +713,52 @@ Poner Arcade-UMAG en el display que usa la lista 'groovymame'?
 		fi
 	fi
 
+	# --- displays que apuntan a un emulador que no existe --------------------
+	#
+	# AM+ los muestra igual y solo falla AL LANZAR, con "Error getting emulator
+	# info for launch". Y si uno de esos es el PRIMERO, la cabina arranca en el
+	# y el layout nuestro no se ve nunca: eso paso en GroovyArcade, que traia un
+	# display 'MAME' cuya lista pedia un emulador que no estaba definido.
+	if [ -f "$disp" ]; then
+		local rotos=() lista archivo emu
+		while read -r lista; do
+			[ -n "$lista" ] || continue
+			archivo="$DESTINO/romlists/$lista.txt"
+			[ -f "$archivo" ] || continue
+			emu="$( sed -n '2p' "$archivo" | cut -d';' -f3 )"
+			[ -n "$emu" ] && [ ! -f "$DESTINO/emulators/$emu.cfg" ] && rotos+=( "$lista" )
+		done < <( sed -n 's/^[[:space:]]*romlist[[:space:]]\+//p' "$disp" )
+
+		if [ ${#rotos[@]} -gt 0 ]; then
+			aviso "  listas sin emulador definido: ${rotos[*]}"
+			if d_si "Displays rotos" \
+"Estas listas piden un emulador que no esta definido:
+
+    ${rotos[*]}
+
+Sus juegos daran 'Error getting emulator info for launch' al lanzarlos, y si
+uno de esos displays es el primero, la cabina arrancara en el.
+
+Quitar esos displays? (se guarda copia en displays.cfg.antes_instalar)" si
+			then
+				[ -e "$disp.antes_instalar" ] || cp "$disp" "$disp.antes_instalar"
+				local l
+				for l in "${rotos[@]}"; do
+					awk -v lista="$l" '
+						function volcar(   i) {
+							if (!suyo) for (i = 1; i <= n; i++) print bloque[i]
+							n = 0; suyo = 0
+						}
+						/^display / { volcar() }
+						{ bloque[++n] = $0; if ($1 == "romlist" && $2 == lista) suyo = 1 }
+						END { volcar() }
+					' "$disp" > "$disp.nuevo" && mv "$disp.nuevo" "$disp"
+					echo "  - quitado el display de la lista '$l'"
+				done
+			fi
+		fi
+	fi
+
 	# AM+ busca su configuracion en ~/.attract y punto (fe_settings.cpp:54-60).
 	# Si la cabina la tiene en otro sitio -- GroovyArcade la pone en
 	# ~/shared/frontends/attract -- hay que enlazarla, o el frontend arrancara
@@ -767,13 +824,67 @@ tarea_crt() {
 	poner_ini bgfx_screen_chains crt-real
 	poner_ini resolution         auto
 	[ -n "$bgfx" ] && poner_ini bgfx_path "$bgfx"
-	# switchres pisa keepaspect y scale_mode en cada arranque (autostretch).
-	# OJO: en GroovyArcade con un monitor arcade de verdad SI hace su trabajo,
-	# asi que ahi no se toca.
-	if [ "$ES_GROOVYARCADE" = 1 ]; then
-		aviso "  switchres se deja como esta: aqui si puede poner modelines"
+	# switchres genera modelines a la resolucion NATIVA del juego. Eso es lo
+	# correcto en un monitor de recreativa, y un desastre en un CRT de PC.
+	#
+	# Medido en la cabina, con monitor=pc_31_120 sobre un multisync VGA:
+	#
+	#   juego     modo que pone   velocidad
+	#   mappy     661x496         222%      <- se sincroniza a un modo del doble
+	#   kungfum   256x256         100%      <- el tubo no encuadra eso
+	#
+	# y con -noswitchres los dos a 1024x768 y 100%. Ademas su autostretch pisa
+	# keepaspect y scale_mode en cada arranque.
+	if d_si "Que monitor es" \
+"Es un monitor de RECREATIVA -- de esos de 15, 25 o 31 kHz que switchres
+maneja generando modelines a medida para cada juego?
+
+Responde NO si es un CRT de PC o un multisync VGA de escritorio: ahi
+switchres genera modos que el tubo no sabe encuadrar (256x256, 661x496) y
+los juegos acaban yendo al doble de velocidad." no
+	then
+		aviso "  switchres se deja encendido: lo maneja el"
 	else
 		poner_ini switchres 0
+		echo "  (switchres apagado: la imagen ira a la resolucion del escritorio)"
+	fi
+
+	# --- limpiar lo que los .cfg por juego tengan fijado ---------------------
+	#
+	# MAME guarda por juego la cadena de shaders en uso y, con el parche de
+	# parches/, tambien keepaspect y scale_mode. Eso es lo que se quiere cuando
+	# lo cambia una persona... pero switchres los reescribe en cada arranque
+	# con SUS decisiones (autostretch), y entonces quedan grabadas como si
+	# fueran del usuario. En la cabina el resultado fue:
+	#
+	#   scalemode="4"      -> escalado entero: Mappy a 2x, sin llenar la
+	#                         pantalla y sin sitio para dibujar scanlines
+	#   chain="default"    -> ese juego se quedaba sin shader
+	#   keepaspect="0"     -> los horizontales descuadrados
+	#
+	# Se quitan para que mande el ajuste central. Lo que el usuario elija
+	# DESPUES, con switchres ya apagado, se guarda y se respeta.
+	local cfgdir; cfgdir="$( mame_opcion cfg_directory )"
+	if [ -n "$cfgdir" ] && [ -d "$cfgdir" ] && compgen -G "$cfgdir/*.cfg" >/dev/null; then
+		local n
+		n=$( python3 - "$cfgdir" <<'PY'
+import re, sys, glob, os
+n = 0
+for f in glob.glob(os.path.join(sys.argv[1], "*.cfg")):
+    try:
+        s = open(f, encoding="utf-8-sig").read()
+    except OSError:
+        continue
+    s2 = re.sub(r"[ \t]*<bgfx>.*?</bgfx>\n?", "", s, flags=re.S)
+    s2 = re.sub(r"(<target[^>]*?)\s+scalemode=\"\d+\"", r"\1", s2)
+    s2 = re.sub(r"(<target[^>]*?)\s+keepaspect=\"\d+\"", r"\1", s2)
+    s2 = re.sub(r"[ \t]*<video>\s*<target index=\"0\" ?/>\s*</video>\n?", "", s2)
+    if s2 != s:
+        open(f, "w", encoding="utf-8-sig").write(s2); n += 1
+print(n)
+PY
+		)
+		[ "${n:-0}" -gt 0 ] && echo "  $n .cfg por juego limpiados (cadena, escalado y aspecto)"
 	fi
 }
 
