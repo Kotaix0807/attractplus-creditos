@@ -1,0 +1,69 @@
+diff --git a/src/emu/render.cpp b/src/emu/render.cpp
+index 8a602bd33d0..1df156f4af7 100644
+--- a/src/emu/render.cpp
++++ b/src/emu/render.cpp
+@@ -982,6 +982,11 @@ render_target::render_target(render_manager &manager, render_container *ui, T &&
+ 	else
+ 		m_scale_mode = SCALE_FRACTIONAL;
+ 
++	// remember how the options left these, so config_save can tell whether the
++	// user changed them from the Video Options menu
++	m_base_keepaspect = m_keepaspect;
++	m_base_scale_mode = m_scale_mode;
++
+ 	// determine the base orientation based on options
+ 	if (!manager.machine().options().rotate())
+ 		m_base_orientation = orientation_reverse(manager.machine().system().flags & machine_flags::MASK_ORIENTATION);
+@@ -2998,6 +3003,15 @@ void render_target::config_load(util::xml::data_node const *targetnode)
+ 	if (zoom == 0 || zoom == 1)
+ 		set_zoom_to_screen(zoom);
+ 
++	// aspect and scaling (see config_save)
++	int const keepaspect = targetnode->get_attribute_int("keepaspect", -1);
++	if (keepaspect == 0 || keepaspect == 1)
++		set_keepaspect(keepaspect != 0);
++
++	int const scalemode = targetnode->get_attribute_int("scalemode", -1);
++	if ((scalemode >= SCALE_FRACTIONAL) && (scalemode <= SCALE_INTEGER))
++		set_scale_mode(scalemode);
++
+ 	// apply orientation
+ 	int rotate = targetnode->get_attribute_int("rotate", -1);
+ 	if (rotate != -1)
+@@ -3090,6 +3104,23 @@ bool render_target::config_save(util::xml::data_node &targetnode)
+ 		changed = true;
+ 	}
+ 
++	// output aspect and scaling
++	//
++	// Upstream MAME doesn't save these, so "Maintain Aspect Ratio" and
++	// "Non-Integer Scaling" from the Video Options menu are forgotten on exit
++	// and the only way to set them per game is a <game>.ini file. On a cabinet
++	// there is no keyboard to edit files with, so they get saved here.
++	if (m_keepaspect != m_base_keepaspect)
++	{
++		targetnode.set_attribute_int("keepaspect", m_keepaspect ? 1 : 0);
++		changed = true;
++	}
++	if (m_scale_mode != m_base_scale_mode)
++	{
++		targetnode.set_attribute_int("scalemode", m_scale_mode);
++		changed = true;
++	}
++
+ 	// output rotation
+ 	if (m_orientation != m_base_orientation)
+ 	{
+diff --git a/src/emu/render.h b/src/emu/render.h
+index 9c30a9fc2cc..4182f768d69 100644
+--- a/src/emu/render.h
++++ b/src/emu/render.h
+@@ -655,6 +655,8 @@ private:
+ 	layout_view *           m_base_view;                // the view at the time of first frame
+ 	int                     m_base_orientation;         // the orientation at the time of first frame
+ 	render_layer_config     m_base_layerconfig;         // the layer configuration at the time of first frame
++	bool                    m_base_keepaspect;          // keepaspect at the time of first frame
++	int                     m_base_scale_mode;          // scale mode at the time of first frame
+ 	int                     m_maxtexwidth;              // maximum width of a texture
+ 	int                     m_maxtexheight;             // maximum height of a texture
+ 	s32                     m_clear_extent_count;       // number of clear extents

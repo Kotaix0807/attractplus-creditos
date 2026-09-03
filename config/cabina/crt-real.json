@@ -1,0 +1,338 @@
+// CRT-real: crt-geom ajustado para una pantalla que YA ES un CRT.
+//
+// crt-geom viene pensado para un panel LCD: simula el tubo entero (mascara de
+// sombra, curvatura, esquinas redondeadas, gamma de CRT sobre gamma sRGB).
+// Sobre un CRT de verdad todo eso sobra y ademas estorba, porque se suma a lo
+// que el tubo ya hace fisicamente.
+//
+// Lo unico que un CRT VGA a 1024x768 no da por si solo son las lineas de
+// barrido: la imagen se escala x3.4 y el haz las tapa. Eso es lo que se sube.
+//
+// Los valores se ponen aqui y no con los deslizadores de MAME a proposito:
+// GroovyMAME solo guarda en el .cfg los deslizadores cuyo nombre lleva
+// "Frame Delay", "V-Sync Offset", "Overclock", "Screen Refresh Rate" o "CRT"
+// (ui.cpp, sliders_save), asi que ajustar crt-geom a mano NO se conserva.
+//
+// Para ajustar las lineas de barrido: "Spot size minimum" (spot_size).
+//   0.10 = finisimas y muy marcadas    0.30 = las de crt-geom    0.50 = ninguna
+{
+	"name": "CRT-real",
+	"author": "cgwg",
+	"sliders": [
+		{
+			"type": "float",
+			"name": "aperture_strength",
+			"text": "Shadow mask strength",
+			"default": 0.0,
+			"max": 1.0,
+			"min": 0.0,
+			"step": 0.05,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "aperture_brightboost",
+			"text": "Shadow mask brightness boost",
+			"default": 0.0,
+			"max": 1.0,
+			"min": 0.0,
+			"step": 0.05,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "spot_size",
+			"text": "Spot size minimum",
+			"default": 0.18,
+			"max": 0.5,
+			"min": 0.1,
+			"step": 0.01,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "spot_growth",
+			"text": "Spot size dilation",
+			"default": 0.08,
+			"max": 0.4,
+			"min": 0.0,
+			"step": 0.01,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "spot_growth_power",
+			"text": "Spot dilation onset power",
+			"default": 3.0,
+			"max": 4.0,
+			"min": 0.2,
+			"step": 0.1,
+			"format": "%1.1f",
+			"screen": "raster"
+		},
+		{
+			"type": "intenum",
+			"name": "x_interpolation",
+			"text": "Horizontal interpolation",
+			"default": 2,
+			"max": 5,
+			"min": 0,
+			"step": 1,
+			"format": "%s",
+			"strings": [
+				"box",
+				"linear",
+				"Lanczos",
+				"Catmull-Rom",
+				"Mitchell-Netravali",
+				"B-spline"
+			],
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "curvature",
+			"text": "Enable curvature",
+			"default": 0.0,
+			"max": 1.0,
+			"min": 0.0,
+			"step": 1.0,
+			"format": "%1.0f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "R",
+			"text": "Radius of curvature",
+			"default": 3.5,
+			"max": 10.0,
+			"min": 0.5,
+			"step": 0.1,
+			"format": "%1.1f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "d",
+			"text": "Distance to screen",
+			"default": 2.0,
+			"max": 10.0,
+			"min": 0.1,
+			"step": 0.1,
+			"format": "%1.1f",
+			"screen": "raster"
+		},
+		{
+			"type": "vec2",
+			"name": "angle",
+			"text": "Tilt ",
+			"default": [
+				0.0,
+				0.0
+			],
+			"max": [
+				1.0,
+				1.0
+			],
+			"min": [
+				-1.0,
+				-1.0
+			],
+			"step": 0.01,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "cornersize",
+			"text": "Rounded corner size",
+			"default": 0.0,
+			"max": 0.1,
+			"min": 0.0,
+			"step": 0.01,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "cornersmooth",
+			"text": "Border smoothness",
+			"default": 1000,
+			"max": 2000,
+			"min": 100,
+			"step": 100,
+			"format": "%1.0f",
+			"screen": "raster"
+		},
+		{
+			"type": "vec2",
+			"name": "overscan",
+			"text": "Overscan ",
+			"default": [
+				1.0,
+				1.0
+			],
+			"max": [
+				1.2,
+				1.2
+			],
+			"min": [
+				0.8,
+				0.8
+			],
+			"step": 0.02,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "CRTgamma",
+			"text": "Gamma of simulated CRT",
+			"default": 2.4,
+			"max": 4.0,
+			"min": 0.7,
+			"step": 0.05,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "intenum",
+			"name": "monitorsRGB",
+			"text": "Gamma of output display",
+			"default": 0,
+			"max": 1,
+			"min": 0,
+			"step": 1,
+			"format": "%s",
+			"strings": [
+				"custom",
+				"sRGB"
+			],
+			"screen": "raster"
+		},
+		{
+			"type": "float",
+			"name": "monitorgamma",
+			"text": "Custom display gamma",
+			"default": 2.4,
+			"max": 4.0,
+			"min": 0.7,
+			"step": 0.05,
+			"format": "%1.2f",
+			"screen": "raster"
+		},
+		{
+			"type": "vec2",
+			"name": "aspect",
+			"text": "Aspect ratio ",
+			"default": [
+				1.0,
+				0.75
+			],
+			"max": [
+				1.0,
+				1.0
+			],
+			"min": [
+				0.3,
+				0.3
+			],
+			"step": 0.01,
+			"format": "%1.2f",
+			"screen": "raster"
+		}
+	],
+	"targets": [],
+	"passes": [
+		{
+			"effect": "crt-geom/crt-geom",
+			"name": "CRT",
+			"uniforms": [
+				{
+					"uniform": "curvature",
+					"slider": "curvature"
+				},
+				{
+					"uniform": "R",
+					"slider": "R"
+				},
+				{
+					"uniform": "d",
+					"slider": "d"
+				},
+				{
+					"uniform": "angle",
+					"slider": "angle"
+				},
+				{
+					"uniform": "cornersize",
+					"slider": "cornersize"
+				},
+				{
+					"uniform": "cornersmooth",
+					"slider": "cornersmooth"
+				},
+				{
+					"uniform": "overscan",
+					"slider": "overscan"
+				},
+				{
+					"uniform": "aspect",
+					"slider": "aspect"
+				},
+				{
+					"uniform": "CRTgamma",
+					"slider": "CRTgamma"
+				},
+				{
+					"uniform": "monitorsRGB",
+					"slider": "monitorsRGB"
+				},
+				{
+					"uniform": "monitorgamma",
+					"slider": "monitorgamma"
+				},
+				{
+					"uniform": "aperture_strength",
+					"slider": "aperture_strength"
+				},
+				{
+					"uniform": "aperture_brightboost",
+					"slider": "aperture_brightboost"
+				},
+				{
+					"uniform": "spot_size",
+					"slider": "spot_size"
+				},
+				{
+					"uniform": "spot_growth",
+					"slider": "spot_growth"
+				},
+				{
+					"uniform": "spot_growth_power",
+					"slider": "spot_growth_power"
+				},
+				{
+					"uniform": "u_interp",
+					"slider": "x_interpolation"
+				}
+			],
+			"input": [
+				{
+					"sampler": "mpass_texture",
+					"target": "screen"
+				},
+				{
+					"sampler": "mask_texture",
+					"texture": "bgfx/chains/crt-geom/aperture_1_2_bgr.png",
+					"selection": "Shadow mask"
+				}
+			],
+			"output": "output"
+		}
+	]
+}
