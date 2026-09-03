@@ -11,7 +11,8 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAME_DIR="${MAME_DIR:-/home/eloy/groovymame_src}"
+VECINOS="$(dirname "$AQUI")"   # los tres repos viven juntos
+MAME_DIR="${MAME_DIR:-$VECINOS/groovymame_src}"
 ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
 SALIDA="${SALIDA:-$AQUI/creditos.dat}"
 MAME_EXTRA="${MAME_EXTRA:-}"

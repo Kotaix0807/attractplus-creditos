@@ -1,5 +1,5 @@
 -- Pruebas del lector de creditos en memoria, sin MAME de por medio.
-local M = dofile('/home/eloy/groovyarcade-creditos/memoria.lua')
+local M = dofile('../memoria.lua')
 
 local fallos, pasadas = 0, 0
 local function ok(t, c, d)

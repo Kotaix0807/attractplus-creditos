@@ -61,7 +61,7 @@ encendiendo el plugin.
 
 1. Copiar el plugin y activarlo:
 
-       cp /home/eloy/attractplus/config/plugins/Creditos.nut $HOME/.attract/plugins/
+       cp ../attractplus/config/plugins/Creditos.nut $HOME/.attract/plugins/
 
    En AM+: *Configure > Plug-ins > Creditos > Enabled*. Ahi mismo se elige el
    boton de moneda y el resto de ajustes.
@@ -128,9 +128,9 @@ hace la propia interfaz de MAME al cambiar un DIP a mano.
 ## Probar sin frontend
 
     echo 3 > $HOME/.attract/creditos.txt
-    cd /home/eloy/groovymame_src
+    cd ../groovymame_src
     GA_VERBOSO=1 ./mame pacman -rompath /usr/share/games/mame/roms \
-      -autoboot_script /home/eloy/groovyarcade-creditos/creditos.lua \
+      -autoboot_script ../groovyarcade-creditos/creditos.lua \
       -autoboot_delay 6
 
 Sin pantalla, envolver en `xvfb-run -a` y anadir `-noswitchres`: GroovyMAME

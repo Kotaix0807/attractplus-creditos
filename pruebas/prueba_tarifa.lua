@@ -1,4 +1,4 @@
-local T = dofile('/home/eloy/groovyarcade-creditos/tarifa.lua')
+local T = dofile('../tarifa.lua')
 local casos = {
 	{'1 Coin/1 Credit',                1, 1, false},
 	{'1 Coin/2 Credits',               1, 2, false},

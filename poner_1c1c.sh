@@ -9,7 +9,7 @@
 # los creditos del frontend son exactos ya en el primer arranque.
 #
 # Variables:
-#   MAME_DIR   donde esta el ejecutable   (/home/eloy/groovymame_src)
+#   MAME_DIR   donde esta el ejecutable   (por defecto, el groovymame_src de al lado)
 #   ROMPATH    donde estan las roms       (/usr/share/games/mame/roms)
 #   CFG_DIR    cfg de MAME a modificar    (el que MAME use por defecto)
 #   MAME_EXTRA opciones extra para MAME
@@ -17,7 +17,8 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAME_DIR="${MAME_DIR:-/home/eloy/groovymame_src}"
+VECINOS="$(dirname "$AQUI")"   # los tres repos viven juntos
+MAME_DIR="${MAME_DIR:-$VECINOS/groovymame_src}"
 ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
 MAME_EXTRA="${MAME_EXTRA:-}"
 

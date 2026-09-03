@@ -1,5 +1,5 @@
 -- Pruebas de la contabilidad del monedero, sin MAME de por medio.
-local M = dofile('/home/eloy/groovyarcade-creditos/monedero.lua')
+local M = dofile('../monedero.lua')
 
 local RUTA = os.getenv('TMPDIR') and (os.getenv('TMPDIR') .. '/monedero_prueba.txt')
 	or '/tmp/monedero_prueba.txt'

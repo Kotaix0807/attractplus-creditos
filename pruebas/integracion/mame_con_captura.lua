@@ -13,7 +13,10 @@
 -- GA_PRUEBA_SALIR  frames en los que finge pulsar la tecla de salir
 -- GA_PRUEBA_START  frames en los que finge pulsar el start
 
-dofile('/home/eloy/groovyarcade-creditos/creditos.lua')
+-- MAME ejecuta esto con SU directorio de trabajo, no el nuestro, asi que
+-- la ruta se saca del propio fichero (igual que creditos.lua con sus modulos).
+local MI_DIR = (debug.getinfo(1, 'S').source or ''):match('^@(.*[/\\])') or ''
+dofile(MI_DIR .. '../../creditos.lua')
 
 local destino = os.getenv('GA_SNAP') or '/tmp/captura.png'
 local objetivo = tonumber(os.getenv('GA_SNAP_FRAMES') or '300')

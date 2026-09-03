@@ -16,7 +16,9 @@
 # que la captura fija. AM+ prefiere el video cuando existe.
 set -u
 
-MAME_DIR="${MAME_DIR:-/home/eloy/groovymame_src}"
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VECINOS="$(dirname "$AQUI")"   # los tres repos viven juntos
+MAME_DIR="${MAME_DIR:-$VECINOS/groovymame_src}"
 ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
 EMU="${EMU:-groovymame}"
 DESTINO="${DESTINO:-$HOME/.attract/scraper/$EMU/snap}"
@@ -36,6 +38,38 @@ DURA="${DURA:-12}"         # segundos que dura el video
 CALIDAD="${CALIDAD:-26}"   # crf de x264: mas bajo = mejor y mas grande
 
 command -v ffmpeg >/dev/null || { echo "hace falta ffmpeg" >&2; exit 1; }
+
+# --- la proporcion de verdad de cada juego ---------------------------------
+#
+# MAME graba con -aviwrite el bitmap CRUDO del juego (Pac-Man: 224x288), y esos
+# no son los pixeles que veia el jugador. El monitor de una recreativa es 4:3
+# fisico, asi que un juego vertical se ve a 3:4 = 0.750 y uno horizontal a
+# 1.333, gire lo que gire el bitmap. Guardarlo crudo deja a Q*bert un 25% mas
+# ancho de lo que debe y a Kung-Fu Master un 25% mas estrecho.
+#
+# La correccion SIEMPRE agranda un lado, nunca encoge el otro: asi no se tira
+# detalle de la imagen original.
+#
+# Devuelve "ANCHOxALTO" ya redondeado a par (lo exige yuv420p).
+proporcion() {   # $1=juego  $2=ancho crudo  $3=alto crudo
+	local rot
+	rot=$( cd "$MAME_DIR" && ./mame -listxml "$1" 2>/dev/null |
+	       sed -n 's/.*<display[^>]*rotate="\([0-9]*\)".*/\1/p' | head -1 )
+	python3 -c '
+import sys
+juego, w, h, rot = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4] or 0)
+deseada = 0.75 if rot in (90, 270) else 4/3
+if w / h > deseada:          # demasiado ancho: se estira a lo alto
+    w2, h2 = w, round(w / deseada)
+else:                        # demasiado estrecho: se estira a lo ancho
+    w2, h2 = round(h * deseada), h
+# Con tope: Frogger graba 224x768 y agrandar pedia un 2,6x de ancho inventado.
+if max(w2 / w, h2 / h) > 1.5:
+    if w / h > deseada:  w2, h2 = round(h * deseada), h
+    else:                w2, h2 = w, round(w / deseada)
+print(f"{w2 - w2 % 2}x{h2 - h2 % 2}")
+' "$1" "$2" "$3" "${rot:-0}"
+}
 [ -x "$MAME_DIR/mame" ] || { echo "no encuentro $MAME_DIR/mame" >&2; exit 1; }
 
 # --tira <juego>: graba un minuto y saca una tira de fotogramas, para VER en
@@ -113,7 +147,13 @@ for j in "${JUEGOS[@]}"; do
 
 	# -ss antes que -t: se descarta la carga y se toma el modo de atraccion.
 	# -an: sin audio (grabar sonido sin tarjeta no es fiable).
+	crudo=$( ffprobe -v error -select_streams v:0 \
+		-show_entries stream=width,height -of csv=p=0:s=x "$TMP/$j.avi" )
+	destino_px=$( proporcion "$j" "${crudo%x*}" "${crudo#*x}" )
+	[ "$crudo" = "$destino_px" ] || echo -n "($crudo -> $destino_px) "
+
 	if ffmpeg -y -loglevel error -i "$TMP/$j.avi" -ss "$salto" -t "$DURA" \
+		-vf "scale=${destino_px/x/:}:flags=lanczos" \
 		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p -an \
 		-movflags +faststart "$DESTINO/$j.mp4" 2>/dev/null \
 		&& [ -s "$DESTINO/$j.mp4" ]

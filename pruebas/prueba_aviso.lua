@@ -1,5 +1,5 @@
 -- Pruebas del cuadro de advertencia, sin MAME de por medio.
-local A = dofile('/home/eloy/groovyarcade-creditos/aviso.lua')
+local A = dofile('../aviso.lua')
 
 local fallos, pasadas = 0, 0
 

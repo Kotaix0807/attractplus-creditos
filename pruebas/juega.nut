@@ -1,6 +1,6 @@
 // juega.nut - banco de pruebas para trastear con Squirrel.
 //
-//   cd /home/eloy/groovyarcade-creditos/pruebas
+//   cd <groovyarcade-creditos>/pruebas
 //   ./sqhost juega.nut
 //
 // Esto NO es AM+: no hay fe.log ni fe.add_text. Sirve para el lenguaje puro:

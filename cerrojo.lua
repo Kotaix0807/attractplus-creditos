@@ -93,8 +93,16 @@ function M.nuevo(op)
 				end
 			else
 				c.soltar()
-				c.log('el boton de moneda vuelve a funcionar (quedan %d)',
-					c.disponible())
+				-- Sin monedero, disponible() es math.huge y no hay %d que
+				-- valga: en Lua 5.4 formatear infinito con %d es un error, y
+				-- reventaba el callback de frame entero (donde vive la
+				-- devolucion de monedas). Aqui no se imprime numero.
+				if c.ilimitado then
+					c.log('el boton de moneda vuelve a funcionar')
+				else
+					c.log('el boton de moneda vuelve a funcionar (quedan %d)',
+						c.disponible())
+				end
 			end
 		end
 	end

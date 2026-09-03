@@ -28,7 +28,7 @@
 set -eu
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-SQ=${SQ:-/home/eloy/attractplus/extlibs/squirrel}
+SQ=${SQ:-$(cd ../.. && pwd)/attractplus/extlibs/squirrel}
 
 if [ ! -x ./sqhost ] || [ sqhost.cpp -nt ./sqhost ]; then
 	echo "# compilando sqhost..."

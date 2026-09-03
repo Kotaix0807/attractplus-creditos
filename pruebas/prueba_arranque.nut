@@ -1,7 +1,7 @@
 // Pruebas del editor de ajustes por juego (Arranque.nut), con la maqueta.
 dofile( "maqueta.nut", true );
 
-PLUGIN <- "/home/eloy/attractplus/config/plugins/Arranque.nut";
+PLUGIN <- "../../attractplus/config/plugins/Arranque.nut";
 DAT <- "arranque_de_pruebas.dat";
 
 fallos <- 0; pasadas <- 0;

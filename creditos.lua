@@ -140,9 +140,14 @@ end
 
 local fin_del_arranque   -- se define mas abajo, cuando ya hay estado
 
+-- Un mensaje mal formateado NO debe tumbar a quien lo escribe: este log se
+-- llama desde el callback de frame, que es donde vive la devolucion de las
+-- monedas que la placa no recogio. Perder eso por un %d es inaceptable.
 local function log(fmt, ...)
 	if VERBOSO then
-		print(string.format('[creditos] ' .. fmt, ...))
+		local ok, txt = pcall(string.format, '[creditos] ' .. fmt, ...)
+		print(ok and txt or ('[creditos] ' .. fmt .. '  <no pude formatearlo: '
+			.. tostring(txt) .. '>'))
 	end
 end
 

@@ -54,7 +54,14 @@ tapper velocidad=0 segundos=3 nvram=0
 # precio: tampoco conservan las puntuaciones.
 mwalk nvram=0 segundos=10
 rbtapper velocidad=0 indicador=1 segundos=3 nvram=0
-pacman velocidad=0 indicador=1 segundos=5
+pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=1 velocidad=0 negro=0
 nrallyx segundos=13 velocidad=0 indicador=0
 mappy segundos=15 velocidad=0 indicador=0
+digdug segundos=8 velocidad=0
+ncv2 segundos=6 velocidad=0
+sf2 segundos=5 velocidad=0
+# sfiii3n es el set SIN CD (30 ficheros SIMM, ~80 MB) y aqui no esta; el que
+# hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
+sfiii3 segundos=13 velocidad=0
+simpsons2p segundos=11 velocidad=0 indicador=1
