@@ -59,7 +59,15 @@ if [ ${#faltan[@]} -gt 0 ]; then
 		pacman -Si "$p" >/dev/null 2>&1 || pacman -Sg "$p" >/dev/null 2>&1 &&
 			buenos+=( "$p" ) || aviso "  no esta en los repos: $p"
 	done
-	[ ${#buenos[@]} -gt 0 ] && sudo pacman -S --needed --noconfirm "${buenos[@]}"
+	if [ ${#buenos[@]} -gt 0 ] && ! sudo pacman -S --needed --noconfirm "${buenos[@]}"; then
+		# 404 en todos los espejos = base de datos vieja, no problema de red.
+		rojo "  Fallo la descarga en todos los espejos."
+		rojo "  La base de datos de pacman esta desfasada. Arreglalo con:"
+		rojo "      sudo pacman -Syu"
+		rojo "  (en Arch la actualizacion hay que hacerla entera: un -Sy a"
+		rojo "   secas deja el sistema a medias)"
+		exit 1
+	fi
 else
 	verde "  no falta nada"
 fi

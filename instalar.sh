@@ -270,6 +270,7 @@ git               git                      git
 make              build-essential          base-devel
 g++               build-essential          base-devel
 pkg-config        pkg-config               base-devel
+cmake             cmake                    cmake
 ffmpeg            ffmpeg                   ffmpeg
 curl              curl                     curl
 convert           imagemagick              imagemagick
@@ -330,11 +331,13 @@ libSDL2_image            libsdl2-image-2.0-0      sdl2_image
 libfontconfig            libfontconfig1           fontconfig
 libasound                libasound2t64            alsa-lib
 libpulse                 libpulse0                libpulse
+libpipewire              libpipewire-0.3-0        libpipewire
 "
 
-paquetes_del_emulador() {   # los que faltan para que el emulador arranque
+paquetes_del_emulador() {   # $1=binario (por defecto $MAME)
+	local bin="${1:-$MAME}"
 	local col; col=$( columna )
-	local faltantes; faltantes=$( ldd "$MAME" 2>/dev/null | awk '/not found/{print $1}' )
+	local faltantes; faltantes=$( ldd "$bin" 2>/dev/null | awk '/not found/{print $1}' )
 	[ -n "$faltantes" ] || return 0
 	local lib
 	while read -r pre deb arch; do
@@ -370,7 +373,30 @@ instalar_paquetes() {   # $@ = paquetes
 				sudo pacman -Sy --needed --noconfirm "$@"
 			else
 				[ ${#malos[@]} -gt 0 ] && aviso "  no estan en los repos: ${malos[*]}"
-				sudo pacman -S --needed --noconfirm "${buenos[@]}"
+				if ! sudo pacman -S --needed --noconfirm "${buenos[@]}"; then
+					# Los 404 en TODOS los espejos no son un problema de red:
+					# la base de datos local tiene versiones que ya no existen
+					# ahi fuera. En Arch eso se arregla con -Syu, y solo con
+					# -Syu: un -Sy a secas deja el sistema medio actualizado.
+					rojo "  fallo la descarga en todos los espejos."
+					echo "  Eso pasa cuando la base de datos de pacman esta vieja:"
+					echo "  tiene versiones de paquetes que ya no estan publicadas."
+					if d_si "Actualizar el sistema" \
+"pacman no puede bajar los paquetes porque su base de datos esta desfasada.
+
+Se arregla con una actualizacion completa del sistema (pacman -Syu). En Arch
+hay que hacerla entera: sincronizar sin actualizar deja el sistema a medias y
+rompe cosas.
+
+Es una cabina que ya funciona, asi que la decision es tuya. Actualizar ahora?" si
+					then
+						sudo pacman -Syu --noconfirm &&
+							sudo pacman -S --needed --noconfirm "${buenos[@]}"
+					else
+						echo "  Vale. Cuando quieras:  sudo pacman -Syu"
+						return 1
+					fi
+				fi
 			fi
 			;;
 		apt)    sudo apt-get update && sudo apt-get install -y "$@" ;;
@@ -461,8 +487,10 @@ tarea_descargar() {
 		return 1
 	fi
 	if [ "$ES_GROOVYARCADE" = 1 ]; then
-		aviso "  OJO: GroovyArcade ya trae su GroovyMAME, compilado para ella y"
-		aviso "  con switchres funcionando. Este de aqui viene de Ubuntu."
+		aviso "  OJO: GroovyArcade ya trae su GroovyMAME, compilado para ella."
+		aviso "  Este viene de Ubuntu: arranca si estan sus librerias (se"
+		aviso "  comprueban abajo), pero el de la distro esta hecho a medida."
+		aviso "  Si prefieres uno propio con los parches: ./parches/compilar-en-arch.sh"
 	fi
 
 	local casa="$HOME/.local/share/groovymame-cabina"
@@ -482,10 +510,27 @@ tarea_descargar() {
 	# directorio de trabajo, y el .cfg del emulador pone ahi el workdir.
 	tar -xJf "$tmp/bgfx.tar.xz" -C "$casa" || return 1
 
+	# El binario del release no es el del sistema y puede pedir librerias que
+	# aquel no tiene. Se comprueban sobre EL, no sobre el otro.
+	local faltan
+	mapfile -t faltan < <( paquetes_del_emulador "$casa/mame" )
+	if [ ${#faltan[@]} -gt 0 ]; then
+		echo "  le faltan librerias del sistema: ${faltan[*]}"
+		if d_si "Librerias del emulador" \
+"Al emulador que se acaba de bajar le faltan estas librerias:
+
+    ${faltan[*]}
+
+Sin ellas no arranca. Se instalan con sudo $GESTOR. Adelante?" si
+		then
+			instalar_paquetes "${faltan[@]}" || aviso "  no se pudieron instalar"
+		fi
+	fi
+
 	if ! "$casa/mame" -version >/dev/null 2>&1; then
 		rojo "  se bajo pero no arranca:"
 		"$casa/mame" -version 2>&1 | head -2 | sed 's/^/    /'
-		rojo "  le faltan librerias del sistema; marca tambien la tarea 'deps'"
+		rojo "  faltan librerias del sistema que no supe traducir a paquetes"
 		return 1
 	fi
 	verde "  + $casa/mame  ($("$casa/mame" -version 2>&1 | head -1))"
@@ -655,6 +700,10 @@ tarea_crt() {
 
 tarea_arte() {
 	paso "Descargando artes"
+	if [ ! -x "$AQUI/attractplus" ]; then
+		aviso "  el frontend no esta compilado todavia: me lo salto"
+		return 0
+	fi
 	( cd "$AQUI" && ./attractplus --scrape-art groovymame )
 	[ -x "$CREDITOS/aspecto.sh" ] && ( cd "$CREDITOS" && ./aspecto.sh )
 }
@@ -819,7 +868,22 @@ hace() { [[ " $TAREAS " == *" $1 "* ]]; }
 # --- a trabajar ---
 # El orden importa: dependencias antes de compilar, compilar antes de la lista.
 fallos=0
-hace deps     && { tarea_dependencias || fallos=$((fallos+1)); }
+if hace deps && ! tarea_dependencias; then
+	fallos=$((fallos+1))
+	# Sin dependencias, compilar es tiempo perdido y el error de despues no se
+	# entiende. Mejor decirlo aqui.
+	if ! d_si "Las dependencias fallaron" \
+"No se pudieron instalar todas las dependencias.
+
+Compilar sin ellas va a fallar, y con un error que no dice que el problema
+son las dependencias.
+
+Seguir de todas formas?" no
+	then
+		rojo "Parado. Arregla las dependencias y vuelve a lanzarlo."
+		exit 1
+	fi
+fi
 hace compilar && { tarea_compilar     || fallos=$((fallos+1)); }
 hace binario  && { tarea_binario      || fallos=$((fallos+1)); }
 hace descargar && { tarea_descargar  || fallos=$((fallos+1)); }

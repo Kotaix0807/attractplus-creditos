@@ -1822,6 +1822,39 @@ Las 339 comprobaciones de `correr.sh` pasan desde la ubicación nueva.
 `groovymame_src` sigue fuera y sin versionar: son 3 GB de fuentes de terceros.
 Lo que se versiona son los parches, en `parches/`.
 
+## Cinco fallos del primer intento en GroovyArcade
+
+Log del 2026-09-03, la primera vez que `instalar.sh` corrió en la cabina de
+verdad. Todos son cosas que aquí no se ven.
+
+**1. La base de datos de pacman estaba desfasada.** 404 en los sesenta espejos,
+con `pkgconf-3.0.5-1` e `imagemagick-7.1.2.29-2`: no es la red, es que la base
+local tiene versiones que ya no están publicadas. En Arch eso se arregla con
+**`pacman -Syu` y sólo con `-Syu`** — un `-Sy` a secas deja el sistema medio
+actualizado y rompe cosas. El instalador lo detecta y **pregunta** antes de
+actualizar: es una cabina que funciona, y esa decisión no es suya.
+
+**2. Faltaba `cmake` en la tabla de dependencias.** El Makefile de AM+ compila
+su propia SFML con cmake (`sfmlbuild`, línea 506), y aquí estaba instalado de
+antes, así que no se notó: `make: cmake: No such file or directory`.
+
+**3. Al binario del release le faltaba `libpipewire`.** Y el fallo de diseño
+detrás: `paquetes_del_emulador` miraba las librerías del emulador **del
+sistema**, no las del que se acababa de bajar. Ahora recibe qué binario mirar y
+la tarea `descargar` lo comprueba sobre el suyo.
+
+**Dato bueno de ahí: el release SÍ pasa la comprobación de glibc en
+GroovyArcade.** O sea que el binario de Ubuntu arranca allí en cuanto están sus
+librerías. El aviso se suavizó: el de la distro sigue siendo preferible por
+estar hecho a medida, pero no es que el otro no funcione.
+
+**4. `tarea_arte` no comprobaba que el frontend estuviera compilado**, así que
+soltaba `./attractplus: No such file or directory`. Como ya hacía `romlist`.
+
+**5. Que fallen las dependencias no paraba nada.** Se seguía adelante y la
+compilación reventaba con un error que no dice que el problema son las
+dependencias. Ahora pregunta si seguir, con «no» por defecto.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
