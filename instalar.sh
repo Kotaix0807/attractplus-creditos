@@ -761,6 +761,83 @@ tarea_crt() {
 	fi
 }
 
+tarea_salida() {
+	paso "Mandando la imagen al CRT"
+	local xinit="$HOME/.xinitrc"
+	if [ ! -f "$xinit" ]; then
+		aviso "  no hay ~/.xinitrc: aqui X no arranca por ahi, me lo salto"
+		return 0
+	fi
+
+	# Que salidas hay enchufadas, leidas del kernel (no hace falta X corriendo).
+	local conectadas=() internas=() externas=() c n
+	for c in /sys/class/drm/card*/card*-*; do
+		[ -f "$c/status" ] || continue
+		[ "$( cat "$c/status" )" = connected ] || continue
+		n="$( basename "$c" )"; n="${n#*-}"        # card0-VGA-1 -> VGA-1
+		conectadas+=( "$n" )
+		case "$n" in
+			LVDS*|eDP*|DSI*) internas+=( "$n" ) ;;
+			*)               externas+=( "$n" ) ;;
+		esac
+	done
+	echo "  conectadas: ${conectadas[*]:-ninguna}"
+
+	if [ ${#conectadas[@]} -lt 2 ] || [ ${#internas[@]} -eq 0 ] || [ ${#externas[@]} -eq 0 ]; then
+		verde "  no hay nada que decidir"
+		return 0
+	fi
+
+	# Con dos salidas, X las enciende las dos y pone la interna de primaria: el
+	# frontend se abre ahi y en el CRT solo se ve el fondo del escritorio.
+	local crt="${externas[0]}" panel="${internas[0]}"
+	if grep -q "^VGA-1 connected\|salida de la cabina" "$xinit" 2>/dev/null; then
+		verde "  ~/.xinitrc ya lo hace"
+		return 0
+	fi
+	if ! d_si "La salida de video" \
+"Hay dos pantallas enchufadas:
+
+    $crt   (el CRT)
+    $panel  (el panel interno)
+
+X las enciende las dos y pone $panel de primaria, asi que el frontend se abre
+ahi y en el CRT solo se ve el fondo.
+
+Apagar $panel al arrancar y dejar $crt como unica pantalla?" si
+	then
+		return 0
+	fi
+
+	cp "$xinit" "$xinit.antes_instalar"
+	python3 - "$xinit" "$crt" "$panel" <<'PY'
+import sys
+f, crt, panel = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(f).read()
+bloque = f"""
+# --- salida de la cabina -----------------------------------------------------
+# Sin esto X deja las dos salidas encendidas ({panel} de primaria) y el
+# frontend se abre en la que no es. El if importa: si algun dia no hay CRT, la
+# cabina tiene que seguir arrancando en el panel y no quedarse a oscuras.
+if xrandr --query | grep -q "^{crt} connected" ; then
+    xrandr --output {crt} --primary --pos 0x0 --output {panel} --off
+fi
+
+"""
+# Antes de lo ultimo que se lance, que es el frontend
+for marca in ("/opt/galauncher/startfe-X.sh", "exec ", "attractplus"):
+    if marca in s:
+        i = s.index(marca)
+        s = s[:i] + bloque.lstrip("\n") + s[i:]
+        break
+else:
+    s = s.rstrip("\n") + "\n" + bloque
+open(f, "w").write(s)
+PY
+	verde "  + ~/.xinitrc apaga $panel y deja $crt"
+	aviso "  reinicia el frontend para que surta efecto"
+}
+
 tarea_arte() {
 	paso "Descargando artes"
 	if [ ! -x "$AQUI/attractplus" ]; then
@@ -913,6 +990,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		romlist  "Construir la lista de juegos"                  ON \
 		arte     "Descargar marquesinas y capturas"              ON \
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
+		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		descargar "Bajar GroovyMAME ya parcheado (81 MB, sin compilar)" OFF \
 		mame     "Parchear y compilar GroovyMAME (largo)"        OFF \
 		videos   "Grabar los videos de muestra (~10 min)"        OFF \
@@ -953,6 +1031,7 @@ hace descargar && { tarea_descargar  || fallos=$((fallos+1)); }
 hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
+hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace romlist  && { tarea_romlist      || fallos=$((fallos+1)); }
 hace arte     && { tarea_arte         || fallos=$((fallos+1)); }
 hace videos   && { tarea_videos       || fallos=$((fallos+1)); }

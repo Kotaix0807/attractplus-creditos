@@ -1922,35 +1922,63 @@ emulador tambien arranca ahi, pero **con `-noswitchres`**: si no, switchres
 calcula modelines contra un display virtual y revienta con `SIGFPE`, que es el
 mismo fallo ya documentado en «Cómo probar».
 
-### La pantalla VGA no se usaba
+### La pantalla VGA: X encendia las dos, y el frontend salia en la otra
 
-Los tres conectores, leidos de `/sys/class/drm`:
+Tres intentos hasta dar con esto, y los dos primeros iban por mal camino.
+
+Los conectores, leidos de `/sys/class/drm`: `HDMI-A-1` desconectado,
+`LVDS-1` conectado (el panel interno) y `VGA-1` conectado (el CRT).
+`ga.conf` traia `connector=LVDS-1` y `monitor=lcd`, asi que lo primero que
+supuse fue que habia que cambiar el conector de arranque del kernel.
+
+**Era mentira, y la prueba fue arrancar X y preguntarle a xrandr:**
 
 ```
-card0-HDMI-A-1   disconnected
-card0-LVDS-1     connected     <- el panel interno, y el que usa la cabina
-card0-VGA-1      connected     <- el CRT
+Screen 0: current 2390 x 768
+LVDS-1 connected primary 1366x768+0+0
+VGA-1  connected         1024x768+1366+0
 ```
 
-`ga.conf` trae `connector=LVDS-1` y `monitor=lcd`, y el kernel arranca con
-`monitor=lcd`. El CRT del VGA ofrece 1024x768, 1280x1024 y 1152x864: es un
-multisync de **31 kHz**, no un monitor arcade de 15.
+**Las dos salidas estaban encendidas.** El CRT funcionaba perfectamente: mostraba
+la parte derecha de un escritorio extendido, que esta vacia. El frontend se abre
+en la primaria, que es el panel. Es el mismo problema del portatil, pero al
+reves de facil: aqui es Xorg de verdad, asi que **xrandr si manda**.
 
-**Son DOS ajustes distintos, y ahi esta la trampa.** Eloy cambio el preset de
-switchres a `pc_31_120` (correcto para un CRT de PC de 31 kHz) y siguio sin
-verse nada: eso no toca el conector de arranque. La ruta completa es
+El arreglo va en `~/.xinitrc`, que es del usuario y no necesita root, antes de
+`/opt/galauncher/startfe-X.sh`:
 
-    gasetup > Setup > Video Boot Options
-           > 2 "Video Card Output Khz List"     (lib-video.sh:356)
-           > 17 "[VGA-1 31khz]"                 (lib-video.sh:571)
+```bash
+if xrandr --query | grep -q "^VGA-1 connected" ; then
+    xrandr --output VGA-1 --primary --pos 0x0 --output LVDS-1 --off
+fi
+```
 
-que pone `VGA-1:640x480ey` en la linea del kernel. Despues pide elegir el tipo
-de monitor otra vez, y **hay que reiniciar**. A mano no: `ga.conf` no regenera
-solo ni el cmdline ni el syslinux.
+El `if` no es adorno: sin CRT enchufado la cabina tiene que seguir arrancando en
+el panel en vez de quedarse sin ninguna pantalla. Verificado en la cabina:
+`Screen 0: current 1024 x 768`, `VGA-1 primary`, `LVDS-1` apagada.
 
-Detalle del entorno: el kernel es `7.1.8-arch1-3-15khz`, parcheado para 15 kHz,
-y glibc es **2.44** -- por eso el binario del release (que pide 2.38) arranca
-ahi sin problema.
+La tarea `salida` del instalador lo hace sola: lee las salidas conectadas del
+kernel (sin necesitar X), y si hay una interna (`LVDS`, `eDP`, `DSI`) y una
+externa, ofrece apagar la interna.
+
+### Dos caminos que NO eran
+
+Merece la pena apuntarlos porque parecian obvios:
+
+- **El menu del conector de arranque no existe en esta version.**
+  `worker_video_boot_options` (`lib-video.sh:325`), con su lista de
+  `[VGA-1 31khz]`, **no lo llama nadie**: es codigo muerto. El menu real esta
+  recortado a Monitor Type / Monitor Orientation / Video resolution / X/KMS /
+  Tweak geometry, y su opcion 6 «Video resolution» llama a
+  `worker_kernel_video_boot`, que solo cambia la RESOLUCION, no el conector.
+- **`xorg.conf` tampoco.** `set_xorg_conf` esta marcado `DEPRECATED` en
+  `/opt/gatools/video/video.sh` y no lo invoca nadie; no hay `/etc/X11/xorg.conf`
+  ni nada en `xorg.conf.d`. X se autoconfigura.
+
+Y una precision que costo una vuelta: **el preset de switchres (`monitor=`) y la
+salida fisica son cosas distintas**. Eloy cambio el monitor a `pc_31_120`, que
+es lo correcto para su CRT de 31 kHz, y no se movio la imagen: eso solo le dice
+a switchres que modelines calcular.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
