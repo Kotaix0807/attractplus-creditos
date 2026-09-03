@@ -435,6 +435,55 @@ tarea_compilar() {
 	( cd "$AQUI" && "${envoltorio[@]}" make -j"$n" )
 }
 
+# De donde se baja el emulador ya parcheado.
+RELEASE="https://github.com/Kotaix0807/attractplus-creditos/releases/download/groovymame-0.289-cabina"
+
+tarea_descargar() {
+	paso "Bajando GroovyMAME ya parcheado"
+
+	# Esta compilado en Ubuntu 24.04 y exige glibc 2.38 o mas. Con una anterior
+	# el binario no arranca ni da un mensaje que se entienda, asi que se
+	# comprueba ANTES de bajar 81 MB.
+	local tengo
+	tengo="$( ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' )"
+	if [ -n "$tengo" ] && ! printf '2.38\n%s\n' "$tengo" | sort -VC; then
+		rojo "  este sistema tiene glibc $tengo y el binario exige 2.38 o mas"
+		rojo "  aqui hay que compilarlo: marca la tarea 'mame'"
+		return 1
+	fi
+	if [ "$ES_GROOVYARCADE" = 1 ]; then
+		aviso "  OJO: GroovyArcade ya trae su GroovyMAME, compilado para ella y"
+		aviso "  con switchres funcionando. Este de aqui viene de Ubuntu."
+	fi
+
+	local casa="$HOME/.local/share/groovymame-cabina"
+	mkdir -p "$casa"
+	local tmp; tmp="$( mktemp -d )"
+	trap 'rm -rf "$tmp"' RETURN
+
+	echo "  bajando el emulador (81 MB)..."
+	curl -fL# -o "$tmp/mame.xz" "$RELEASE/groovymame-0.289-cabina.xz" || {
+		rojo "  no se pudo bajar"; return 1; }
+	echo "  bajando los shaders..."
+	curl -fL# -o "$tmp/bgfx.tar.xz" "$RELEASE/bgfx-0.289-cabina.tar.xz" || {
+		rojo "  no se pudieron bajar los shaders"; return 1; }
+
+	xz -dc "$tmp/mame.xz" > "$casa/mame" && chmod +x "$casa/mame" || return 1
+	# El bgfx va AL LADO del binario: MAME lo busca en "bgfx" relativo a su
+	# directorio de trabajo, y el .cfg del emulador pone ahi el workdir.
+	tar -xJf "$tmp/bgfx.tar.xz" -C "$casa" || return 1
+
+	if ! "$casa/mame" -version >/dev/null 2>&1; then
+		rojo "  se bajo pero no arranca:"
+		"$casa/mame" -version 2>&1 | head -2 | sed 's/^/    /'
+		rojo "  le faltan librerias del sistema; marca tambien la tarea 'deps'"
+		return 1
+	fi
+	verde "  + $casa/mame  ($("$casa/mame" -version 2>&1 | head -1))"
+	# El resto del instalador usa este
+	MAME="$casa/mame"
+}
+
 tarea_mame() {
 	paso "Parcheando y compilando GroovyMAME"
 	local fuentes="$AQUI/../groovymame_src"
@@ -735,6 +784,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		romlist  "Construir la lista de juegos"                  ON \
 		arte     "Descargar marquesinas y capturas"              ON \
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
+		descargar "Bajar GroovyMAME ya parcheado (81 MB, sin compilar)" OFF \
 		mame     "Parchear y compilar GroovyMAME (largo)"        OFF \
 		videos   "Grabar los videos de muestra (~10 min)"        OFF \
 		3>&1 1>&2 2>&3 ) && TAREAS="${seleccion//\"/}"
@@ -755,7 +805,8 @@ fallos=0
 hace deps     && { tarea_dependencias || fallos=$((fallos+1)); }
 hace compilar && { tarea_compilar     || fallos=$((fallos+1)); }
 hace binario  && { tarea_binario      || fallos=$((fallos+1)); }
-hace mame     && { tarea_mame         || fallos=$((fallos+1)); }
+hace descargar && { tarea_descargar  || fallos=$((fallos+1)); }
+hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace romlist  && { tarea_romlist      || fallos=$((fallos+1)); }
