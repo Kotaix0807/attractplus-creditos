@@ -22,8 +22,8 @@ class UserConfig </ help="Ajusta la carga acelerada de cada juego (velocidad y s
 	</ label="Senal alternativa", help="Abre el menu tambien con esta accion del frontend. OJO: hay que mapearla antes en Controls > Custom, o no se emite nunca y parece que el plugin no funciona. 'ninguna' para no usarla", options="ninguna,custom1,custom2,custom3,custom4,custom5,custom6,custom7,custom8,custom9,custom10", order=2 />
 	senal="ninguna";
 
-	</ label="Fichero de ajustes", help="Debe ser el mismo arranque.dat que lee creditos.lua", order=3 />
-	fichero="/home/eloy/groovyarcade-creditos/arranque.dat";
+	</ label="Fichero de ajustes", help="Ruta del arranque.dat que lee creditos.lua. Lo rellena instalar.sh con la ruta de esta maquina; si esta vacio, el menu no puede guardar nada", order=3 />
+	fichero="";
 }
 
 
@@ -67,7 +67,8 @@ class Arranque
 		fe.add_signal_handler( this, "en_senal" );
 
 		fe.log( "Arranque: listo (tecla=[" + m_boton + "] senal=[" + m_senal
-			+ "] fichero=" + m_fichero + ")\n" );
+			+ "] fichero=" + ( m_fichero.len() > 0 ? m_fichero : "SIN CONFIGURAR" )
+			+ ")\n" );
 	}
 
 	// El menu se abre al SOLTAR la tecla, para que mantenerla pulsada no lo
