@@ -1,0 +1,67 @@
+# arranque.dat - ajuste fino de la carga de cada juego.
+#
+# Una linea por juego: el nombre del set y pares clave=valor separados por
+# espacios. La linea "defecto" vale para los juegos que no tengan la suya.
+#
+#   velocidad   a que velocidad corre el emulador mientras carga, en PORCENTAJE
+#                 100 = normal        200 = el doble       1000 = diez veces
+#                   0 = sin freno, lo mas rapido que la maquina pueda
+#
+#   segundos    cuanto dura eso: los segundos que la pantalla esta en negro
+#               mientras el juego carga. Es EXACTO, no una estimacion.
+#
+# OJO CON LOS SEGUNDOS: son segundos DEL JUEGO, no de reloj. Acelerar no tapa
+# mas carga, tapa la misma en menos espera. Con "segundos=10 velocidad=500" el
+# juego avanza 10 segundos suyos y tu esperas unos 2.
+#
+# Y con segundos=0 no hay ventana de arranque, asi que la velocidad TAMPOCO se
+# aplica: el ajuste entero queda desactivado.
+#
+#   indicador=1 muestra ">> CARGANDO AL 300%" en pantalla mientras la emulacion
+#               va acelerada, para ver de un vistazo si el ajuste hace algo.
+#               Apagado por defecto: en una cabina no pinta nada
+#
+#   negro=0     acelera igual pero NO tapa la pantalla. Es como se ve el efecto
+#               de la velocidad mientras se ajusta un juego:
+#                 tapper segundos=10 velocidad=500 negro=0
+#               (medido: esos 10 s de juego tardan 14,9 s reales al 100% y 3,7
+#               al 500%)
+#
+# Mientras la pantalla esta en negro, el boton de moneda esta cerrado: durante
+# su test de arranque la placa TIRA las monedas, asi que dejar pulsar ahi seria
+# cobrar por nada. Si un juego tarda mas de la cuenta, subele los segundos.
+#
+# Dos claves mas, para casos concretos:
+#
+#   nvram=0     el juego no guarda su NVRAM al salir. Es para los que arrancan
+#               con los creditos de la sesion anterior (mwalk, tapper). Ojo:
+#               tampoco conservaran las puntuaciones.
+#
+#   auto=1      en vez de usar los segundos tal cual, se alarga solo hasta
+#               detectar que la placa esta lista. Solo funciona en los juegos
+#               que estan en creditos.dat, porque la senal que se mira es su
+#               contador de creditos. Apagado por defecto: el ajuste normal es
+#               poner los segundos a mano.
+#
+# Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
+# una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
+defecto velocidad=0 segundos=5
+simpsons segundos=11 velocidad=0
+kungfum segundos=0 velocidad=100
+tapper velocidad=0 segundos=3 nvram=0
+# Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
+# nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
+# precio: tampoco conservan las puntuaciones.
+mwalk nvram=0 segundos=10
+rbtapper velocidad=0 indicador=1 segundos=3 nvram=0
+pacman segundos=5 velocidad=0 indicador=0
+qbert segundos=1 velocidad=0 negro=0
+nrallyx segundos=13 velocidad=0 indicador=0
+mappy segundos=15 velocidad=0 indicador=0
+digdug segundos=8 velocidad=0
+ncv2 segundos=6 velocidad=0
+sf2 segundos=5 velocidad=0
+# sfiii3n es el set SIN CD (30 ficheros SIMM, ~80 MB) y aqui no esta; el que
+# hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
+sfiii3 segundos=13 velocidad=0
+simpsons2p segundos=11 velocidad=0 indicador=1

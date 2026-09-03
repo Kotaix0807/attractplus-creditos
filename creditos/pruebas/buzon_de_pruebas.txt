@@ -1,0 +1,2 @@
+saldo 2
+inserta 0

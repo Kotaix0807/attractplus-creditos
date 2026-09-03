@@ -1,0 +1,4 @@
+pruebas/sqhost
+pruebas/*.o
+*.bak
+*.bak2
