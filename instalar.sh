@@ -1003,6 +1003,24 @@ if [ "$ES_GROOVYARCADE" = 1 ] && [ -f "$GA_CONF" ]; then
 	fi
 fi
 
+# Displays que apuntan a un emulador que no esta definido. AM+ los muestra
+# igual y solo falla AL LANZAR, con "Error getting emulator info for launch",
+# que no dice cual ni por que. En GroovyArcade venia un display 'MAME' cuya
+# lista pedia un emulador que no existia, y como era el PRIMERO, la cabina
+# arrancaba en el y el layout nuestro no se veia nunca.
+if [ -f "$DESTINO/config/displays.cfg" ]; then
+	while read -r lista; do
+		[ -n "$lista" ] || continue
+		archivo="$DESTINO/romlists/$lista.txt"
+		[ -f "$archivo" ] || continue
+		emu="$( sed -n '2p' "$archivo" | cut -d';' -f3 )"
+		if [ -n "$emu" ] && [ ! -f "$DESTINO/emulators/$emu.cfg" ]; then
+			aviso "  la lista '$lista' pide el emulador '$emu' y no esta definido"
+			aviso "  (sus juegos daran 'Error getting emulator info for launch')"
+		fi
+	done < <( sed -n 's/^[[:space:]]*romlist[[:space:]]\+//p' "$DESTINO/config/displays.cfg" )
+fi
+
 sistema="$( command -v attractplus 2>/dev/null || true )"
 if [ -n "$sistema" ] && [ "$sistema" != "$AQUI/attractplus" ]; then
 	if [ "$sistema" -ef "$AQUI/attractplus" ]; then

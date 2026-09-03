@@ -1889,6 +1889,39 @@ del de serie, y eso es correcto. La regla es que **ningun display use un layout
 que este en nuestro directorio de layouts**. Y al corregirlo se busca el display
 por su **lista de roms**, no por su nombre, que puede ser cualquiera.
 
+### Por que el layout seguia sin salir: el display equivocado
+
+Segunda pasada por ssh. El binario ya era el nuestro (el log lo canta:
+`+Xinerama` y `Arranque: listo`), pero el log decia:
+
+```
+*** Initializing display: 'MAME'
+ - Loaded layout: /usr/local/share/attractplus/layouts/Attrac-Man/layout.nut
+Error getting emulator info for launch
+```
+
+`displays.cfg` traia **dos** displays y el de GroovyArcade, `MAME`, era el
+**primero**: la cabina arrancaba en el. Y encima estaba roto — su lista pedia
+un emulador `MAME` que no estaba definido en `emulators/`, de ahi el
+`Error getting emulator info for launch` al lanzar cualquier juego.
+
+Quitado ese display, el log pasa a:
+
+```
+*** Initializing display: 'groovymame'
+ - Loaded layout: .../layouts/Arcade-UMAG/layout.nut
+```
+
+La revision del instalador ahora avisa de las listas que piden un emulador que
+no existe: AM+ las muestra igual y **solo falla AL LANZAR**, con un mensaje que
+no dice cual ni por que.
+
+Se puede probar todo esto sin pantalla: la cabina trae `xvfb-run`, y
+`xvfb-run -a attractplus-x11` enseña que display y que layout carga. El
+emulador tambien arranca ahi, pero **con `-noswitchres`**: si no, switchres
+calcula modelines contra un display virtual y revienta con `SIGFPE`, que es el
+mismo fallo ya documentado en «Cómo probar».
+
 ### La pantalla VGA no se usaba
 
 Los tres conectores, leidos de `/sys/class/drm`:
@@ -1903,9 +1936,17 @@ card0-VGA-1      connected     <- el CRT
 `monitor=lcd`. El CRT del VGA ofrece 1024x768, 1280x1024 y 1152x864: es un
 multisync de **31 kHz**, no un monitor arcade de 15.
 
-Se cambia en **gasetup > Setup > video**, opcion **17 `[VGA-1 31khz]`**
-(`lib-video.sh:571`), que pone `VGA-1:640x480ey` en la linea del kernel. A mano
-no: `ga.conf` no regenera solo ni el cmdline ni el arranque.
+**Son DOS ajustes distintos, y ahi esta la trampa.** Eloy cambio el preset de
+switchres a `pc_31_120` (correcto para un CRT de PC de 31 kHz) y siguio sin
+verse nada: eso no toca el conector de arranque. La ruta completa es
+
+    gasetup > Setup > Video Boot Options
+           > 2 "Video Card Output Khz List"     (lib-video.sh:356)
+           > 17 "[VGA-1 31khz]"                 (lib-video.sh:571)
+
+que pone `VGA-1:640x480ey` en la linea del kernel. Despues pide elegir el tipo
+de monitor otra vez, y **hay que reiniciar**. A mano no: `ga.conf` no regenera
+solo ni el cmdline ni el syslinux.
 
 Detalle del entorno: el kernel es `7.1.8-arch1-3-15khz`, parcheado para 15 kHz,
 y glibc es **2.44** -- por eso el binario del release (que pide 2.38) arranca
