@@ -29,8 +29,9 @@ quedan en pie las dos piezas que Eloy quiso conservar, y siguen probadas:
 
 **Nada de lo anterior se ha borrado.** El sistema completo del monedero
 compartido (cerrojo, cobro al meter, devolución, contador físico) está en la
-rama **`monedero-frontend`** de los dos repos (`attractplus` y
-`groovyarcade-creditos`, que desde el 2026-08-29 también está bajo git).
+rama **`monedero-frontend`** (la parte del frontend) y en
+**`creditos-monedero-frontend`** (la de MAME, que era un repo aparte hasta que
+se fundieron el 2026-09-03).
 Encenderlo otra vez son dos interruptores: `GA_MONEDERO=1` y activar el plugin.
 Sus pruebas siguen pasando, porque los escenarios lo piden explícitamente.
 
@@ -210,7 +211,7 @@ jugador mete durante la partida -> al volver, el plugin lee "saldo"
   veces. (Ese error estuvo escrito y se quitó.)
 - Nada de generar un `.lua` por lanzamiento, como ya decía este documento.
 
-Ficheros en `~/Dev/arcade/groovyarcade-creditos/`: `creditos.lua`, `monedero.lua`
+Ficheros en `creditos/`: `creditos.lua`, `monedero.lua`
 (la cuenta), `tarifa.lua` (el DIP), `poner_1c1c.lua` + `.sh` (pasada única),
 `groovymame.cfg` (emulador de ejemplo), `README.md`, `pruebas/`.
 
@@ -1142,7 +1143,7 @@ Xvfb :99 -screen 0 800x600x24 &
 GA_CREDITOS=3 GA_VERBOSO=1 DISPLAY=:99 ./mame pacman \
   -rompath /usr/share/games/mame/roms -video soft -sound none -nothrottle \
   -noswitchres -window -resolution 640x480 -seconds_to_run 14 \
-  -autoboot_script ~/Dev/arcade/groovyarcade-creditos/creditos.lua -autoboot_delay 6
+  -autoboot_script creditos/creditos.lua -autoboot_delay 6
 ```
 
 Para matar Xvfb sin suicidarse: `pkill -f "[X]vfb :99"` (con corchete, si no el
@@ -1160,7 +1161,7 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 
 ## El script de créditos
 
-`~/Dev/arcade/groovyarcade-creditos/creditos.lua`, configurable por entorno:
+`creditos/creditos.lua`, configurable por entorno:
 
 | Variable | Por defecto | Qué hace |
 |---|---|---|
@@ -1267,7 +1268,7 @@ Con AM+ compilado, esto ya no es lectura de código sino medición:
 
 ## Cómo se prueba el plugin
 
-`~/Dev/arcade/groovyarcade-creditos/pruebas/correr.sh` — 84 comprobaciones del
+`creditos/pruebas/correr.sh` — 84 comprobaciones del
 plugin, 24 del analizador de tarifas, 46 del monedero, 53 del cuadro de aviso,
 46 de la lectura y escritura en memoria, 23 de los ajustes por juego, 37 del
 cerrojo de la moneda y 7 del importador de cheats, y no
@@ -1794,6 +1795,56 @@ recompilar GroovyMAME desde el PKGBUILD de Arch.
 Es el destino real de la cabina: una distro Arch con GroovyMAME **ya
 instalado**. La detección lo busca en `/usr/bin/groovymame` y la tarea de
 parchear y compilar MAME viene desmarcada por defecto.
+
+## Un solo `git clone`: los dos repos son uno
+
+Pedido por Eloy el 2026-09-03: *«la idea es hacer solo 1 gitclone»*. Tenía
+razón — dos repositorios que sólo funcionan juntos son dos formas de que la
+instalación salga a medias.
+
+`groovyarcade-creditos` está ahora dentro, en **`creditos/`**, metido con
+`git subtree add` para no perder su historial. Su rama del monedero se
+conservó como `creditos-monedero-frontend`.
+
+Lo que hubo que rehacer: los scripts derivaban sus rutas suponiendo que los
+repos eran **hermanos** (`$AQUI/../groovymame_src`), y ahora `creditos/` está un
+nivel más adentro. En vez de cambiar un `..` por otro, hay una función `vecino()`
+que **prueba las dos disposiciones**, porque una copia de trabajo antigua sigue
+teniéndolos al lado:
+
+```bash
+MAME_DIR="${MAME_DIR:-$( vecino mame \
+	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
+```
+
+Las 339 comprobaciones de `correr.sh` pasan desde la ubicación nueva.
+
+`groovymame_src` sigue fuera y sin versionar: son 3 GB de fuentes de terceros.
+Lo que se versiona son los parches, en `parches/`.
+
+## Compilar GroovyMAME parcheado en GroovyArcade
+
+`parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
+sirve ahí**: está hecho en Ubuntu 24.04 y exige glibc 2.38, y aunque arrancara,
+GroovyArcade ya trae su GroovyMAME con switchres funcionando de verdad.
+
+El script **no toca nada del sistema**: compila a
+`~/.local/share/groovymame-cabina/`, que es donde `instalar.sh` lo busca, y el
+`groovymame` de la distro se queda intacto. Volver atrás es borrar esa carpeta.
+
+Detalles que lleva dentro:
+
+- **Clona la versión que ya está instalada**, no una cualquiera: lee
+  `groovymame -version` y traduce `0.264` a la rama `mame0264`.
+- Los parches se aplican con `--dry-run` primero, para no dejar las fuentes a
+  medias si no encajan.
+- `pacman -Si` antes de instalar, porque pacman aborta la instalación entera si
+  un solo nombre no existe en esa versión de los repos.
+- Comprueba que haya 12 GB libres, y si la compilación falla sugiere
+  `TRABAJOS=1`, que es lo que suele pasar en un mini-PC: se queda sin memoria.
+
+**No está probado en Arch** — aquí no hay ninguna máquina Arch. Lo que sí está
+probado es que se niega a correr donde no toca.
 
 ## Próximos pasos
 

@@ -28,7 +28,10 @@
 set -eu
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-SQ=${SQ:-$(cd ../.. && pwd)/attractplus/extlibs/squirrel}
+# creditos/ esta dentro de attractplus, asi que squirrel queda dos
+# niveles arriba. Si los repos estuvieran al lado, seria ../../attractplus.
+SQ=${SQ:-$( [ -d ../../extlibs/squirrel ] && echo ../../extlibs/squirrel \
+                                          || echo ../../attractplus/extlibs/squirrel )}
 
 if [ ! -x ./sqhost ] || [ sqhost.cpp -nt ./sqhost ]; then
 	echo "# compilando sqhost..."

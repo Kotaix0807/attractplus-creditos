@@ -14,7 +14,7 @@ la que corre.
 | Sitio | Qué hay | ¿Git? |
 |---|---|---|
 | `~/Dev/arcade/attractplus/` | El frontend (código de AM+) + lo nuestro en Squirrel y Python | **sí** |
-| `~/Dev/arcade/groovyarcade-creditos/` | Todo lo de MAME, en Lua, y las pruebas | **sí** |
+| `~/Dev/arcade/attractplus/creditos/` | Todo lo de MAME, en Lua, y las pruebas | **sí**, en el mismo repo |
 | `~/Dev/arcade/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
 | `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
@@ -63,6 +63,7 @@ Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 | `pantalla.py` | Cambia la disposición de monitores (bajo Wayland, `xrandr` no manda) |
 | `patron.py` | Patrón de ajuste del CRT: geometría y si resuelve líneas de 1 px |
 | `parches/groovymame-guardar-ajustes-video.patch` | Que MAME guarde `keepaspect` y el escalado del menú Video Options |
+| `parches/compilar-en-arch.sh` | Compila GroovyMAME parcheado en GroovyArcade, sin tocar el del sistema |
 | `config/cabina/crt-real.json` | Shader crt-geom ajustado para una pantalla que ya es CRT |
 | `src/scraper_general.cpp` | Parcheado: usa el scraper de MAME y no thegamesdb |
 
@@ -91,7 +92,7 @@ done
 
 ---
 
-## `~/Dev/arcade/groovyarcade-creditos/` — todo lo de MAME
+## `creditos/` — todo lo de MAME
 
 `creditos.lua` es el que arranca (lo lanza el emulador con `-autoboot_script`) y
 carga a los demás con `dofile`.
@@ -176,9 +177,8 @@ Las copias `*.antes*` son respaldos de cuando algo se rompió. Se pueden borrar.
 ## Instalar en otra máquina
 
 ```bash
-git clone <este repo>              ~/Dev/arcade/attractplus
-git clone <groovyarcade-creditos>  ~/Dev/arcade/groovyarcade-creditos
-cd ~/Dev/arcade/attractplus && ./instalar.sh
+git clone https://github.com/Kotaix0807/attractplus-creditos.git
+cd attractplus-creditos && ./instalar.sh
 ```
 
 `instalar.sh` crea `~/.attract`, copia plugins, layout, módulos y configuración,
@@ -209,7 +209,7 @@ destapó que faltaba copiar `modules/` — sin él el layout revienta con un
 ## Las pruebas
 
 ```bash
-cd ~/Dev/arcade/groovyarcade-creditos/pruebas
+cd creditos/pruebas
 ./correr.sh          # 390 comprobaciones, sin emulador ni frontend (segundos)
 ./aviso_mame.sh      # 56 dentro de MAME de verdad (minutos)
 ./integracion.sh     # 9 con AM+ de verdad, bajo Xvfb (minutos)

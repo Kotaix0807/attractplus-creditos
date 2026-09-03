@@ -1,7 +1,7 @@
 // Pruebas del plugin de creditos contra la maqueta de AM+.
 dofile( "maqueta.nut", true );
 
-PLUGIN <- "../../attractplus/config/plugins/Creditos.nut";
+PLUGIN <- "../../config/plugins/Creditos.nut";
 BUZON  <- "buzon_de_pruebas.txt";   // relativo: se ejecuta desde este directorio
 
 fallos <- 0;

@@ -1,9 +1,11 @@
 #!/bin/bash
 # Deja la cabina lista en una maquina nueva, preguntando lo justo.
 #
-#   git clone <este repo> ~/Dev/arcade/attractplus
-#   git clone <el otro>   ~/Dev/arcade/groovyarcade-creditos
-#   cd ~/Dev/arcade/attractplus && ./instalar.sh
+#   git clone https://github.com/Kotaix0807/attractplus-creditos.git
+#   cd attractplus-creditos && ./instalar.sh
+#
+# Una sola clonacion: lo de MAME (creditos.lua, arranque.dat, las pruebas) va
+# dentro, en creditos/.
 #
 # Va por pasos con whiptail. TODO tiene valor por defecto: si le das a Enter a
 # todo, o si lanzas con --sin-preguntar, hace lo razonable sin preguntar nada.
@@ -198,7 +200,14 @@ if [ "$ES_GROOVYARCADE" = 1 ]; then
 else
 	DESTINO="${DESTINO:-$HOME/.attract}"
 fi
-CREDITOS="${CREDITOS:-$(cd "$AQUI/../groovyarcade-creditos" 2>/dev/null && pwd || true)}"
+# Lo de MAME va dentro del repo, en creditos/. Se mira tambien al lado por si
+# alguien viene de cuando eran dos repos separados.
+if [ -z "${CREDITOS:-}" ]; then
+	for c in "$AQUI/creditos" "$AQUI/../groovyarcade-creditos"; do
+		[ -f "$c/creditos.lua" ] && { CREDITOS="$( cd "$c" && pwd )"; break; }
+	done
+fi
+CREDITOS="${CREDITOS:-$AQUI/creditos}"
 
 if [ -z "${MAME:-}" ]; then
 	# El de al lado primero: si los repos estan juntos (el caso normal), ese es
@@ -489,7 +498,11 @@ tarea_mame() {
 	local fuentes="$AQUI/../groovymame_src"
 	if [ ! -d "$fuentes/src" ]; then
 		aviso "  no encuentro las fuentes en $fuentes: me lo salto"
-		aviso "  (en GroovyArcade el emulador ya viene con el sistema)"
+		if [ "$ES_GROOVYARCADE" = 1 ]; then
+			aviso "  aqui el emulador ya viene con el sistema. Para tenerlo CON"
+			aviso "  los parches, la receta de Arch, que compila sin tocar nada:"
+			aviso "      ./parches/compilar-en-arch.sh"
+		fi
 		return 0
 	fi
 	local p
@@ -706,13 +719,17 @@ hay_roms() {
 	[ -n "$( find "$1" -maxdepth 2 -name '*.chd' -print -quit 2>/dev/null )" ]
 }
 
-if ! insistir CREDITOS "Repo de los creditos" \
+if ! insistir CREDITOS "Lo de MAME" \
 "No encuentro creditos.lua ahi dentro.
 
-Clona el repo groovyarcade-creditos al lado de este y escribe su ruta:" hay_creditos
+Deberia estar en creditos/, dentro de este mismo repositorio. Si te falta,
+la clonacion se quedo a medias:
+
+    git clone https://github.com/Kotaix0807/attractplus-creditos.git" hay_creditos
 then
-	rojo "Sin el repo groovyarcade-creditos no puedo seguir: no hay plugins que instalar."
-	echo "  git clone <groovyarcade-creditos> $AQUI/../groovyarcade-creditos"
+	rojo "Sin creditos.lua no puedo seguir: es el script que lanza el emulador."
+	echo "  Deberia estar en $AQUI/creditos/"
+	echo "  Vuelve a clonar:  git clone https://github.com/Kotaix0807/attractplus-creditos.git"
 	exit 1
 fi
 

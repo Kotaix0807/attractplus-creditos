@@ -11,8 +11,20 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VECINOS="$(dirname "$AQUI")"   # los tres repos viven juntos
-MAME_DIR="${MAME_DIR:-$VECINOS/groovymame_src}"
+# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
+# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
+# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
+vecino() {   # $1=marca que tiene dentro  $2..=candidatos
+	local marca="$1"; shift
+	local c
+	for c in "$@"; do
+		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
+	done
+	return 1
+}
+
+MAME_DIR="${MAME_DIR:-$( vecino mame \
+	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
 ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
 SALIDA="${SALIDA:-$AQUI/creditos.dat}"
 MAME_EXTRA="${MAME_EXTRA:-}"
