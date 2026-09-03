@@ -1980,6 +1980,54 @@ salida fisica son cosas distintas**. Eloy cambio el monitor a `pc_31_120`, que
 es lo correcto para su CRT de 31 kHz, y no se movio la imagen: eso solo le dice
 a switchres que modelines calcular.
 
+## Apagar una salida mata al frontend: `BadRRCrtc`
+
+Encontrado el 2026-09-03, justo despues de dejar el CRT como unica pantalla.
+El frontend dejo de arrancar:
+
+```
+X Error of failed request:  BadRRCrtc (invalid Crtc parameter)
+  Minor opcode of failed request:  20 (RRGetCrtcInfo)
+  Crtc id in failed request: 0x0
+```
+
+**Es un fallo de AM+**, en `fe_present.cpp:391`. El bucle que busca la
+frecuencia de refresco recorre TODAS las salidas y comprueba que esten
+conectadas... pero no que tengan CRTC:
+
+```cpp
+if ( output_info && output_info->connection == RR_Connected )
+    XRRCrtcInfo *crtc_info = XRRGetCrtcInfo( xdisp, res, output_info->crtc );
+```
+
+Una salida **conectada pero apagada** —que es justo lo que deja
+`xrandr --output LVDS-1 --off`— tiene `crtc == 0`, y pedir la info del CRTC 0
+lanza `BadRRCrtc`, que mata el proceso antes del primer fotograma. Y esa es la
+configuracion normal de una cabina: el panel interno apagado para que el
+frontend caiga en el CRT.
+
+Arreglado anadiendo `&& output_info->crtc != None`. SFML tiene el mismo patron
+en tres sitios (`WindowImplX11.cpp:1319`, `:1390`, `:2132`) pero ahi no revienta,
+porque solo mira la salida **primaria**, que por definicion esta encendida.
+
+### Y otra ruta absoluta de la mudanza, esta dentro de un `.pc`
+
+Al recompilar salio esto, que no menciona el problema real:
+
+```
+error: 'getMaximumAntiAliasingLevel' is not a member of 'sf::RenderTexture'
+```
+
+La SFML que AM+ compila aparte deja su ruta **absoluta** dentro de
+`obj/sfml/install/lib/pkgconfig/*.pc`. Tras mover la carpeta, ese `prefix`
+apuntaba a `/home/eloy/attractplus`, que ya no existe, asi que el `-I` no valia
+y el compilador se caia a la **SFML 2.6.1 del sistema** — donde ese metodo se
+llama `getMaximumAntialiasingLevel`, con otra mayuscula.
+
+`instalar.sh` lo corrige solo antes de compilar. Es el mismo tipo de fallo que
+los makefiles de genie en `groovymame_src`: rutas absolutas generadas que
+sobreviven a la mudanza y fallan diciendo otra cosa.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

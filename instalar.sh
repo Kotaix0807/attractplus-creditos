@@ -461,6 +461,22 @@ tarea_dependencias() {
 # ---------------------------------------------------------------- las tareas
 tarea_compilar() {
 	paso "Compilando Attract-Mode Plus"
+
+	# La SFML que AM+ compila aparte deja su ruta ABSOLUTA dentro de los .pc.
+	# Si la carpeta se movio despues, ese -I apunta a un sitio que ya no existe
+	# y el compilador se cae a la SFML del sistema, que es la 2.x. El error que
+	# sale no menciona nada de esto:
+	#     'getMaximumAntiAliasingLevel' is not a member of 'sf::RenderTexture'
+	local pc="$AQUI/obj/sfml/install/lib/pkgconfig"
+	if [ -d "$pc" ]; then
+		local viejo; viejo="$( sed -n 's/^prefix=//p' "$pc"/sfml-graphics.pc 2>/dev/null | head -1 )"
+		local bueno="$AQUI/obj/sfml/install"
+		if [ -n "$viejo" ] && [ "$viejo" != "$bueno" ]; then
+			sed -i "s|^prefix=.*|prefix=$bueno|" "$pc"/*.pc
+			echo "  la SFML compilada apuntaba a $viejo (ya no existe): corregido"
+		fi
+	fi
+
 	local n; n=$( nproc 2>/dev/null || echo 2 )
 	# ccache y mold si estan: bajan la compilacion de unos 8 minutos a 2. Van
 	# en la MISMA invocacion, no exportados antes, o no llegan al compilador.

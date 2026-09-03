@@ -389,7 +389,15 @@ void FePresent::init_monitors()
 			for ( int i = 0; i < res->noutput && m_refresh_rate == 0; i++ )
 			{
 				XRROutputInfo *output_info = XRRGetOutputInfo( xdisp, res, res->outputs[i] );
-				if ( output_info && output_info->connection == RR_Connected )
+				//
+				// A connected output can still have no CRTC: that is exactly what
+				// `xrandr --output LVDS-1 --off` leaves behind, and it is the normal
+				// setup for an arcade cabinet whose internal panel is disabled so the
+				// frontend lands on the CRT.  Asking for the info of CRTC 0 raises
+				// BadRRCrtc, which kills the process before the first frame.
+				//
+				if ( output_info && output_info->connection == RR_Connected
+						&& output_info->crtc != None )
 				{
 					XRRCrtcInfo *crtc_info = XRRGetCrtcInfo( xdisp, res, output_info->crtc );
 					if ( crtc_info )
