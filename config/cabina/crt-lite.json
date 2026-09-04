@@ -1,15 +1,29 @@
-// CRT-lite: scanlines y nada mas, para una GPU flojita.
+// CRT-lite: scanlines y nada mas, para una GPU que no da para mas.
 //
-// crt-real (y crt-geom, del que sale) modela el haz del tubo: varias muestras
-// por pixel y un par de pow() de gamma. En una GPU decente no se nota; en la
-// GeForce 410M de la cabina, con el driver nouveau, deja el juego al 17-28%.
+// crt-real modela el haz del tubo: varias muestras por pixel y un par de pow()
+// de gamma. En la cabina -- GeForce 410M con nouveau, que la deja clavada a
+// 270 MHz porque no sabe subirle el reloj -- eso deja los juegos al 16-25%.
 //
-// Aqui se usa el efecto hlsl/scanline, que ya viene compilado con MAME y hace
-// UNA cuenta por pixel. Da lineas de barrido y poco mas -- ni mascara de
-// sombra ni curvatura, que sobre un CRT de verdad sobran de todas formas.
+// Aqui se usa hlsl/scanline, que YA VIENE COMPILADO con MAME y hace una cuenta
+// por pixel, en UNA sola pasada: de screen a output, sin destinos intermedios.
+// Cada pasada a pantalla completa son unos 6 MB de ida y vuelta a una memoria
+// que va a 405 MHz, y se nota:
+//
+//   pasadas   kungfum   mappy
+//     4        45%       66%
+//     2        60%       83%
+//     1        85%       96%
+//
+// Y no se ve peor que crt-real, al reves: 75,6% de modulacion entre filas
+// contra 63,5%, y con mas brillo (109 contra 99). Lo que se pierde es el
+// modelado del haz, que sobre un CRT de verdad ya lo pone el tubo.
 //
 // Para ajustarlo: "Scanline Amount" (0 = ninguna, 1 = a tope) y
 // "Individual Scanline Scale" (el grosor de cada linea).
+//
+// OJO al tocarla: referenciar un "parameter" desde una pasada sin declararlo
+// en el bloque "parameters" hace que MAME se caiga con un segfault y sin
+// ningun mensaje.
 {
 	"name": "CRT-lite",
 	"author": "Ryan Holtz, ImJezze (hlsl/scanline)",
@@ -40,21 +54,8 @@
 		{ "name": "jitter", "type": "frame", "period": 2 },
 		{ "name": "time",   "type": "time",  "limit": 0.0 }
 	],
-	"targets": [
-		{ "name": "guest",    "mode": "guest",  "bilinear": false, "doublebuffer": true },
-		{ "name": "internal", "mode": "native", "scale": 1,        "doublebuffer": true }
-	],
+	"targets": [],
 	"passes": [
-		{	"effect": "misc/blit",
-			"name": "Copy To Guest",
-			"input": [ { "sampler": "s_tex", "texture": "screen" } ],
-			"output": "guest"
-		},
-		{	"effect": "misc/blit",
-			"name": "Upscale",
-			"input": [ { "sampler": "s_tex", "target": "guest" } ],
-			"output": "internal"
-		},
 		{	"effect": "hlsl/scanline",
 			"name": "Scanlines",
 			"uniforms": [
@@ -68,12 +69,7 @@
 				{ "uniform": "u_jitter_amount",          "parameter": "jitter" },
 				{ "uniform": "u_time",                   "parameter": "time" }
 			],
-			"input": [ { "sampler": "s_tex", "target": "internal" } ],
-			"output": "internal"
-		},
-		{	"effect": "misc/blit",
-			"name": "Final Blit",
-			"input": [ { "sampler": "s_tex", "target": "internal" } ],
+			"input": [ { "sampler": "s_tex", "texture": "screen" } ],
 			"output": "output"
 		}
 	]

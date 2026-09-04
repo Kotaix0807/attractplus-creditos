@@ -2142,11 +2142,35 @@ Nouveau implementa el reclocking solo en algunos chips, y este no esta.
   lo que 390xx puede compilar, y ademas es un kernel propio de GroovyArcade.
 - Lo unico oficial es `nvidia-open`, que empieza en Turing.
 
+### Y los graficos integrados no estan: el i5-2430M los tiene, pero apagados
+
+Idea de Eloy, y era la correcta. El procesador es un **Core i5-2430M** (Sandy
+Bridge), que lleva **Intel HD Graphics 3000**. Pero en el bus PCI **no
+aparece**: solo esta la NVIDIA. O sea que el firmware la tiene desactivada.
+
+Es un **Sony VAIO VPCEG25FL** con BIOS INSYDE R0230Z8 de 2011. Los tres
+conectores (`VGA-1`, `LVDS-1`, `HDMI-A-1`) cuelgan de `card0`, que es la
+NVIDIA, asi que si la BIOS deja cambiar a integrada hay que comprobar que la
+salida VGA siga funcionando.
+
+Actualizar la BIOS **no** es una via: las de Sony son ejecutables de Windows, y
+una actualizacion casi nunca añade una opcion de conmutacion que no estuviera.
+
 ### La salida: un shader que cueste una decima parte
 
 `config/cabina/crt-lite.json`. Usa `hlsl/scanline`, que **ya viene compilado
 con MAME** y hace una cuenta por pixel, en vez del modelo de haz de crt-geom
 (varias muestras por pixel y dos `pow()` de gamma).
+
+**Y sobre todo: en UNA sola pasada.** Cada pasada a pantalla completa son unos
+6 MB de ida y vuelta a una memoria que va a 405 MHz, y eso pesa mas que la
+cuenta en si:
+
+| pasadas | kungfum | mappy |
+|---|---|---|
+| 4 (blit, upscale, scanline, blit) | 45% | 66% |
+| 2 (blit, scanline) | 60% | 83% |
+| **1 (scanline de screen a output)** | **85%** | **96%** |
 
 | resolucion | juego | crt-lite | crt-real |
 |---|---|---|---|
@@ -2156,10 +2180,14 @@ con MAME** y hace una cuenta por pixel, en vez del modelo de haz de crt-geom
 | 640x480 | kungfum | **94,3%** | 38,5% |
 | 640x480 | mappy | **100,0%** | 63,7% |
 
-Y no se ve peor, al reves: medido en Kung-Fu Master, **84,7% de modulacion
-entre filas contra el 63,5% de crt-real, y con mas brillo** (114 contra 99).
+Y no se ve peor, al reves: medido en Kung-Fu Master, **75,6% de modulacion
+entre filas contra el 63,5% de crt-real, y con mas brillo** (109 contra 99).
 Lo que se pierde es el modelado del haz, que sobre un CRT de verdad ya lo pone
 el tubo.
+
+**Bajar la resolucion NO es la respuesta**: a 800x600 el shader se ve mal
+porque quedan pocas lineas por linea de juego. Con una sola pasada no hace
+falta -- se queda a 1024x768.
 
 **Trampa al escribir una cadena de bgfx:** referenciar un `"parameter"` desde
 una pasada sin declararlo en el bloque `parameters` de la cadena hace que MAME
