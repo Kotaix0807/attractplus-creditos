@@ -936,11 +936,23 @@ NVIDIA vieja bajo nouveau, crt-real dejaba Kung-Fu Master al 70%." no
 	# El tubo es 4:3 fisicamente aunque el modo sea 5:4 (1280x1024). Sin esto
 	# MAME supone pixeles cuadrados y la geometria sale un 6,7% ancha.
 	poner_ini aspect             4:3
-	# A 60 Hz (que es lo que da 1280x1024 en este tubo) el refresco casi cuadra
-	# con el de las placas, asi que el vsync sale gratis y quita el desgarro.
-	# Medido: 100% en todo, y 99% en los juegos de 60,6 Hz (Namco), que pierden
-	# un fotograma cada segundo y medio. A 85 Hz NO compensa.
-	poner_ini waitvsync          1
+	# waitvsync APAGADO, y esto NO es un descuido.
+	#
+	# Lo puse a 1 el 2026-09-04 porque a 60 Hz el refresco casi cuadra con el
+	# de las placas y quitaba el desgarro. Rompio el arranque tapado: el vsync
+	# bloquea cada fotograma hasta el barrido, asi que aunque creditos.lua
+	# quite el freno la emulacion no pasa de los 60 Hz del monitor.
+	#
+	#   juego (refresco)   con vsync   sin vsync
+	#   digdug   (60,6)       99%        230%
+	#   mappy    (60,6)       99%        230%
+	#   simpsons (59,2)      101%        143%
+	#   kungfum  (56,3)      107%        143%
+	#
+	# Fijate en la columna de la izquierda: los juegos por DEBAJO de 60 Hz aun
+	# ganaban algo y los de 60,6 no ganaban nada, que es justo el "a veces
+	# funciona y a veces no" que se veia en la cabina.
+	poner_ini waitvsync          0
 	[ -n "$bgfx" ] && poner_ini bgfx_path "$bgfx"
 	# switchres genera modelines a la resolucion NATIVA del juego. Eso es lo
 	# correcto en un monitor de recreativa, y un desastre en un CRT de PC.
@@ -998,6 +1010,8 @@ salen 4 pixeles por linea de juego en vez de 3, y el contraste sube.
 
 Ojo: los modos altos suelen ir a 60 Hz, y un CRT de PC a 60 Hz PARPADEA mas
 que a 85. Si te molesta, se vuelve atras cambiando --mode en ~/.xinitrc.
+(Y no se te ocurra encender waitvsync para aprovechar el 60 Hz: mata el
+arranque acelerado de creditos.lua.)
 
 Poner $mejor?" si
 			then

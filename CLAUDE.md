@@ -2545,9 +2545,8 @@ refresco casi cuadra con el de las placas.
 - **AM+ no tiene ese ajuste**, pero no hace falta: estira el layout a la
   ventana, la ventana cubre el tubo entero y el tubo es 4:3, asi que sale bien.
   Comprobado comparando capturas a 1024x768 y a 1280x1024.
-- **`waitvsync 1` ahora sale a cuenta.** A 60,02 Hz el vsync quita el desgarro
-  y cuesta nada: 100% en todo y 99% en los de 60,606 Hz (Namco), que pierden un
-  fotograma cada segundo y medio. **A 85 Hz no compensaba.**
+- **`waitvsync` NO se puede encender**, aunque a 60,02 Hz parezca la ocasion
+  perfecta. Ver la seccion siguiente: mata el arranque acelerado.
 
 **Lo que no se puede medir por ssh: el parpadeo.** Un CRT de PC a 60 Hz
 parpadea mas que a 85. Si molesta, se cambia el `--mode` de `~/.xinitrc`.
@@ -2569,6 +2568,59 @@ parpadea mas que a 85. Si molesta, se cambia el `--mode` de `~/.xinitrc`.
 En el frontend, los titulos largos salen recortados por los lados
 (`lassic Collection Vol.2`, `ame That Tune`). Pasa **igual a 1024x768 y a
 1280x1024**, asi que es del layout `Arcade-UMAG`, no de la resolucion.
+
+## El vsync mata el arranque acelerado (y por que parecia intermitente)
+
+Traido por Eloy el 2026-09-04: *«hay un problema con el plugin de aceleracion,
+a veces funciona y a veces no; en digdug no funciona, en mappy tampoco, en los
+simpsons tampoco»*. **Eran DOS causas distintas a la vez**, y las dos las habia
+metido yo o quedaban de una sesion de ajuste.
+
+### 1. `waitvsync 1`, que habia encendido ese mismo dia
+
+El vsync bloquea cada intercambio de buffer hasta el barrido del monitor. Da
+igual que `creditos.lua` ponga `video.throttled = false`: **la emulacion no
+puede pasar de los 60 Hz del monitor**. Medido con `-str 4`, o sea con toda la
+medida dentro de la ventana de arranque:
+
+| juego (refresco de la placa) | con `waitvsync` | sin `waitvsync` |
+|---|---|---|
+| digdug (60,606 Hz) | 99% | **230%** |
+| mappy (60,606 Hz) | 99% | **230%** |
+| simpsons (59,186 Hz) | 101% | **143%** |
+| kungfum (56,338 Hz) | 107% | 143% |
+
+**Ahi esta el «a veces si y a veces no»**: los juegos por DEBAJO de 60 Hz aun
+ganaban un poco, porque el techo del monitor queda por encima del suyo; los de
+60,606 no ganaban absolutamente nada. No era intermitente, dependia del
+refresco de cada placa.
+
+> **Regla: en esta cabina `waitvsync` va a 0.** El desgarro es un precio
+> pequeno al lado de perder el arranque tapado.
+
+### 2. `negro=0` en esos tres juegos, de una tanda de ajuste
+
+Y aunque la aceleracion funcione, esos tres seguian ensenando el test de la
+placa, porque su linea de `arranque.dat` traia el modo de ajuste:
+
+```
+simpsons velocidad=0 indicador=1 segundos=11 negro=0
+mappy    indicador=1 segundos=13 negro=0
+digdug   indicador=1 segundos=8 negro=0
+```
+
+`negro=0` acelera pero **no tapa la pantalla** — es justo para ver el efecto de
+la velocidad mientras se ajusta un juego. Eran los tres unicos del fichero con
+esa marca, y son exactamente los tres que Eloy nombro. Quitado `negro=0` y
+tambien `indicador=1` (el cartel `>> CARGANDO AL 300%`), que es del mismo tipo.
+
+**Verificado con captura**: a los 2 s la pantalla esta a negro absoluto
+(maximo 0) en los tres, y a los 14 s ya se ve el juego.
+
+**Cuidado al editar `arranque.dat` a mano:** en esa tanda se perdieron dos
+lineas que hacian falta, `mwalk nvram=0 segundos=10` y
+`kungfum segundos=0 velocidad=100`. La de `mwalk` importa: sin `nvram=0`,
+Moonwalker vuelve a arrancar con los creditos que guardo la sesion anterior.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
