@@ -2257,6 +2257,63 @@ autentico: `video.backend=KMS`, switchres generando modos nativos, sin shader.
 `~/.xinitrc` y el ajuste de xrandr que manda la imagen al CRT. Es un cambio que
 hay que hacer delante de la maquina, no por ssh.
 
+## En KMS no hay bgfx, y eso tumbaba los juegos
+
+Eloy paso la cabina a `video.backend=KMS` el 2026-09-04 y los juegos empezaron a
+crashear devolviendo al frontend. La causa estaba en `attract.log`, que en KMS
+recoge tambien la salida del emulador:
+
+```
+Initializing BGFX library
+BGFX: Unsupported SDL window manager type 13
+Setting BGFX platform data failed
+```
+
+**bgfx no soporta KMSDRM** (tipo 13 = `SDL_SYSWM_KMSDRM`). El `video bgfx` que
+habia dejado puesto para el shader mata a MAME nada mas arrancar. Culpa mia por
+no anticiparlo al cambiar de backend.
+
+### Y en KMS no hace falta shader
+
+Es el camino autentico, y ahora si funciona: switchres genera el modo **nativo**
+de cada juego y **las scanlines las pone el tubo**. Medido, todos al 100%:
+
+| juego | modo que pone switchres |
+|---|---|
+| tapper | 1024x480 @ 60.00 |
+| mappy, mspacman | 661x496 @ 60.61 |
+| dkong | 796x512 @ 59.62 |
+| kungfum | 1024x256 @ 112.68 |
+
+Fijarse en los refrescos: **60.61 Hz** es la frecuencia real de la placa de
+Namco, no un 60 redondeado. Eso es lo que switchres hace bien y no se puede
+imitar con un shader.
+
+La configuracion de KMS es distinta de la de X:
+
+```
+video               opengl        <- bgfx no vale aqui
+switchres           1
+switchres_ini       0             <- si no, /etc/switchres.ini manda
+autosync            0             <- si no, los verticales van al 222%
+dotclock_min        25            <- si no, Kung-Fu Master sale en 256x256
+bgfx_screen_chains  (vacio)
+```
+
+`instalar.sh` lee `video.backend` de `ga.conf` y aplica una u otra.
+
+### El frontend para KMS
+
+`make USE_DRM=1 OBJ_DIR=obj-drm EXE_BASE=attractplus-drm` deja un binario listo
+en el repo de la cabina. De momento corre el `attractplus-kms` de la distro, que
+funciona y usa nuestra configuracion igual (los plugins y el layout viven en el
+directorio de configuracion, no en el binario). Cambiarlo es:
+
+```bash
+sudo cp -a /usr/local/bin/attractplus-kms /usr/local/bin/attractplus-kms.antes
+sudo install -m 755 ~/attractplus-creditos/attractplus-drm /usr/local/bin/attractplus-kms
+```
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

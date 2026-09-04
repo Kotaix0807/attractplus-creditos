@@ -792,6 +792,34 @@ tarea_romlist() {
 tarea_crt() {
 	paso "Ajustando la salida de video para un CRT"
 
+	# bgfx NO funciona en KMS: MAME muere nada mas arrancar con
+	#   BGFX: Unsupported SDL window manager type 13
+	#   Setting BGFX platform data failed
+	# y el frontend te devuelve al menu como si el juego hubiera crasheado.
+	# Ahi el camino es otro: switchres genera el modo nativo del juego y las
+	# scanlines las pone el propio tubo, sin shader y sin gastar GPU.
+	if [ "$( ga_valor video.backend )" = KMS ]; then
+		paso "Ajustando la salida (backend KMS)"
+		local ini_kms; ini_kms="$( mame_ini )"
+		mkdir -p "$(dirname "$ini_kms")"
+		[ -f "$ini_kms" ] && cp "$ini_kms" "$ini_kms.antes_instalar"
+		poner_kms() {
+			if [ -f "$ini_kms" ] && grep -qE "^$1[[:space:]]" "$ini_kms"; then
+				sed -i -E "s|^($1[[:space:]]+).*|\1$2|" "$ini_kms"
+			else printf '%-25s %s\n' "$1" "$2" >> "$ini_kms"; fi
+			echo "  $1 = $2"
+		}
+		poner_kms video              opengl
+		poner_kms bgfx_screen_chains ""
+		poner_kms switchres          1
+		poner_kms switchres_ini      0
+		poner_kms autosync           0
+		poner_kms dotclock_min       25
+		aviso "  switchres_ini=0 a proposito: si no, /etc/switchres.ini manda"
+		aviso "  sobre mame.ini y los ajustes de arriba no surten efecto"
+		return 0
+	fi
+
 	local bgfx ini
 	bgfx="$( mame_opcion bgfx_path )"
 	ini="$( mame_ini )"
