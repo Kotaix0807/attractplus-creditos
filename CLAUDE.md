@@ -2302,6 +2302,41 @@ bgfx_screen_chains  (vacio)
 
 `instalar.sh` lee `video.backend` de `ga.conf` y aplica una u otra.
 
+### Y aun asi no se veian: switchres apuntaba al panel, no al CRT
+
+Los modos nativos se creaban... **en el LCD interno**. El log lo dice sin
+rodeos:
+
+```
+DRM/KMS: card 0 connector 0 id 45 name LVDS-1 selected as primary output
+```
+
+Switchres coge el conector 0 y ese es el panel. El CRT no recibia ninguno de
+esos modos, de ahi que no hubiera scanlines y que Kung-Fu Master siguiera igual
+que al principio. Todas las medidas de «100% con modo nativo» eran ciertas,
+pero sobre la pantalla equivocada.
+
+Dos arreglos, y hacen falta los dos:
+
+- **`display VGA-1` en `/etc/switchres.ini`** (con `switchres_ini 1` en
+  `mame.ini`, o no se lee). Comprobado: pasa a decir
+  `connector 1 id 47 name VGA-1 selected as primary output`.
+- **Apagar el panel en el arranque**, que quita la ambiguedad para KMS, para X
+  y para la consola. Y aqui otra sorpresa: **la cabina arranca con GRUB, no con
+  syslinux** — por eso el menu de gasetup que buscaba `syslinux.cfg` era codigo
+  muerto y no encontraba nada. Se hace en `/etc/default/grub`:
+
+```
+GRUB_CMDLINE_LINUX_DEFAULT="video=VGA-1:e video=LVDS-1:d ..."
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+```
+
+El VGA va **delante** porque `getConnectorFromKernel` de gasetup lee el primer
+`video=` de la linea para decidir el conector.
+
+Si tras reiniciar no hubiera imagen: en el menu de GRUB, `e`, quitar
+`video=LVDS-1:d` y arrancar. Copia previa en `/etc/default/grub.antes_crt`.
+
 ### El frontend para KMS
 
 `make USE_DRM=1 OBJ_DIR=obj-drm EXE_BASE=attractplus-drm` deja un binario listo
