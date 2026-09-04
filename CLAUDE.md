@@ -2667,6 +2667,92 @@ De los que guardan NVRAM, los que estan en `creditos.dat` con direccion
 verificada (`qbert`, `tapper`, `rbtapper`) los limpia el barrido al arrancar.
 Los que **no** estan (`mwalk`) solo se arreglan con la receta de arriba.
 
+## Los videos: tres arreglos distintos (2026-09-04)
+
+Pedidos por Eloy: que los juegos usen lo que ya dice `arranque.dat` para
+ahorrar tiempo, que los videos no se vean tan mal en el modo espera, y que los
+verticales no salgan estirados. **Son tres causas independientes.**
+
+### 1. El estirado NO era de los videos: era un ajuste del salvapantallas
+
+El salvapantallas de serie (`/usr/local/share/attractplus/screensaver/screensaver.nut`)
+declara una opcion **`preserve_ar`** y su valor por defecto es **`"No"`**. Con
+eso mete el video en `fe.layout.width x height` **sin respetar la proporcion**:
+un vertical de 224x298 estirado a pantalla completa. En `attract.cfg` no habia
+bloque `saver_config`, asi que mandaba el defecto.
+
+```
+saver_config
+    param                   preserve_ar Yes
+```
+
+Verificado con capturas del salvapantallas de verdad (bajando
+`screen_saver_timeout` a 5 s y restaurandolo despues): Dig Dug sale con bandas
+negras a los lados y Tapper ocupa su ancho. El layout pone
+`preserve_aspect_ratio` en sus tres modos (video simple, collage 2x2 y collage
+4x4), asi que el ajuste vale para todos.
+
+**Lo que NO habia que hacer:** recodificar los videos con bandas negras
+metidas. Habria arreglado el salvapantallas y estropeado el hueco del layout
+principal, que si respeta la proporcion.
+
+### 2. La mala calidad: 33 kbps sobre 224 px
+
+`pacman.mp4` medido: **224x298 a 33 kbps**. Dos problemas a la vez -- el video
+es diminuto y AM+ lo estira hasta los ~700 px del hueco del layout, y encima el
+h264 a ese tamano con crf 26 gastaba una miseria.
+
+Se amplia **antes** de codificar, y en dos pasos que no son intercambiables:
+
+1. un multiplo **entero** con `flags=neighbor`, que duplica pixeles exactos y
+   mantiene el filo del arte original;
+2. la correccion de proporcion con `flags=lanczos`, que es la parte no entera,
+   ya sobre una imagen grande.
+
+Hacerlo al reves reparte mal las filas y se ve irregular. Con `crf 20`:
+
+| | antes | despues |
+|---|---|---|
+| pacman | 224x298, 33 kbps | **672x894, 74 kbps** |
+| kungfum | 340x256 | **1020x768, 250 kbps** |
+| contra | – | **672x894, 1,75 Mbps** |
+
+`AMPLIAR=0` vuelve al tamano crudo.
+
+### 3. El salto sale de `arranque.dat`, pero solo como SUELO
+
+`arranque.dat` ya sabe cuanto tarda en arrancar cada placa, asi que no hace
+falta medirlo dos veces. Dos cuidados que costaron pensarlos:
+
+- **Solo se mira la linea PROPIA del juego, nunca la de `defecto`.** La de
+  defecto vale 5 s, que es MENOS que el salto general de 8: usarla haria que
+  los juegos sin linea propia empezaran el video ANTES que antes.
+- **Es un suelo, no el valor final.** `arranque.dat` dice cuando la placa esta
+  lista; la demo llega despues. Contra arranca a los 7 y su demo empieza a los
+  16 (medido con `--tira`: test hasta los 4, «PLEASE DEPOSIT COIN» a los 8,
+  titulo a los 12).
+
+Precedencia: `SALTO=` de la linea de ordenes > tabla `SALTOS` medida >
+`arranque.dat` > el defecto de 8. El script dice de donde salio cada uno.
+
+**Y NO se ejecuta `creditos.lua` al grabar**, aunque sea lo que lee
+`arranque.dat` en la cabina: ese script tapa el arranque pintando la pantalla
+de **negro**, y ese negro entraria tal cual en el video. Se toma el dato, no el
+comportamiento.
+
+### Lo que de verdad ahorra tiempo: `-nothrottle`
+
+La grabacion iba a **tiempo real** porque `-seconds_to_run` no quita el freno.
+Medido con Pac-Man, 22 segundos emulados:
+
+| | reloj |
+|---|---|
+| con freno | 26 s |
+| `-nothrottle` | **11 s** |
+
+El AVI sale identico (`-aviwrite` guarda todos los fotogramas emulados, tenga
+freno o no): son 249 MB en los dos casos.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

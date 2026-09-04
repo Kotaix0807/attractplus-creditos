@@ -95,9 +95,41 @@ declare -A SALTOS=(
 	                 # a los 12; la demo empieza a los 16
 )
 
+SALTO_DE_ORDENES="${SALTO:-}"   # si el usuario puso SALTO=, manda sobre todo
 SALTO="${SALTO:-8}"        # segundos que se descartan del principio (la carga)
 DURA="${DURA:-12}"         # segundos que dura el video
-CALIDAD="${CALIDAD:-26}"   # crf de x264: mas bajo = mejor y mas grande
+CALIDAD="${CALIDAD:-20}"   # crf de x264: mas bajo = mejor y mas grande
+AMPLIAR="${AMPLIAR:-1}"    # 0 para guardar al tamano crudo del juego
+
+# arranque.dat ya sabe cuanto tarda en arrancar cada placa: es exactamente el
+# numero que hay que descartar aqui. Se aprovecha en vez de medir dos veces.
+#
+# OJO: se toma el DATO, no se ejecuta creditos.lua. Ese script tapa el arranque
+# pintando la pantalla de NEGRO, y ese negro entraria tal cual en el video.
+#
+# 'segundos=0' no significa "empieza ya", significa "a este juego no se le tapa
+# el arranque" (mwalk, que apenas se puede acelerar). Para el video no sirve, y
+# se cae al valor por defecto.
+# Dos cuidados, y los dos importan:
+#
+#   1. Solo se mira la linea PROPIA del juego, nunca la de 'defecto'. La de
+#      defecto vale 5 s, que es MENOS que el salto general de 8: usarla haria
+#      que los juegos sin linea propia empezaran el video antes que antes.
+#   2. Es un SUELO, no el valor final. arranque.dat dice cuando la placa esta
+#      lista; la demo llega despues. Contra arranca a los 7 y su demo empieza a
+#      los 16. Para afinarlo esta --tira y la tabla SALTOS.
+AJUSTES="${AJUSTES:-$AQUI/arranque.dat}"
+salto_de_arranque() {   # $1=juego -> segundos, o nada
+	[ -f "$AJUSTES" ] || return 1
+	local linea v
+	linea="$( grep -iE "^$1[[:space:]]" "$AJUSTES" 2>/dev/null | head -1 )"
+	[ -n "$linea" ] || return 1
+	v="$( printf '%s' "$linea" | grep -oE '(segundos|arranque)=[0-9]+' |
+	      head -1 | cut -d= -f2 )"
+	[ -n "$v" ] && [ "$v" -gt 0 ] 2>/dev/null || return 1
+	[ "$v" -lt "$SALTO" ] && v=$SALTO
+	echo "$v"
+}
 
 command -v ffmpeg >/dev/null || { echo "hace falta ffmpeg" >&2; exit 1; }
 
@@ -155,7 +187,7 @@ if [ "${1:-}" = "--tira" ]; then
 	echo "grabando un minuto de $j..."
 	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
 		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run 62 -aviwrite "$T/v.avi" > "$T/mame.log" 2>&1 )
+		-seconds_to_run 62 -nothrottle -aviwrite "$T/v.avi" > "$T/mame.log" 2>&1 )
 	[ -s "$T/v.avi" ] || {
 		echo "no se pudo grabar $j:" >&2
 		grep -iE "not found|missing|fatal|error" "$T/mame.log" | head -3 >&2
@@ -219,16 +251,25 @@ for j in "${JUEGOS[@]}"; do
 
 	# El salto del juego manda sobre el general. Asi cambiar SALTO en la linea
 	# de comandos sigue funcionando para un juego suelto.
-	salto=${SALTO_ESPECIFICO:-${SALTOS[$j]:-$SALTO}}
-	[ -n "${SALTO_FORZADO:-}" ] && salto=$SALTO
+	# Precedencia: SALTO= de la linea de ordenes > la tabla medida con --tira >
+	# lo que diga arranque.dat > el defecto general.
+	if [ -n "${SALTO_DE_ORDENES:-}" ]; then
+		salto=$SALTO_DE_ORDENES; origen="SALTO="
+	elif [ -n "${SALTOS[$j]:-}" ]; then
+		salto=${SALTOS[$j]}; origen="medido"
+	elif salto=$( salto_de_arranque "$j" ); then
+		origen="arranque.dat"
+	else
+		salto=$SALTO; origen="defecto"
+	fi
 
-	echo -n "  $j: grabando (salto ${salto}s)... "
+	echo -n "  $j: grabando (salto ${salto}s, $origen)... "
 
 	# El avi sale sin comprimir (unos 11 MB por segundo), por eso va a un
 	# temporal y se borra en cuanto se convierte.
 	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
 		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run $(( salto + DURA + 2 )) \
+		-seconds_to_run $(( salto + DURA + 2 )) -nothrottle \
 		-aviwrite "$TMP/$j.avi" > "$TMP/$j.log" 2>&1 )
 
 	if [ ! -s "$TMP/$j.avi" ]; then
@@ -251,10 +292,34 @@ for j in "${JUEGOS[@]}"; do
 	crudo=$( ffprobe -v error -select_streams v:0 \
 		-show_entries stream=width,height -of csv=p=0:s=x "$TMP/$j.avi" )
 	destino_px=$( proporcion "$j" "${crudo%x*}" "${crudo#*x}" )
-	[ "$crudo" = "$destino_px" ] || echo -n "($crudo -> $destino_px) "
+
+	# --- por que se amplia antes de codificar ---------------------------
+	#
+	# El bitmap crudo es diminuto (Pac-Man 224x288) y AM+ lo estira hasta el
+	# hueco del layout, que en esta cabina son unos 700 px. Ampliar por
+	# interpolacion un video de 224 px deja los pixeles blandos, y encima el
+	# h264 a ese tamano gastaba 33 kbps: bloques por todas partes.
+	#
+	# Se amplia AQUI, y en dos pasos que no son intercambiables:
+	#   1. un multiplo ENTERO con 'neighbor', que duplica pixeles exactos y
+	#      mantiene el filo del arte original;
+	#   2. la correccion de proporcion con 'lanczos', que es la parte no
+	#      entera, ya sobre una imagen grande.
+	# Hacerlo al reves (proporcion primero) reparte mal las filas y se ve
+	# irregular.
+	amp=1
+	if [ "$AMPLIAR" != "0" ]; then
+		amp=$(( 700 / ${crudo#*x} + 1 ))
+		[ "$amp" -lt 1 ] && amp=1
+		[ "$amp" -gt 4 ] && amp=4
+	fi
+	entero="$(( ${crudo%x*} * amp ))x$(( ${crudo#*x} * amp ))"
+	final="$(( ${destino_px%x*} * amp ))x$(( ${destino_px#*x} * amp ))"
+	final="$(( ${final%x*} - ${final%x*} % 2 ))x$(( ${final#*x} - ${final#*x} % 2 ))"
+	echo -n "($crudo -> $final) "
 
 	if ffmpeg -y -loglevel error -i "$TMP/$j.avi" -ss "$salto" -t "$DURA" \
-		-vf "scale=${destino_px/x/:}:flags=lanczos" \
+		-vf "scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos" \
 		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p -an \
 		-movflags +faststart "$DESTINO/$j.mp4" 2>/dev/null \
 		&& [ -s "$DESTINO/$j.mp4" ]
