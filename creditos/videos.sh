@@ -29,9 +29,57 @@ vecino() {   # $1=marca que tiene dentro  $2..=candidatos
 	return 1
 }
 
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
+# En una maquina de desarrollo el emulador esta en el arbol de fuentes
+# (groovymame_src/mame). En una cabina GroovyArcade NO hay tal arbol: el binario
+# esta instalado, y ademas puede haber dos (el de la distro y el nuestro). Se
+# prueban todos los sitios en vez de suponer uno, y MAME= manda sobre todos.
+#
+#   MAME=/ruta/al/mame ./videos.sh
+buscar_mame() {
+	local c fuentes
+	fuentes="$( vecino mame "$AQUI/../../groovymame_src" \
+		"$AQUI/../groovymame_src" "$HOME/groovymame_src" 2>/dev/null )"
+	for c in "${MAME:-}" \
+		"$HOME/.local/share/groovymame-cabina/mame" \
+		${fuentes:+"$fuentes/mame"} \
+		"$( command -v groovymame 2>/dev/null )" \
+		"$( command -v mame 2>/dev/null )"
+	do
+		[ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
+	done
+	return 1
+}
+
+MAME_BIN="$( buscar_mame )" || {
+	echo "no encuentro el emulador. Lo busco, por este orden, en:" >&2
+	echo "  \$MAME (la variable de entorno)" >&2
+	echo "  ~/.local/share/groovymame-cabina/mame" >&2
+	echo "  ../../groovymame_src/mame, ../groovymame_src/mame, ~/groovymame_src/mame" >&2
+	echo "  groovymame o mame en el PATH" >&2
+	echo >&2
+	echo "Lanzalo asi:  MAME=/ruta/al/mame $0 ..." >&2
+	exit 1
+}
+# Se entra en su directorio para lanzarlo: nuestra compilacion lleva al lado su
+# bgfx y sus plugins, igual que hace el frontend con 'workdir'.
+MAME_DIR="$( cd "$( dirname "$MAME_BIN" )" && pwd )"
+
+# Las rutas NO se suponen: se le preguntan al propio emulador, que es quien sabe
+# cual de sus mame.ini manda. En esta maquina el rompath es
+# /usr/share/games/mame/roms y en la cabina ~/shared/roms/mame.
+mame_opcion() {   # $1=clave
+	"$MAME_BIN" -showconfig 2>/dev/null |
+		sed -n "s/^$1[[:space:]]\+//p" | head -1
+}
+ROMPATH="${ROMPATH:-$( mame_opcion rompath )}"
 ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
+# -showconfig devuelve el valor CRUDO del ini, asi que puede traer un $HOME
+# literal (en GroovyArcade el rompath es "$HOME/shared/roms/mame"). MAME sabe
+# expandirlo, pero nosotros tambien comprobamos el directorio, asi que se
+# expande aqui.
+ROMPATH="${ROMPATH//\$HOME/$HOME}"
+ROMPATH="${ROMPATH//\$\{HOME\}/$HOME}"
+ROMPATH="${ROMPATH/#\~/$HOME}"
 EMU="${EMU:-groovymame}"
 DESTINO="${DESTINO:-$HOME/.attract/scraper/$EMU/snap}"
 ROMLIST="${ROMLIST:-$HOME/.attract/romlists/$EMU.txt}"
@@ -43,6 +91,8 @@ declare -A SALTOS=(
 	[simpsons]=16    # 4 s "RAM ROM CHECK", 10 s patron de test, atraccion a los 14
 	[nrallyx]=28     # test hasta los 12, luego la lista de personajes; juego a los 28
 	[mappy]=38       # titulo y personajes hasta los 35; la demo empieza a los 38
+	[contra]=16      # test hasta los 4, "PLEASE DEPOSIT COIN" a los 8, titulo
+	                 # a los 12; la demo empieza a los 16
 )
 
 SALTO="${SALTO:-8}"        # segundos que se descartan del principio (la carga)
@@ -65,7 +115,7 @@ command -v ffmpeg >/dev/null || { echo "hace falta ffmpeg" >&2; exit 1; }
 # Devuelve "ANCHOxALTO" ya redondeado a par (lo exige yuv420p).
 proporcion() {   # $1=juego  $2=ancho crudo  $3=alto crudo
 	local rot
-	rot=$( cd "$MAME_DIR" && ./mame -listxml "$1" 2>/dev/null |
+	rot=$( cd "$MAME_DIR" && "$MAME_BIN" -listxml "$1" 2>/dev/null |
 	       sed -n 's/.*<display[^>]*rotate="\([0-9]*\)".*/\1/p' | head -1 )
 	python3 -c '
 import sys
@@ -82,7 +132,17 @@ if max(w2 / w, h2 / h) > 1.5:
 print(f"{w2 - w2 % 2}x{h2 - h2 % 2}")
 ' "$1" "$2" "$3" "${rot:-0}"
 }
-[ -x "$MAME_DIR/mame" ] || { echo "no encuentro $MAME_DIR/mame" >&2; exit 1; }
+echo "# emulador: $MAME_BIN"
+echo "# roms:     $ROMPATH"
+echo "# destino:  $DESTINO"
+
+case "${1:-}" in
+	-h|--help|--ayuda)
+		sed -n '2,16p' "$0" | sed 's/^# \?//'
+		exit 0 ;;
+	--*)
+		[ "$1" = --tira ] || { echo "opcion desconocida: $1 (prueba --ayuda)" >&2; exit 1; } ;;
+esac
 
 # --tira <juego>: graba un minuto y saca una tira de fotogramas, para VER en
 # que segundo empieza lo que quieres grabar en vez de adivinarlo.
@@ -93,22 +153,44 @@ if [ "${1:-}" = "--tira" ]; then
 
 	T=$(mktemp -d /tmp/tira-mame.XXXXXX)
 	echo "grabando un minuto de $j..."
-	( cd "$MAME_DIR" && xvfb-run -a ./mame "$j" -rompath "$ROMPATH" \
+	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
 		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run 62 -aviwrite "$T/v.avi" > /dev/null 2>&1 )
+		-seconds_to_run 62 -aviwrite "$T/v.avi" > "$T/mame.log" 2>&1 )
+	[ -s "$T/v.avi" ] || {
+		echo "no se pudo grabar $j:" >&2
+		grep -iE "not found|missing|fatal|error" "$T/mame.log" | head -3 >&2
+		exit 1
+	}
 
-	ARCHIVOS=()
+	ARCHIVOS=(); SEGUNDOS=()
 	for t in 4 8 12 16 20 26 32 38 44 50 56 60; do
 		ffmpeg -y -loglevel error -ss $t -i "$T/v.avi" -vframes 1 \
-			-vf scale=150:-1 "$T/$t.png" 2>/dev/null && ARCHIVOS+=( "$T/$t.png" )
+			-vf scale=150:-1 "$T/$t.png" 2>/dev/null &&
+			{ ARCHIVOS+=( "$T/$t.png" ); SEGUNDOS+=( "$t" ); }
 	done
 
 	SALIDA="${SALIDA:-$PWD/tira-$j.png}"
-	montage "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 -background gray \
-		-label '%t s' "$SALIDA"
+	# montage rotula con -label, pero necesita una fuente y en GroovyArcade no
+	# hay ninguna configurada: suelta "unable to read font (null)" y la tira
+	# sale SIN los segundos, que es justo para lo que sirve. Se le da el
+	# fichero de una fuente si el sistema sabe cual, y pase lo que pase la
+	# correspondencia se imprime tambien por pantalla.
+	FUENTE="$( fc-match -f '%{file}' sans 2>/dev/null )"
+	if [ -n "$FUENTE" ] && [ -f "$FUENTE" ]; then
+		montage "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 -background gray \
+			-font "$FUENTE" -pointsize 14 -label '%t s' "$SALIDA" 2>/dev/null
+	fi
+	[ -s "$SALIDA" ] || montage "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 \
+		-background gray "$SALIDA"
 	rm -rf "$T"
 
 	echo "tira en $SALIDA"
+	echo -n "orden de los fotogramas (4 por fila), en segundos:"
+	for i in "${!SEGUNDOS[@]}"; do
+		[ $(( i % 4 )) -eq 0 ] && printf '\n   '
+		printf '%4s' "${SEGUNDOS[$i]}"
+	done
+	echo
 	echo "Mira en que segundo empieza lo que quieres y ponlo en la tabla SALTOS,"
 	echo "o lanzalo asi:  SALTO=<segundos> FORZAR=1 $0 $j"
 	exit 0
@@ -144,16 +226,23 @@ for j in "${JUEGOS[@]}"; do
 
 	# El avi sale sin comprimir (unos 11 MB por segundo), por eso va a un
 	# temporal y se borra en cuanto se convierte.
-	( cd "$MAME_DIR" && xvfb-run -a ./mame "$j" -rompath "$ROMPATH" \
+	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
 		-video soft -sound none -noswitchres -window -resolution 640x480 \
 		-seconds_to_run $(( salto + DURA + 2 )) \
-		-aviwrite "$TMP/$j.avi" > /dev/null 2>&1 )
+		-aviwrite "$TMP/$j.avi" > "$TMP/$j.log" 2>&1 )
 
 	if [ ! -s "$TMP/$j.avi" ]; then
+		# Antes esto decia solo "no se pudo grabar" y habia que adivinar por
+		# que. La causa casi siempre esta en la salida de MAME: rom que falta,
+		# set que no existe en esta version, ficheros incompletos.
 		echo "no se pudo grabar"
+		grep -iE "not found|missing|fatal|required|unknown system" "$TMP/$j.log" |
+			head -2 | sed 's/^/      /'
 		fallos=$((fallos+1))
+		rm -f "$TMP/$j.log"
 		continue
 	fi
+	rm -f "$TMP/$j.log"
 
 	echo -n "convirtiendo... "
 
