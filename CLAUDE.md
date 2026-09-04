@@ -2097,6 +2097,78 @@ uso por juego, asi que basto con que una vez corriera sin ella.
 aspecto. Lo que el usuario elija **despues**, con switchres ya apagado, se
 guarda y se respeta -- que es justo para lo que estaba el parche.
 
+## La GPU de la cabina no puede subir de revoluciones
+
+Eloy, 2026-09-03: *«el rendimiento es pésimo... la resolución del juego es
+bastante baja y no debería haber problema»*. Tenia razon en el razonamiento y
+en la sospecha (los drivers de NVIDIA), pero la causa es peor de lo que
+parecia.
+
+**Medido, con la cabina parada y nada mas corriendo** (la primera medicion
+salio mal porque mis propias pruebas competian con su sesion por la GPU):
+
+| | sin shader | crt-real |
+|---|---|---|
+| mappy | 100,00% | **28,28%** |
+| kungfum | 98,25% | **17,13%** |
+
+Y bajar la resolucion no lo arregla: a 640x480 crt-real sigue en 38%.
+
+### La GPU corre a un tercio de lo que puede
+
+```
+$ sudo cat /sys/kernel/debug/dri/0/pstate
+07: core 270 MHz memory 405 MHz
+0f: core 573 MHz memory 800 MHz
+AC: core 270 MHz memory 405 MHz     <- el actual
+```
+
+Es una **GeForce 410M (GF119, Fermi)** con **nouveau**. El driver lee la tabla
+de relojes de la BIOS y ve que la tarjeta puede ir a 573/800, pero se queda en
+270/405. Y no se puede forzar:
+
+```
+$ echo 0f | sudo tee /sys/kernel/debug/dri/0/pstate
+tee: ...: Function not implemented
+```
+
+Nouveau implementa el reclocking solo en algunos chips, y este no esta.
+
+### El driver propietario no es una salida
+
+- Fermi solo lo soporta la rama **390.xx**, que es EOL desde 2022 y **no esta
+  en los repos de Arch** (solo AUR).
+- El kernel de la cabina es **7.1.10-arch1-1-15khz**, o sea muy por encima de
+  lo que 390xx puede compilar, y ademas es un kernel propio de GroovyArcade.
+- Lo unico oficial es `nvidia-open`, que empieza en Turing.
+
+### La salida: un shader que cueste una decima parte
+
+`config/cabina/crt-lite.json`. Usa `hlsl/scanline`, que **ya viene compilado
+con MAME** y hace una cuenta por pixel, en vez del modelo de haz de crt-geom
+(varias muestras por pixel y dos `pow()` de gamma).
+
+| resolucion | juego | crt-lite | crt-real |
+|---|---|---|---|
+| 1024x768 | kungfum | 54,9% | 17,9% |
+| 1024x768 | mappy | 69,1% | 26,5% |
+| 800x600 | mappy | **99,0%** | 42,0% |
+| 640x480 | kungfum | **94,3%** | 38,5% |
+| 640x480 | mappy | **100,0%** | 63,7% |
+
+Y no se ve peor, al reves: medido en Kung-Fu Master, **84,7% de modulacion
+entre filas contra el 63,5% de crt-real, y con mas brillo** (114 contra 99).
+Lo que se pierde es el modelado del haz, que sobre un CRT de verdad ya lo pone
+el tubo.
+
+**Trampa al escribir una cadena de bgfx:** referenciar un `"parameter"` desde
+una pasada sin declararlo en el bloque `parameters` de la cadena hace que MAME
+**se caiga con un segfault y sin ningun mensaje**. Le pasa con `time` y con
+`jitter`. Costo tres intentos.
+
+`instalar.sh` instala las dos cadenas y propone la ligera cuando detecta
+nouveau.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

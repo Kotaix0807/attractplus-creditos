@@ -1,0 +1,80 @@
+// CRT-lite: scanlines y nada mas, para una GPU flojita.
+//
+// crt-real (y crt-geom, del que sale) modela el haz del tubo: varias muestras
+// por pixel y un par de pow() de gamma. En una GPU decente no se nota; en la
+// GeForce 410M de la cabina, con el driver nouveau, deja el juego al 17-28%.
+//
+// Aqui se usa el efecto hlsl/scanline, que ya viene compilado con MAME y hace
+// UNA cuenta por pixel. Da lineas de barrido y poco mas -- ni mascara de
+// sombra ni curvatura, que sobre un CRT de verdad sobran de todas formas.
+//
+// Para ajustarlo: "Scanline Amount" (0 = ninguna, 1 = a tope) y
+// "Individual Scanline Scale" (el grosor de cada linea).
+{
+	"name": "CRT-lite",
+	"author": "Ryan Holtz, ImJezze (hlsl/scanline)",
+	"sliders": [
+		{ "type": "float", "name": "scanline_alpha",
+		  "text": "Scanline Amount",            "default": 0.75,
+		  "max": 1.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_scale",
+		  "text": "Overall Scanline Scale",     "default": 1.0,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_height",
+		  "text": "Individual Scanline Scale",  "default": 1.0,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_variation",
+		  "text": "Scanline Variation",         "default": 1.0,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_bright_scale",
+		  "text": "Scanline Brightness Scale",  "default": 1.75,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_jitter_amount",
+		  "text": "Scanline Jitter Amount",     "default": 0.0,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" },
+		{ "type": "float", "name": "scanline_bright_offset",
+		  "text": "Scanline Brightness Offset", "default": 0.0,
+		  "max": 4.0, "min": 0.0, "step": 0.05, "format": "%1.2f", "screen": "raster" }
+	],
+	"parameters": [
+		{ "name": "jitter", "type": "frame", "period": 2 },
+		{ "name": "time",   "type": "time",  "limit": 0.0 }
+	],
+	"targets": [
+		{ "name": "guest",    "mode": "guest",  "bilinear": false, "doublebuffer": true },
+		{ "name": "internal", "mode": "native", "scale": 1,        "doublebuffer": true }
+	],
+	"passes": [
+		{	"effect": "misc/blit",
+			"name": "Copy To Guest",
+			"input": [ { "sampler": "s_tex", "texture": "screen" } ],
+			"output": "guest"
+		},
+		{	"effect": "misc/blit",
+			"name": "Upscale",
+			"input": [ { "sampler": "s_tex", "target": "guest" } ],
+			"output": "internal"
+		},
+		{	"effect": "hlsl/scanline",
+			"name": "Scanlines",
+			"uniforms": [
+				{ "uniform": "u_scanline_alpha",         "slider": "scanline_alpha" },
+				{ "uniform": "u_scanline_scale",         "slider": "scanline_scale" },
+				{ "uniform": "u_scanline_height",        "slider": "scanline_height" },
+				{ "uniform": "u_scanline_variation",     "slider": "scanline_variation" },
+				{ "uniform": "u_scanline_bright_scale",  "slider": "scanline_bright_scale" },
+				{ "uniform": "u_scanline_bright_offset", "slider": "scanline_bright_offset" },
+				{ "uniform": "u_scanline_jitter",        "slider": "scanline_jitter_amount" },
+				{ "uniform": "u_jitter_amount",          "parameter": "jitter" },
+				{ "uniform": "u_time",                   "parameter": "time" }
+			],
+			"input": [ { "sampler": "s_tex", "target": "internal" } ],
+			"output": "internal"
+		},
+		{	"effect": "misc/blit",
+			"name": "Final Blit",
+			"input": [ { "sampler": "s_tex", "target": "internal" } ],
+			"output": "output"
+		}
+	]
+}

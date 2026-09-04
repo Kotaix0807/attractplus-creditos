@@ -800,15 +800,51 @@ tarea_crt() {
 
 	if [ -n "$bgfx" ] && [ -d "$bgfx/chains" ]; then
 		# En GroovyArcade el bgfx vive en /usr/lib/mame, que es de root.
-		if [ -w "$bgfx/chains" ]; then
-			cp "$AQUI/config/cabina/crt-real.json" "$bgfx/chains/"
-		else
-			sudo cp "$AQUI/config/cabina/crt-real.json" "$bgfx/chains/"
-		fi
-		echo "  + $bgfx/chains/crt-real.json"
+		local c
+		for c in crt-real crt-lite; do
+			if [ -w "$bgfx/chains" ]; then
+				cp "$AQUI/config/cabina/$c.json" "$bgfx/chains/"
+			else
+				sudo cp "$AQUI/config/cabina/$c.json" "$bgfx/chains/"
+			fi
+			echo "  + $bgfx/chains/$c.json"
+		done
 	else
-		aviso "  no encuentro $bgfx/chains: crt-real.json sin instalar"
+		aviso "  no encuentro $bgfx/chains: los shaders sin instalar"
 	fi
+
+	# Cual de los dos. crt-real modela el haz del tubo (varias muestras por
+	# pixel); crt-lite solo dibuja las lineas. Medido en la cabina, con una
+	# GeForce 410M y nouveau, a 1024x768:
+	#
+	#            kungfum   mappy
+	#   crt-real   18%      26%
+	#   crt-lite   55%      69%
+	#   sin shader 99%      98%
+	#
+	# El defecto se decide por el driver: nouveau en una tarjeta vieja no puede
+	# subir el reloj de la GPU (lo dice el propio kernel: escribir en
+	# /sys/kernel/debug/dri/0/pstate devuelve "Function not implemented"), asi
+	# que ahi el ligero es el unico que va.
+	local cadena=crt-real
+	if lsmod 2>/dev/null | grep -q "^nouveau"; then
+		cadena=crt-lite
+		echo "  driver nouveau detectado: propongo el shader ligero"
+	fi
+	if ! d_si "Que shader" \
+"crt-real dibuja el haz del tubo y se ve mejor, pero cuesta 3 veces mas.
+crt-lite solo dibuja las lineas de barrido y va mucho mas suelto.
+
+Usar el ligero (crt-lite)?
+
+Con GPU antigua o driver nouveau, el completo deja los juegos a menos de la
+mitad de velocidad." "$( [ "$cadena" = crt-lite ] && echo si || echo no )"
+	then
+		cadena=crt-real
+	else
+		cadena=crt-lite
+	fi
+	echo "  shader: $cadena"
 
 	mkdir -p "$(dirname "$ini")"
 	[ -f "$ini" ] && cp "$ini" "$ini.antes_instalar"
@@ -821,7 +857,7 @@ tarea_crt() {
 		echo "  $1 = $2"
 	}
 	poner_ini video              bgfx
-	poner_ini bgfx_screen_chains crt-real
+	poner_ini bgfx_screen_chains "$cadena"
 	poner_ini resolution         auto
 	[ -n "$bgfx" ] && poner_ini bgfx_path "$bgfx"
 	# switchres genera modelines a la resolucion NATIVA del juego. Eso es lo
