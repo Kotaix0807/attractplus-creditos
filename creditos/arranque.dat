@@ -46,22 +46,22 @@
 # Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto velocidad=0 segundos=5
-simpsons segundos=11 velocidad=0
-kungfum segundos=0 velocidad=100
+simpsons velocidad=0 segundos=11
 tapper velocidad=0 segundos=3 nvram=0
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
-mwalk nvram=0 segundos=10
-rbtapper velocidad=0 indicador=1 segundos=3 nvram=0
+rbtapper velocidad=0 segundos=3 nvram=0
 pacman segundos=5 velocidad=0 indicador=0
-qbert segundos=1 velocidad=0 negro=0
+qbert segundos=1 velocidad=0
 nrallyx segundos=13 velocidad=0 indicador=0
-mappy segundos=15 velocidad=0 indicador=0
-digdug segundos=8 velocidad=0
+mappy segundos=13
+digdug segundos=8
 ncv2 segundos=6 velocidad=0
 sf2 segundos=5 velocidad=0
 # sfiii3n es el set SIN CD (30 ficheros SIMM, ~80 MB) y aqui no esta; el que
 # hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
 sfiii3 segundos=13 velocidad=0
-simpsons2p segundos=11 velocidad=0 indicador=1
+simpsons2p segundos=11 velocidad=0
+mwalk segundos=0 nvram=0
+contra segundos=7 velocidad=0

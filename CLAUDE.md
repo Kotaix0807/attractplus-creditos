@@ -2622,6 +2622,51 @@ lineas que hacian falta, `mwalk nvram=0 segundos=10` y
 `kungfum segundos=0 velocidad=100`. La de `mwalk` importa: sin `nvram=0`,
 Moonwalker vuelve a arrancar con los creditos que guardo la sesion anterior.
 
+## Moonwalker: los creditos viejos TAPABAN la cinematica
+
+Traido por Eloy el 2026-09-04: *«sigue cargando el credito anterior, y ademas
+seria bueno que muestre la cinematica del inicio; para ello desactive las
+configuraciones del arranque, pero no me las toma»*. Parecian dos problemas y
+un ajuste que no se aplicaba. **Era una sola causa y sus ajustes SI se
+aplicaban.**
+
+**La causa: el fichero de NVRAM que ya estaba escrito.** `nvram=0` evita
+**guardar**, no **cargar** — eso ya estaba documentado, pero no la consecuencia:
+
+> Moonwalker **no reproduce su modo de atraccion mientras tenga creditos
+> dentro**. Se queda fijo en «PUSH START BUTTON / CREDITS 6».
+
+Verificado con una tira de capturas: con la NVRAM vieja, 22 segundos clavado en
+la pantalla de titulo con `CREDITS 6`. Borrando
+`~/.mame/nvram/mwalk/nvram` una vez, sale la secuencia entera — avisos legales,
+animacion, logo, **la cinematica de los retratos a los 32 s** y demo con
+`CREDIT 0`. Y la NVRAM **no se vuelve a crear**, porque `nvram=0` ya estaba
+puesto y funciona (lo dice el log: `nvram=0: esta partida no guardara su
+NVRAM`).
+
+**Regla general:** cuando un juego «arranca con creditos», hay que hacer las dos
+cosas — `nvram=0` en `arranque.dat` *y* borrar el fichero una vez. Solo con la
+primera, el sintoma sigue igual y parece que el ajuste no se aplica.
+
+### Y Moonwalker casi no se puede acelerar
+
+Al proponer un arranque tapado corto en vez de `segundos=0`, medido: mwalk sin
+freno llega a **~139%**, porque es un Sega System 18 con dos 68000 y lo limita
+la CPU, no la GPU. O sea que tapar 20 s de juego cuesta **14 s reales de
+pantalla negra**. Para este juego **`segundos=0` es lo correcto**, que es justo
+lo que Eloy habia puesto.
+
+Comparalo con lo que se gana en placas ligeras, medido el mismo dia:
+mspacman 561%, digdug 230%, mappy 230%, dkong 212%, frogger 206%,
+simpsons 143%. **La aceleracion vale mucho en los clasicos de 8 bits y casi
+nada en los de 16.**
+
+### Que juegos siguen expuestos
+
+De los que guardan NVRAM, los que estan en `creditos.dat` con direccion
+verificada (`qbert`, `tapper`, `rbtapper`) los limpia el barrido al arrancar.
+Los que **no** estan (`mwalk`) solo se arreglan con la receta de arriba.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
