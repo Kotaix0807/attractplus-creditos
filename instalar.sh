@@ -884,19 +884,31 @@ juegos probados, con scanlines)" si
 	# Las cifras viejas de este comentario (crt-lite al 55%) estaban medidas
 	# con otras pruebas mias compitiendo por la GPU: eran falsas.
 	#
-	# crt-lite ademas se ve MEJOR en un tubo de verdad: 84,5% de modulacion
-	# entre filas en Kung-Fu Master, frente al 63% de crt-real, y con mas
-	# brillo. Lo que crt-real anade es el modelado del haz, que sobre un CRT
-	# real ya lo pone el propio tubo.
-	local cadena=crt-lite
+	# Medido otra vez el 2026-09-04 en la cabina nueva (Intel HD 3000), y esta
+	# vez con la metrica buena -- pico a valle DENTRO de cada periodo de
+	# scanline, no diferencia entre filas contiguas, que penaliza al que tiene
+	# mas pixeles por linea y me hizo preferir crt-lite por error:
+	#
+	#   cadena                    px/linea  contraste  brillo
+	#   crt-lite  @1024x768          3,00     69,7%     112
+	#   crt-real  @1024x768          3,00     58,8%      97
+	#   crt-real  @1280x1024         4,00     69,8%      94
+	#   crt-real  @1280x1024 (nuevo) 4,00     73,2%      94
+	#
+	# O sea: con 4 pixeles por linea de juego, crt-real iguala y supera el
+	# contraste de crt-lite Y ademas trae el modelo de haz (dilatacion en las
+	# zonas claras, interpolacion Lanczos, gamma correcta). Por eso es el
+	# defecto ahora, y crt-lite queda para GPU flojas.
+	local cadena=crt-real
 	if ! d_si "Que shader" \
 "crt-real dibuja el haz del tubo y se ve mejor, pero cuesta 3 veces mas.
 crt-lite solo dibuja las lineas de barrido y va mucho mas suelto.
 
 Usar el ligero (crt-lite)?
 
-Medido en la cabina: el ligero va al 100% en todos los juegos probados y con
-MAS contraste de scanlines. El completo deja Kung-Fu Master al 70%." si
+crt-real es el defecto: con una Intel HD 3000 va al 100% en todos los juegos
+probados y se ve mejor. Responde SI solo si la GPU es muy justa -- con una
+NVIDIA vieja bajo nouveau, crt-real dejaba Kung-Fu Master al 70%." no
 	then
 		cadena=crt-real
 	else
@@ -921,6 +933,14 @@ MAS contraste de scanlines. El completo deja Kung-Fu Master al 70%." si
 	# lanzamiento, y en KMS esa salida acaba dentro de attract.log. No aporta
 	# nada en una cabina y cuesta E/S en cada arranque.
 	poner_ini verbose            0
+	# El tubo es 4:3 fisicamente aunque el modo sea 5:4 (1280x1024). Sin esto
+	# MAME supone pixeles cuadrados y la geometria sale un 6,7% ancha.
+	poner_ini aspect             4:3
+	# A 60 Hz (que es lo que da 1280x1024 en este tubo) el refresco casi cuadra
+	# con el de las placas, asi que el vsync sale gratis y quita el desgarro.
+	# Medido: 100% en todo, y 99% en los juegos de 60,6 Hz (Namco), que pierden
+	# un fotograma cada segundo y medio. A 85 Hz NO compensa.
+	poner_ini waitvsync          1
 	[ -n "$bgfx" ] && poner_ini bgfx_path "$bgfx"
 	# switchres genera modelines a la resolucion NATIVA del juego. Eso es lo
 	# correcto en un monitor de recreativa, y un desastre en un CRT de PC.
@@ -945,6 +965,51 @@ los juegos acaban yendo al doble de velocidad." no
 	else
 		poner_ini switchres 0
 		echo "  (switchres apagado: la imagen ira a la resolucion del escritorio)"
+	fi
+
+	# --- la resolucion del CRT ----------------------------------------------
+	#
+	# Cuantas mas lineas tenga el modo, mas pixeles de salida por linea del
+	# juego y mejor dibuja el shader el perfil del haz. Medido en la cabina con
+	# Kung-Fu Master (256 lineas):
+	#
+	#   1024x768 @85 Hz -> 3,00 px por linea, contraste 69,7%
+	#   1280x1024 @60Hz -> 4,00 px por linea, contraste 73,2%
+	#
+	# Los modos se leen del EDID por el kernel, sin necesitar X.
+	local salida modos mejor
+	salida="$( for c in /sys/class/drm/card*/card*-*; do
+			[ -f "$c/status" ] && [ "$( cat "$c/status" )" = connected ] || continue
+			n="$( basename "$c" )"; n="${n#*-}"
+			case "$n" in LVDS*|eDP*|DSI*) ;; *) echo "$n"; break ;; esac
+		done )"
+	if [ -n "$salida" ] && [ -f "$HOME/.xinitrc" ] && grep -q "xrandr --output $salida" "$HOME/.xinitrc"; then
+		modos="$( sort -u "/sys/class/drm/"card*-"$salida/modes" 2>/dev/null \
+		          | awk -F x '$2 ~ /^[0-9]+$/' | sort -t x -k2 -n -r )"
+		mejor="$( echo "$modos" | head -1 )"
+		if [ -n "$mejor" ] && ! grep -q -- "--mode $mejor" "$HOME/.xinitrc"; then
+			if d_si "La resolucion del CRT" \
+"El tubo ($salida) acepta:
+
+$( echo "$modos" | sed 's/^/    /' )
+
+Cuantas mas lineas, mejor dibuja el shader las lineas de barrido: a 1280x1024
+salen 4 pixeles por linea de juego en vez de 3, y el contraste sube.
+
+Ojo: los modos altos suelen ir a 60 Hz, y un CRT de PC a 60 Hz PARPADEA mas
+que a 85. Si te molesta, se vuelve atras cambiando --mode en ~/.xinitrc.
+
+Poner $mejor?" si
+			then
+				cp "$HOME/.xinitrc" "$HOME/.xinitrc.antes_resolucion"
+				if grep -q -- "--mode [0-9]*x[0-9]*" "$HOME/.xinitrc"; then
+					sed -i -E "s/--mode [0-9]+x[0-9]+/--mode $mejor/" "$HOME/.xinitrc"
+				else
+					sed -i -E "s|(xrandr --output $salida --primary)|\1 --mode $mejor|" "$HOME/.xinitrc"
+				fi
+				echo "  ~/.xinitrc: $salida a $mejor"
+			fi
+		fi
 	fi
 
 	# --- el driver de X, que es lo que de verdad manda -----------------------

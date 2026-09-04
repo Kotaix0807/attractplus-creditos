@@ -2456,6 +2456,120 @@ capturando la salida VGA de verdad, no supuesto.
   `data_story.lua:19: attempt to assign to const variable 'line'`.
   Apagado en `~/.mame/plugin.ini` (`data 0`); se enciende otra vez ahí.
 
+## La cabina nueva: i3 con graficos integrados, y ahi si sobra GPU
+
+Eloy cambio de maquina el 2026-09-04. Sigue siendo un VAIO, pero:
+
+| | cabina vieja | cabina nueva |
+|---|---|---|
+| CPU | i5-2430M | **i3-2350M** (2,3 GHz, 2 nucleos / 4 hilos) |
+| GPU | GeForce 410M (nouveau, clavada a 270 MHz) | **Intel HD 3000** en `00:02.0` |
+| driver | `modesetting`+glamor sobre nouveau | `modesetting`+glamor sobre i915 |
+
+Es el **mismo disco** en otro chasis: la configuracion, el repo y las roms
+estaban ya en su sitio, y el `/etc/X11/xorg.conf.d/20-modesetting.conf` que
+puso `instalar.sh` seguia valiendo. `glamor X acceleration enabled on
+Mesa Intel(R) HD Graphics 3000 (SNB GT2)`, OpenGL 3.3.
+
+**La IP cambia** (la cabina va por anclaje de movil): el rango es `/28`, asi que
+se encuentra con un barrido de catorce direcciones buscando el puerto 22.
+
+**Aqui sobra GPU.** Medido con la maquina parada, a 1024x768:
+
+| cadena | kungfum | mappy | simpsons | profpac | mwalk |
+|---|---|---|---|---|---|
+| sin shader | 100% | 100% | 100% | 100% | 100% |
+| crt-lite | 100% | 100% | 100% | 100% | 100% |
+| **crt-real** | **100%** | **100%** | **100%** | **100%** | **100%** |
+| crt-geom | 100% | 100% | 100% | 100% | 100% |
+| crt-geom-deluxe | 100% | 100% | 100% | – | – |
+| `hlsl` | 37% | 60% | 35% | 34% | 36% |
+
+Solo `hlsl` se queda fuera. Y a 1280x1024 todo sigue al 100% menos
+crt-geom-deluxe, que baja a 99,2%.
+
+### La metrica con la que compare los shaders estaba mal
+
+Esto importa mas que las cifras, porque me hizo elegir mal. Yo medaa
+**la diferencia media entre filas contiguas**. Eso penaliza al shader que
+tiene mas pixeles por linea de juego: con un perfil de haz suave, dos filas
+vecinas se parecen aunque el pico y el valle esten igual de separados.
+
+La buena es **pico a valle DENTRO de cada periodo de scanline**:
+
+| | px por linea | contraste | brillo |
+|---|---|---|---|
+| crt-lite @1024x768 | 3,00 | 69,7% | 112 |
+| crt-real @1024x768 | 3,00 | 58,8% | 97 |
+| crt-real @1280x1024 | 4,00 | 69,8% | 94 |
+| **crt-real retocado @1280x1024** | **4,00** | **73,2%** | **94** |
+| crt-geom-deluxe @1280x1024 | 4,00 | 20,2% | 117 |
+
+O sea que **crt-real con 4 pixeles por linea iguala y supera a crt-lite**, y
+encima trae lo que crt-lite no tiene: dilatacion del haz en las zonas claras,
+interpolacion Lanczos y gamma correcta. Es el defecto ahora; crt-lite se queda
+para GPU flojas.
+
+crt-geom-deluxe **no sirve aqui** aunque corra: su persistencia de fosforo y su
+mascara lavan las lineas (20,2%) y encima la mascara se suma a la del tubo.
+
+### El retoque de crt-real
+
+Medido en Kung-Fu Master a 1280x1024:
+
+| spot_size | monitorgamma | contraste | brillo |
+|---|---|---|---|
+| 0.18 | 2.4 | 69,4% | 95,2 |
+| 0.16 | 2.4 | 75,7% | 88,1 |
+| **0.16** | **2.6** | **73,4%** | **94,1** |
+| 0.16 | 2.8 | 71,1% | 99,6 |
+| 0.14 | 2.2 | 85,2% | 75,1 |
+
+**`monitorgamma` va al reves de lo que parece: SUBIRLO aclara.** Lo supuse al
+contrario y la primera tanda de variantes salio toda mas oscura.
+
+Hay un compromiso duro detras: haz mas fino = mas contraste y menos brillo. Es
+fisica, no un ajuste mal puesto — media pantalla apagada da menos luz.
+`0.16 / 2.6` es el punto donde se gana contraste sin perder brillo.
+
+### 1280x1024 a 60 Hz, y por que el aspecto no se rompe
+
+El tubo ofrece `1024x768@85`, `1152x864@75` y `1280x1024@60`. Se eligio el
+ultimo: **4 pixeles de salida por linea de juego en vez de 3**, y ademas su
+refresco casi cuadra con el de las placas.
+
+- **1280x1024 es 5:4 y el tubo es 4:3** (mide 310x230 mm). MAME lo resuelve
+  solo con **`aspect 4:3`** en `mame.ini`, que le dice el aspecto FISICO de la
+  pantalla; sin eso supondria pixeles cuadrados y la geometria saldria un 6,7%
+  ancha. Verificado con captura: los verticales siguen bien proporcionados.
+- **AM+ no tiene ese ajuste**, pero no hace falta: estira el layout a la
+  ventana, la ventana cubre el tubo entero y el tubo es 4:3, asi que sale bien.
+  Comprobado comparando capturas a 1024x768 y a 1280x1024.
+- **`waitvsync 1` ahora sale a cuenta.** A 60,02 Hz el vsync quita el desgarro
+  y cuesta nada: 100% en todo y 99% en los de 60,606 Hz (Namco), que pierden un
+  fotograma cada segundo y medio. **A 85 Hz no compensaba.**
+
+**Lo que no se puede medir por ssh: el parpadeo.** Un CRT de PC a 60 Hz
+parpadea mas que a 85. Si molesta, se cambia el `--mode` de `~/.xinitrc`.
+
+### Dos trampas de esta tanda
+
+- **Las opciones booleanas de MAME no llevan valor.** `-waitvsync 0` responde
+  `Error: unknown option: 0` y el juego no arranca; es `-nowaitvsync`. Perdi
+  una tanda entera de medidas con las casillas vacias por esto.
+- **Mi detector de "area activa" se traga las pantallas oscuras.** El titulo de
+  Mappy es casi todo negro, asi que daba un area de 492x1018 en vez de los
+  ~747x1024 que le tocan, y de ahi un "1,71 px por linea" que no significaba
+  nada. Con pantallas oscuras hay que fijar el area, no detectarla.
+- **Una medida suelta de `profpac` al 20,68%** no se reprodujo en cuatro
+  pasadas (99,96%). Era del banco de pruebas, no de la configuracion.
+
+### Un fallo del layout que no es de video
+
+En el frontend, los titulos largos salen recortados por los lados
+(`lassic Collection Vol.2`, `ame That Tune`). Pasa **igual a 1024x768 y a
+1280x1024**, asi que es del layout `Arcade-UMAG`, no de la resolucion.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
