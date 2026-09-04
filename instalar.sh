@@ -798,6 +798,36 @@ tarea_crt() {
 	# y el frontend te devuelve al menu como si el juego hubiera crasheado.
 	# Ahi el camino es otro: switchres genera el modo nativo del juego y las
 	# scanlines las pone el propio tubo, sin shader y sin gastar GPU.
+	#
+	# PERO eso solo sirve en un monitor de RECREATIVA. Medido en la cabina
+	# sobre un CRT VGA de 31 kHz (2026-09-04): un juego de 288 lineas a 60 Hz
+	# pediria ~18 kHz horizontales, que ese tubo no puede dar, asi que
+	# switchres esta obligado a subirlo a 400-512 lineas -- y a esa densidad
+	# el haz ya no deja huecos y NO se ve ni una scanline.
+	#
+	#   kungfum  256 lineas @ 56 Hz -> modo 1024x256 @ 112 Hz -> scanlines si,
+	#                                  pero el tubo lo centra sin estirar
+	#   mappy    288 lineas @ 60 Hz -> modo  661x496 @  60 Hz -> sin scanlines
+	#
+	# En un CRT de PC, entonces, el unico camino a las scanlines es el shader,
+	# y el shader pide X. De ahi la pregunta.
+	if [ "$( ga_valor video.backend )" = KMS ] && [ -f "$GA_CONF" ] && \
+	   d_si "El backend es KMS" \
+"La cabina esta en KMS. Ahi NO hay shader (bgfx no soporta KMSDRM), asi que
+las scanlines dependen de que switchres pueda dar el modo nativo del juego.
+
+Eso funciona en un monitor de RECREATIVA. En un CRT de PC o multisync VGA no:
+el tubo no baja de 31 kHz, switchres tiene que doblar las lineas y las
+scanlines desaparecen.
+
+Pasar a X para poder usar el shader? (medido: 100% de velocidad en todos los
+juegos probados, con scanlines)" si
+	then
+		cp "$GA_CONF" "$GA_CONF.antes_instalar" 2>/dev/null
+		sed -i "s/^video.backend=.*/video.backend=X/" "$GA_CONF"
+		echo "  ga.conf: video.backend = X"
+	fi
+
 	if [ "$( ga_valor video.backend )" = KMS ]; then
 		paso "Ajustando la salida (backend KMS)"
 		local ini_kms; ini_kms="$( mame_ini )"
@@ -842,31 +872,31 @@ tarea_crt() {
 	fi
 
 	# Cual de los dos. crt-real modela el haz del tubo (varias muestras por
-	# pixel); crt-lite solo dibuja las lineas. Medido en la cabina, con una
-	# GeForce 410M y nouveau, a 1024x768:
+	# pixel); crt-lite solo dibuja las lineas.
 	#
-	#            kungfum   mappy
-	#   crt-real   18%      26%
-	#   crt-lite   55%      69%
-	#   sin shader 99%      98%
+	# Medido en la cabina (GeForce 410M + nouveau, 1024x768) DESPUES de poner
+	# el driver X bueno -- ver mas abajo, es lo que de verdad manda:
 	#
-	# El defecto se decide por el driver: nouveau en una tarjeta vieja no puede
-	# subir el reloj de la GPU (lo dice el propio kernel: escribir en
-	# /sys/kernel/debug/dri/0/pstate devuelve "Function not implemented"), asi
-	# que ahi el ligero es el unico que va.
-	local cadena=crt-real
-	if lsmod 2>/dev/null | grep -q "^nouveau"; then
-		cadena=crt-lite
-		echo "  driver nouveau detectado: propongo el shader ligero"
-	fi
+	#              kungfum   mappy   dkong   profpac   simpsons   mwalk
+	#   crt-lite     100%    100%    100%     100%       100%      100%
+	#   crt-real      70%    100%    100%       -          -         -
+	#
+	# Las cifras viejas de este comentario (crt-lite al 55%) estaban medidas
+	# con otras pruebas mias compitiendo por la GPU: eran falsas.
+	#
+	# crt-lite ademas se ve MEJOR en un tubo de verdad: 84,5% de modulacion
+	# entre filas en Kung-Fu Master, frente al 63% de crt-real, y con mas
+	# brillo. Lo que crt-real anade es el modelado del haz, que sobre un CRT
+	# real ya lo pone el propio tubo.
+	local cadena=crt-lite
 	if ! d_si "Que shader" \
 "crt-real dibuja el haz del tubo y se ve mejor, pero cuesta 3 veces mas.
 crt-lite solo dibuja las lineas de barrido y va mucho mas suelto.
 
 Usar el ligero (crt-lite)?
 
-Con GPU antigua o driver nouveau, el completo deja los juegos a menos de la
-mitad de velocidad." "$( [ "$cadena" = crt-lite ] && echo si || echo no )"
+Medido en la cabina: el ligero va al 100% en todos los juegos probados y con
+MAS contraste de scanlines. El completo deja Kung-Fu Master al 70%." si
 	then
 		cadena=crt-real
 	else
@@ -887,6 +917,10 @@ mitad de velocidad." "$( [ "$cadena" = crt-lite ] && echo si || echo no )"
 	poner_ini video              bgfx
 	poner_ini bgfx_screen_chains "$cadena"
 	poner_ini resolution         auto
+	# verbose 1 hace que MAME escriba un par de cientos de lineas por
+	# lanzamiento, y en KMS esa salida acaba dentro de attract.log. No aporta
+	# nada en una cabina y cuesta E/S en cada arranque.
+	poner_ini verbose            0
 	[ -n "$bgfx" ] && poner_ini bgfx_path "$bgfx"
 	# switchres genera modelines a la resolucion NATIVA del juego. Eso es lo
 	# correcto en un monitor de recreativa, y un desastre en un CRT de PC.
@@ -911,6 +945,55 @@ los juegos acaban yendo al doble de velocidad." no
 	else
 		poner_ini switchres 0
 		echo "  (switchres apagado: la imagen ira a la resolucion del escritorio)"
+	fi
+
+	# --- el driver de X, que es lo que de verdad manda -----------------------
+	#
+	# Encontrado midiendo en la cabina el 2026-09-04, y fue el cuello de
+	# botella de todo lo demas. Con una NVIDIA, Xorg elige solo el DDX viejo
+	# "nouveau", que solo ofrece DRI2: cada fotograma se copia a traves del
+	# servidor X en vez de pasar directo a la GPU. Se nota en los juegos con
+	# bitmap grande, y NO se arregla bajando la resolucion (probado: 640x480
+	# da lo mismo, no es relleno de pixeles sino la subida de la textura).
+	#
+	#   juego      DDX nouveau   modesetting+glamor
+	#   profpac       79,5%            100%
+	#   simpsons      88,7%            100%
+	#   mwalk         96,3%            100%
+	#   kungfum       98,2%            100%
+	#   crt-real en kungfum  20,2%      70%
+	#
+	# La prueba de que no era la emulacion: con -video none los tres iban al
+	# 100%, o sea que la CPU tenia de sobra y el tiempo se iba en pintar.
+	#
+	# modesetting + glamor usa el driver Gallium de Mesa para el 2D y habilita
+	# DRI3, asi que el intercambio de buffers va directo. Verificado en el log
+	# de X: "glamor X acceleration enabled on NVD9".
+	if [ -d /etc/X11 ] && lspci 2>/dev/null | grep -qi "VGA.*NVIDIA" \
+	   && [ -f /usr/lib/xorg/modules/drivers/modesetting_drv.so ]; then
+		local xconf=/etc/X11/xorg.conf.d/20-modesetting.conf
+		if [ -f "$xconf" ]; then
+			echo "  driver de X: ya esta puesto modesetting"
+		elif d_si "El driver de X" \
+"Con una NVIDIA, Xorg coge por defecto el driver viejo (nouveau DDX), que solo
+tiene DRI2 y copia cada fotograma a traves del servidor X.
+
+Medido en esta cabina: Prof. Pac-Man pasa de 79% a 100%, Los Simpson de 89% a
+100% y Moonwalker de 96% a 100% con solo cambiarlo.
+
+Poner modesetting + glamor (DRI3)?" si
+		then
+			sudo mkdir -p /etc/X11/xorg.conf.d && printf '%s\n' \
+'Section "Device"' \
+'    Identifier "gpu0"' \
+'    Driver "modesetting"' \
+'    Option "AccelMethod" "glamor"' \
+'    Option "DRI" "3"' \
+'EndSection' | sudo tee "$xconf" >/dev/null \
+				&& echo "  + $xconf" \
+				|| aviso "  no pude escribir $xconf"
+			aviso "  si X no arrancara, se deshace borrando ese fichero"
+		fi
 	fi
 
 	# --- limpiar lo que los .cfg por juego tengan fijado ---------------------

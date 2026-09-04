@@ -1756,13 +1756,20 @@ Y las rutas de MAME **no son las de siempre**:
 
 | | Ubuntu (esta máquina) | GroovyArcade |
 |---|---|---|
-| `mame.ini` | `~/.mame/mame.ini` | `~/.mame/ini/mame.ini` |
+| `mame.ini` | `~/.mame/mame.ini` | `~/.mame/mame.ini` (y `~/.mame` es un enlace a `~/shared/configs/mame`) |
 | `bgfx_path` | junto al ejecutable | `/usr/lib/mame/bgfx` (de root) |
 | `rompath` | `/usr/share/games/mame/roms` | `~/shared/roms/mame` |
 
 Por eso `instalar.sh` ya no las supone: **se las pregunta a MAME** con
 `mame_opcion()` (`-showconfig`), y el `mame.ini` que manda es el primero del
 `inipath`. Con eso el mismo código acierta en las dos máquinas.
+
+**Corregido el 2026-09-04:** aquí estaba escrito que en GroovyArcade el fichero
+era `~/.mame/ini/mame.ini`. **Es mentira** — ese directorio existe pero está
+vacío, y `groovymame -showconfig -verbose` dice `Parsing
+/home/arcade/.mame/mame.ini`. `inipath` vale `$HOME/.mame/ini`, que es de dónde
+salen los `.ini` *por juego*, no el principal. Escribir en el sitio equivocado
+es un fallo mudo: no da error y ningún ajuste surte efecto.
 
 **El enlace `~/.attract` es imprescindible.** AM+ busca su configuración ahí y
 punto (`fe_settings.cpp:54-60`); si la cabina la tiene en
@@ -2348,6 +2355,106 @@ directorio de configuracion, no en el binario). Cambiarlo es:
 sudo cp -a /usr/local/bin/attractplus-kms /usr/local/bin/attractplus-kms.antes
 sudo install -m 755 ~/attractplus-creditos/attractplus-drm /usr/local/bin/attractplus-kms
 ```
+
+## En un CRT de PC las scanlines nativas son IMPOSIBLES: es aritmética
+
+Medido el 2026-09-04, tras dejar la cabina en KMS + switchres y ver que Mappy
+iba perfecto pero **sin una sola scanline**, mientras Kung-Fu Master sí las
+tenía pero salía centrado y sin estirar.
+
+No es un ajuste mal puesto. Lo dice el propio preset del monitor:
+
+```
+Monitor range 31400-31600 Hz, 100-130 Hz vertical, 200-256 lineas
+Monitor range 31400-31600 Hz,  50-65 Hz vertical, 400-512 lineas
+```
+
+- **Kung-Fu Master**: 256 líneas a 56 Hz. Cabe en el primer rango doblando el
+  refresco → modo `1024x256 @ 112,68 Hz` → **scanlines**, pero el tubo lo
+  centra sin estirar.
+- **Mappy**: 288 líneas a 60,6 Hz. 288 **no cabe** en «200-256», así que
+  switchres está obligado a ir al segundo rango → `661x496 @ 60,61` → y a 496
+  líneas el haz ya no deja huecos → **sin scanlines**.
+
+Enseñar 288 líneas a 60 Hz pide ~18 kHz horizontales. **Un CRT VGA de 31 kHz no
+baja de ahí.** Eso es lo que hace un monitor de recreativa de 15 kHz y éste no.
+
+**Y `dotclock_min` no cambia nada**: comprobado con 0, 15 y 25, los verticales
+reciben siempre el mismo modo.
+
+> **Regla:** en un CRT de PC, las scanlines sólo las puede dibujar un shader.
+> Y el shader pide X, porque **bgfx no soporta KMSDRM**. Así que KMS+switchres
+> es el camino bueno *sólo* en un monitor de recreativa.
+
+## El driver de X era el cuello de botella (DRI2 contra DRI3)
+
+Encontrado el 2026-09-04 buscando de dónde sacar más rendimiento, y resultó ser
+lo más gordo de toda la sección de vídeo.
+
+Con una NVIDIA, Xorg autoconfigura el **DDX viejo `nouveau`**, que sólo ofrece
+DRI2: cada fotograma se copia a través del servidor X. En el log:
+
+```
+(II) NOUVEAU(0): [DRI2] Setup complete
+(II) GLX: Initialized DRI2 GL provider for screen 0
+```
+
+Cambiándolo a **`modesetting` + glamor** (que usa el Gallium de Mesa y habilita
+DRI3), con el shader `crt-lite` puesto y a 1024x768:
+
+| juego | DDX `nouveau` | `modesetting`+glamor |
+|---|---|---|
+| profpac | 79,5% | **100%** |
+| simpsons | 88,7% | **100%** |
+| mwalk | 96,3% | **100%** |
+| kungfum | 98,2% | **100%** |
+| kungfum con `crt-real` | 20,2% | **69,6%** |
+| mappy con `crt-real` | 28,6% | **100%** |
+
+Se instala solo (`instalar.sh`, `tarea_crt`) y se deshace borrando
+`/etc/X11/xorg.conf.d/20-modesetting.conf`.
+
+**Cómo se supo que no era la CPU ni el relleno de píxeles**, que es la parte
+que evitó perseguir la pista falsa:
+
+- Con **`-video none`** los tres iban al **100%**: la emulación tenía tiempo de
+  sobra, todo se iba en pintar.
+- **Bajar a 640x480 no ayudaba** (profpac 79,5% → 79,6%): si fuera relleno de
+  píxeles, un cuarto de píxeles se habría notado. Lo que costaba era la subida
+  del bitmap y el intercambio de buffers, que no dependen de la resolución de
+  salida.
+
+### Y el governor de la CPU no aporta nada
+
+Probado por si acaso, porque parecía obvio. **No**: la CPU ya sube sola a
+2,79 GHz con `schedutil` (`intel_cpufreq`), y `performance` sale igual o peor.
+
+| | schedutil | performance |
+|---|---|---|
+| mwalk | 96,3% | 87,0% |
+| simpsons | 90,1% | 87,3% |
+| profpac | 76,4% | 75,6% |
+
+### Las cifras viejas del shader estaban mal medidas
+
+Lo que este documento decía antes (crt-lite al 55% en Kung-Fu Master, crt-real
+al 18%) se midió **con mis propias pruebas corriendo a la vez** y compitiendo
+por la GPU. Las buenas, con la máquina parada, están en la tabla de arriba.
+
+`crt-lite` va al **100% en todos los juegos probados** y encima se ve mejor:
+**84,5% de modulación entre filas** en Kung-Fu Master ocupando los 1024x768
+enteros, y **90,8% entre columnas** en Mappy (en un vertical las líneas salen
+verticales, y es lo correcto: el shader sigue el barrido de la placa). Medido
+capturando la salida VGA de verdad, no supuesto.
+
+### Dos cosas más que estaban puestas y sobraban
+
+- **`verbose 1` en `mame.ini`**: un par de cientos de líneas por lanzamiento, y
+  en KMS acaban dentro de `attract.log`.
+- **El plugin `data` de MAME está roto** en esta versión y suelta un error de
+  Lua en cada arranque:
+  `data_story.lua:19: attempt to assign to const variable 'line'`.
+  Apagado en `~/.mame/plugin.ini` (`data 0`); se enciende otra vez ahí.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
