@@ -523,7 +523,7 @@ ifeq ($(FE_MACOSX_COMPILE),1)
 	$(eval SFML_FLAGS += -DSFML_USE_SYSTEM_DEPS=1)
 endif
 	$(SILENT)$(CMAKE) -S extlibs/SFML -B $(SFML_OBJ_DIR) -DCMAKE_INSTALL_PREFIX=$(SFML_OBJ_DIR)/install -DOpenGL_GL_PREFERENCE=GLVND -DSFML_INSTALL_PKGCONFIG_FILES=TRUE -DSFML_BUILD_NETWORK=FALSE $(SFML_FLAGS)
-	+$(SILENT)$(CMAKE) --build obj/sfml --config Release --target install
+	+$(SILENT)$(CMAKE) --build $(SFML_OBJ_DIR) --config Release --target install
 	touch $(SFML_TOKEN)
 endif
 else

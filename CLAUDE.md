@@ -2197,6 +2197,66 @@ una pasada sin declararlo en el bloque `parameters` de la cadena hace que MAME
 `instalar.sh` instala las dos cadenas y propone la ligera cuando detecta
 nouveau.
 
+## Switchres bajo X no puede: necesita KMS
+
+Eloy, 2026-09-04: *«cuando estaba switchres activado iba bastante bien y se
+veia bien, solo que Kung-Fu Master se veia pequeño»*. Su intuicion era buena:
+con switchres el CRT recibe un modo casi nativo del juego y **las scanlines las
+pone el tubo**, sin shader y sin gastar GPU. Pero bajo X no funciona.
+
+**Los dos problemas tenian un mando cada uno**, y los dos se arreglaron:
+
+- **Los verticales al 222%** era `autosync`. Switchres generaba un modo al
+  doble de frecuencia (~121 Hz) y activaba `-syncrefresh`, asi que MAME se
+  sincronizaba a 121 fps. Con `-noautosync`: mappy 99,2%, kungfum 98,2%,
+  dkong 96,8%.
+- **Kung-Fu Master pequeño** era `dotclock_min`. Su modo de 256x256 tiene un
+  reloj de pixel bajisimo. Subiendolo a 25 MHz, switchres lo pasa a 1024x256.
+
+**Pero el problema de fondo no se arregla.** Medido con el juego corriendo:
+
+```
+modo en el CRT:      1024x256
+ventana de MAME:     1024x768
+```
+
+Switchres cambia el modo del CRTC pero **no redimensiona el escritorio**, asi
+que el tubo enseña solo una franja del escritorio. Con `dotclock_min 0` el modo
+era 256x256, una ventanita — y eso es exactamente lo que Eloy describia como
+«se veia pequeño».
+
+La razon la dice el propio switchres al arrancar:
+
+```
+Switchres/SDL2: (sdl2_display): SDL2 is only available for KMSDRM for now.
+```
+
+**Su backend de verdad es KMSDRM, no X.** Y GroovyArcade esta montada para eso:
+trae `attractplus-kms` ademas de `attractplus-x11`, y `ga.conf` tiene
+`video.backend` para elegir.
+
+### Dos trampas encontradas por el camino
+
+- **`switchres_ini 1` hace que `/etc/switchres.ini` mande sobre `mame.ini`.**
+  `-showconfig` decia `dotclock_min 25` y switchres seguia usando 0, porque lee
+  su propio fichero. Se resuelve con `switchres_ini 0`.
+- **El Makefile de AM+ tiene la ruta de SFML escrita a mano:**
+  `cmake --build obj/sfml` en vez de `$(SFML_OBJ_DIR)`. Compilar con
+  `OBJ_DIR=obj-drm` configuraba SFML en `obj-drm/sfml` y luego instalaba
+  `obj/sfml`, asi que el build fallaba con `SFML/Config.hpp: No such file`.
+  Corregido.
+
+### El build KMS ya existe
+
+`make USE_DRM=1 OBJ_DIR=obj-drm EXE_BASE=attractplus-drm` produce un
+`attractplus-drm` que reporta `SFML 3.0.1 +7z +Curl` **sin `+Xinerama`**, igual
+que el `attractplus-kms` de la distro. Con el se puede probar el camino
+autentico: `video.backend=KMS`, switchres generando modos nativos, sin shader.
+
+**Sin probar todavia**: pasar la cabina a KMS quita X del medio, y con el se van
+`~/.xinitrc` y el ajuste de xrandr que manda la imagen al CRT. Es un cambio que
+hay que hacer delante de la maquina, no por ssh.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
