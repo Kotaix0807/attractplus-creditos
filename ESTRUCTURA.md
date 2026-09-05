@@ -18,6 +18,10 @@ la que corre.
 | `~/Dev/arcade/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
 | `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
+En `arduino/` va todo lo del contador físico: `Arcade.ino` (el firmware) y
+`sandbox.py` (el banco de pruebas del puerto serie, una versión temprana de
+`daemon.py`).
+
 Y un quinto que **no es código pero manda más que el código**:
 
 | `~/.attract/` | La instalación de verdad de la cabina | no |
@@ -105,6 +109,7 @@ carga a los demás con `dofile`.
 | `aviso.lua` | El cuadro de «dejas créditos dentro» al salir |
 | `memoria.lua` | Lee y escribe los créditos en la RAM del juego |
 | `monedero.lua` | La contabilidad del monedero. No habla con MAME, a propósito |
+| `comun.sh` | Trozos que comparten los scripts `.sh`. No se ejecuta: se carga con `.` |
 | `tarifa.lua` | Entiende el DIP de tarifa (1 moneda = N créditos) |
 
 ### Los dos ficheros de datos
@@ -126,6 +131,23 @@ falta para el barrido de créditos y para `auto=1`.
 | `buscar_creditos.sh` | Encuentra la dirección de los créditos ejecutando el juego |
 | `poner_1c1c.sh` | Deja el DIP de tarifa en 1 moneda = 1 crédito |
 | `importar_cheats.py` | Saca direcciones de la colección de cheats de MAME |
+
+### Las rutas no se suponen: se le preguntan a MAME
+
+`comun.sh` tiene `rompath_de()`, y **todos** los scripts que lanzan el emulador
+la usan. Antes cada uno suponía `/usr/share/games/mame/roms`, que sólo existe en
+Debian y derivados: en Arch no está y en GroovyArcade es `~/shared/roms/mame`.
+
+Dos trampas que trae dentro, y las dos muerden:
+
+- **El rompath son VARIAS rutas separadas por `;`**, no una. En esta máquina MAME
+  declara tres, y las roms de verdad están en la tercera. Quedarse con la primera
+  que exista encuentra 11 juegos en vez de 112. Se pasan todas y busca MAME.
+- **`-showconfig` devuelve el valor CRUDO del `.ini`**, así que puede traer un
+  `$HOME` literal. MAME sabe expandirlo, pero nosotros comprobamos los
+  directorios, así que hay que expandirlo también aquí.
+
+`ROMPATH=` del entorno sigue mandando sobre todo.
 
 ---
 
@@ -232,6 +254,21 @@ Para trastear con Squirrel sin arrancar AM+: `./sqhost juega.nut`.
 Están en los **dos** repos y hay que moverlas juntas.
 
 ---
+
+## Lo que hay que bajar aparte
+
+Dos colecciones de terceros que el repo **no lleva** (licencia distinta, se
+actualizan solas, y pesan). Sin ellas el resto funciona; sólo se pierden las
+herramientas que dependen de cada una:
+
+| | Qué es | Quién la usa | Dónde dejarla |
+|---|---|---|---|
+| [hi2txt-xml](https://github.com/GreatStoneEx/hi2txt-xml) (GPL-2) | ~3.100 XML con la estructura interna de la tabla de puntuaciones | `puntajes.py` | su carpeta `src/main/db`; `hi2txt.py` la busca en varios sitios (`buscar_db()`). En la cabina está en `~/.mame/hi2txt/db` |
+| Colección de cheats de Pugsy | `cheat.7z`, direcciones de créditos de miles de juegos | `importar_cheats.py` | donde sea; se le pasa como argumento |
+
+La de Pugsy hay que bajarla **a mano**: el sitio devuelve 403 a las descargas
+automáticas (Cloudflare).
+
 
 ## Cinco trampas que ya nos costaron caro
 

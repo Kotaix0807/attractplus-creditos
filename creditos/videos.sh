@@ -76,20 +76,10 @@ MAME_DIR="$( cd "$( dirname "$MAME_BIN" )" && pwd )"
 
 # Las rutas NO se suponen: se le preguntan al propio emulador, que es quien sabe
 # cual de sus mame.ini manda. En esta maquina el rompath es
-# /usr/share/games/mame/roms y en la cabina ~/shared/roms/mame.
-mame_opcion() {   # $1=clave
-	"$MAME_BIN" -showconfig 2>/dev/null |
-		sed -n "s/^$1[[:space:]]\+//p" | head -1
-}
-ROMPATH="${ROMPATH:-$( mame_opcion rompath )}"
-ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
-# -showconfig devuelve el valor CRUDO del ini, asi que puede traer un $HOME
-# literal (en GroovyArcade el rompath es "$HOME/shared/roms/mame"). MAME sabe
-# expandirlo, pero nosotros tambien comprobamos el directorio, asi que se
-# expande aqui.
-ROMPATH="${ROMPATH//\$HOME/$HOME}"
-ROMPATH="${ROMPATH//\$\{HOME\}/$HOME}"
-ROMPATH="${ROMPATH/#\~/$HOME}"
+# /usr/share/games/mame/roms y en la cabina ~/shared/roms/mame. La cuenta esta
+# en comun.sh, que es de donde la cogen tambien los demas scripts.
+. "$AQUI/comun.sh"
+ROMPATH="$( rompath_de "$MAME_BIN" )"
 EMU="${EMU:-groovymame}"
 DESTINO="${DESTINO:-$HOME/.attract/scraper/$EMU/snap}"
 ROMLIST="${ROMLIST:-$HOME/.attract/romlists/$EMU.txt}"

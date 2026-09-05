@@ -222,10 +222,40 @@ if [ -z "${MAME:-}" ]; then
 	done
 fi
 if [ -z "${ROMS:-}" ]; then
-	for c in /usr/share/games/mame/roms "$HOME/roms" \
-	         /usr/local/share/games/mame/roms; do
-		[ -d "$c" ] && { ROMS="$c"; break; }
+	# Primero se le pregunta a MAME, que es quien sabe donde las tiene: el
+	# defecto de Debian no existe en Arch, y en GroovyArcade son
+	# ~/shared/roms/mame. Su rompath puede traer VARIAS rutas separadas por
+	# ";" y un $HOME sin expandir.
+	candidatas=()
+	if [ -n "${MAME:-}" ] && [ -x "${MAME:-}" ]; then
+		crudo="$( "$MAME" -showconfig 2>/dev/null |
+			sed -n 's/^rompath[[:space:]]\+//p' | head -1 )"
+		crudo="${crudo//\$HOME/$HOME}"
+		crudo="${crudo//\$\{HOME\}/$HOME}"
+		crudo="${crudo/#\~/$HOME}"
+		while IFS= read -r c; do
+			[ -n "$c" ] && candidatas+=( "$c" )
+		done <<< "${crudo//;/$'\n'}"
+	fi
+	candidatas+=( /usr/share/games/mame/roms "$HOME/roms"
+	              /usr/local/share/games/mame/roms "$HOME/shared/roms/mame" )
+	# Se prefiere la que MAS roms tenga, no la primera que exista ni la
+	# primera que tenga alguna: MAME declara varias rutas y la buena no tiene
+	# por que ir delante. Aqui la primera que declara tiene 11 juegos y la
+	# tercera 104, asi que "la primera con roms" elegiria mal y en silencio.
+	mejor=0
+	for c in "${candidatas[@]}"; do
+		[ -d "$c" ] || continue
+		cuantas=$( find "$c" -maxdepth 1 -type f \
+			\( -name '*.zip' -o -name '*.7z' \) 2>/dev/null | wc -l )
+		if [ "$cuantas" -gt "$mejor" ]; then mejor=$cuantas; ROMS="$c"; fi
 	done
+	# Y si ninguna tiene, al menos una que exista.
+	if [ -z "${ROMS:-}" ]; then
+		for c in "${candidatas[@]}"; do
+			[ -d "$c" ] && { ROMS="$c"; break; }
+		done
+	fi
 fi
 # Sin "..": esta ruta acaba escrita en el .cfg del emulador y en mame.ini.
 [ -n "${MAME:-}" ] && MAME="$(cd "$(dirname "$MAME")" && pwd)/$(basename "$MAME")"
@@ -1457,6 +1487,18 @@ hace videos   && { tarea_videos       || fallos=$((fallos+1)); }
 # ---------------------------------------------------------------- revision
 # Las tres cosas que fallaron de verdad en la maquina de pruebas y que no dan
 # la cara hasta mucho despues.
+# Los XML de hi2txt-xml, que hacen falta SOLO para puntajes.py. El instalador
+# NO los baja: es codigo de terceros y esa decision es del usuario, no nuestra.
+# Aqui solo se mira si estan, en los mismos sitios que hi2txt.py (buscar_db).
+hay_hi2txt() {
+	local c
+	for c in "${HI2TXT_DB:-}" "$HOME/hi2txt-xml/src/main/db" \
+	         "$HOME/.mame/hi2txt/db" /usr/share/hi2txt/db; do
+		[ -n "$c" ] && [ -d "$c" ] && { echo "$c"; return 0; }
+	done
+	return 1
+}
+
 paso "Revision"
 
 if [ -x "$MAME" ] && "$MAME" -version >/dev/null 2>&1; then
@@ -1553,6 +1595,29 @@ pendiente+="  Hazlo en el general, NO por juego: un mapeo propio del juego\n"
 pendiente+="  deja el cerrojo del monedero sin efecto.\n"
 pendiente+="- Si quieres el menu de ajustes de arranque, la tecla en\n"
 pendiente+="  Configure > Plug-ins > Arranque.\n"
+
+# hi2txt-xml: se explica como ponerlo, NO se pone. Bajar codigo de terceros a
+# la maquina de alguien es su decision, y hay que decirle lo que implica.
+if ! db="$( hay_hi2txt )"; then
+	pendiente+="- Las puntuaciones de la mayoria de juegos (puntajes.py) necesitan\n"
+	pendiente+="  hi2txt-xml, que NO viene con esto y que el instalador NO baja.\n"
+	pendiente+="  Es codigo de terceros (GPL-2, de GreatStoneEx): unos 3.100 XML\n"
+	pendiente+="  que describen como se lee la tabla de cada juego.\n"
+	pendiente+="\n"
+	pendiente+="  Lo que implica bajarlo, para que lo decidas tu:\n"
+	pendiente+="    * es un repositorio publico que no controlamos nosotros;\n"
+	pendiente+="    * su contenido puede cambiar en cualquier momento;\n"
+	pendiente+="    * su licencia (GPL-2) NO es la de este proyecto, y por eso\n"
+	pendiente+="      va aparte y no dentro del repositorio.\n"
+	pendiente+="  Son ficheros de datos, no programas: nada de eso se ejecuta.\n"
+	pendiente+="\n"
+	pendiente+="  Si lo quieres, hazlo tu con:\n"
+	pendiente+="    git clone https://github.com/GreatStoneEx/hi2txt-xml ~/hi2txt-xml\n"
+	pendiente+="  Se busca solo ahi. Otros sitios validos: ~/.mame/hi2txt/db,\n"
+	pendiente+="  /usr/share/hi2txt/db, o la variable HI2TXT_DB.\n"
+	pendiente+="  Sin el, puntajes.py sigue funcionando con las recetas propias\n"
+	pendiente+="  de puntajes.dat; sale menos cobertura, nada mas.\n"
+fi
 
 if [ "$fallos" -gt 0 ]; then
 	rojo "Termino con $fallos paso(s) fallidos: mira lo de arriba."

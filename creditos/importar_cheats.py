@@ -98,12 +98,13 @@ def recorrer(origen):
     elif origen.lower().endswith('.7z'):
         # La coleccion de Pugsy viene en 7z, con un xml por juego. Se saca a un
         # temporal y se recorre como una carpeta cualquiera.
-        if not shutil.which('7z'):
-            sys.exit('hace falta 7z para abrir %s (sudo apt install p7zip-full)' % origen)
+        sietez = descompresor_7z()
+        if not sietez:
+            sys.exit('hace falta 7z para abrir %s.\n%s' % (origen, COMO_INSTALAR_7Z))
 
         tmp = tempfile.mkdtemp(prefix='cheats-')
         try:
-            r = subprocess.run(['7z', 'x', '-y', '-o' + tmp, origen],
+            r = subprocess.run([sietez, 'x', '-y', '-o' + tmp, origen],
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             if r.returncode != 0:
                 sys.exit('7z fallo: %s' % r.stderr.decode('utf-8', 'replace')[:200])
@@ -113,6 +114,29 @@ def recorrer(origen):
 
     else:
         sys.exit('no se que hacer con %s (espero .xml, .zip, .7z o una carpeta)' % origen)
+
+
+# El binario de 7-Zip se llama distinto en cada distro: p7zip trae "7z" y
+# "7za", y el 7zip oficial (el que empaqueta Arch y Fedora) trae "7zz". Se usa
+# el que haya en vez de suponer uno.
+SIETEZ = ('7z', '7za', '7zz', '7zr')
+
+COMO_INSTALAR_7Z = (
+    'Instalalo con lo que use tu distro:\n'
+    '  Debian/Ubuntu   sudo apt install p7zip-full\n'
+    '  Arch            sudo pacman -S 7zip\n'
+    '  Fedora          sudo dnf install p7zip\n'
+    '  openSUSE        sudo zypper install 7zip'
+)
+
+
+def descompresor_7z():
+    """El primer binario de 7-Zip que exista, o None."""
+    for nombre in SIETEZ:
+        ruta = shutil.which(nombre)
+        if ruta:
+            return ruta
+    return None
 
 
 def leer_existentes(ruta):

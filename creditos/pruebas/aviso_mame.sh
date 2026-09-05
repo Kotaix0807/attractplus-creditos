@@ -27,7 +27,8 @@ vecino() {   # $1=marca que tiene dentro  $2..=candidatos
 
 MAME_DIR="${MAME_DIR:-$( vecino mame \
 	"$AQUI/../../../groovymame_src" "$AQUI/../../groovymame_src" "$HOME/groovymame_src" )}"
-ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
+. "$AQUI/../comun.sh"
+ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
 JUEGO="${JUEGO:-pacman}"
 
 [ -x "$MAME_DIR/mame" ] || { echo "no encuentro $MAME_DIR/mame" >&2; exit 1; }

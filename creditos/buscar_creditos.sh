@@ -25,7 +25,8 @@ vecino() {   # $1=marca que tiene dentro  $2..=candidatos
 
 MAME_DIR="${MAME_DIR:-$( vecino mame \
 	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
-ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
+. "$AQUI/comun.sh"
+ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
 SALIDA="${SALIDA:-$AQUI/creditos.dat}"
 MAME_EXTRA="${MAME_EXTRA:-}"
 
@@ -33,8 +34,7 @@ MAME_EXTRA="${MAME_EXTRA:-}"
 
 juegos=( "$@" )
 if [ ${#juegos[@]} -eq 0 ]; then
-	mapfile -t juegos < <(find "$ROMPATH" -maxdepth 1 -type f \
-		\( -name '*.zip' -o -name '*.7z' \) -printf '%f\n' | sed 's/\.[^.]*$//' | sort)
+	mapfile -t juegos < <( listar_roms "$ROMPATH" )
 fi
 
 LANZA=()

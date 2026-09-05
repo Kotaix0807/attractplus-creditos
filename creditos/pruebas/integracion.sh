@@ -35,7 +35,8 @@ REPO="${REPO:-$( vecino extlibs/squirrel \
 AM="${AM:-$REPO/attractplus}"
 MAME_DIR="${MAME_DIR:-$( vecino mame \
 	"$AQUI/../../../groovymame_src" "$AQUI/../../groovymame_src" "$HOME/groovymame_src" )}"
-ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
+. "$AQUI/../comun.sh"
+ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
 JUEGO="${JUEGO:-pacman}"
 
 for f in "$AM" "$MAME_DIR/mame"; do

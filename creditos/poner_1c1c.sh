@@ -10,7 +10,7 @@
 #
 # Variables:
 #   MAME_DIR   donde esta el ejecutable   (por defecto, el groovymame_src de al lado)
-#   ROMPATH    donde estan las roms       (/usr/share/games/mame/roms)
+#   ROMPATH    donde estan las roms       (por defecto, la que declare MAME)
 #   CFG_DIR    cfg de MAME a modificar    (el que MAME use por defecto)
 #   MAME_EXTRA opciones extra para MAME
 
@@ -31,7 +31,8 @@ vecino() {   # $1=marca que tiene dentro  $2..=candidatos
 
 MAME_DIR="${MAME_DIR:-$( vecino mame \
 	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
-ROMPATH="${ROMPATH:-/usr/share/games/mame/roms}"
+. "$AQUI/comun.sh"
+ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
 MAME_EXTRA="${MAME_EXTRA:-}"
 
 if [ ! -x "$MAME_DIR/mame" ]; then
@@ -42,8 +43,7 @@ fi
 juegos=( "$@" )
 if [ ${#juegos[@]} -eq 0 ]; then
 	# Los nombres de set son los nombres de fichero sin extension
-	mapfile -t juegos < <(find "$ROMPATH" -maxdepth 1 -type f \
-		\( -name '*.zip' -o -name '*.7z' \) -printf '%f\n' | sed 's/\.[^.]*$//' | sort)
+	mapfile -t juegos < <( listar_roms "$ROMPATH" )
 fi
 
 if [ ${#juegos[@]} -eq 0 ]; then
