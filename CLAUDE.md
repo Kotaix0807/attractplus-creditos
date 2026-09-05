@@ -2950,8 +2950,38 @@ nunca las da por buenas: cada fila del JSON lleva `"confirmado": true/false`.
 > en pantalla.** A `dkong` le sobraba un ×10 y sólo se vio mirando su modo de
 > atracción.
 
-**Cobertura hoy:** 94 juegos instalados, **59** con tabla localizable, **33** con
-receta (6 confirmadas), **32** con tabla de fábrica apuntada.
+**Confirmar en pantalla es rápido: el marcador basta.** No hace falta esperar a
+que salga la tabla — casi todos los juegos enseñan el récord en el HUD
+permanentemente (`HIGH 25800` en Contra, `HI 57300` en Gradius, `TOP 008900` en
+Zaxxon). Con una captura por juego se valida la magnitud, que es donde aparece
+el error del multiplicador.
+
+Y **cazó tres recetas mal** que parecían perfectas:
+
+| juego | pantalla | lo que daba | arreglo |
+|---|---|---|---|
+| `arkanoid` | `HIGH SCORE 50000` | 5000 | faltaba `multiplica=10` |
+| `commando` | `TOP SCORE 50000` | 5000 | faltaba `multiplica=10` |
+| `mappy` | `HIGH SCORE 20000` | 200000 | leía un dígito de más |
+
+Las tres tenían forma de escalera de números redondos y habrían pasado
+cualquier criba automática.
+
+**Y las propuestas se cribaron antes:** de las 28 que dio el detector se
+quitaron 12 por no tener forma de tabla — valores no redondos, ceros en medio o
+números imposibles (`goldnaxe` daba 33024026055).
+
+**Cobertura hoy:** 94 juegos instalados, **59** con tabla localizable, **21**
+con receta, de ellas **13 confirmadas en pantalla**.
+
+**La NVRAM sigue sin resolverse, y se intentó.** `detectar_en_ventana()` busca
+la tabla deslizando una ventana por el fichero, porque ahí no ocupa el bloque
+entero. Funciona rápido (1-2 s) pero **los resultados no son de fiar**: en un
+binario de kilobytes «va de mayor a menor» es señal demasiado débil y salen
+falsos positivos por todas partes — `berzerk` daba `555555` seis veces,
+`polepos` una sucesión con diferencias exactamente iguales, `defender` valores
+pegados a `0xF2xx` (la codificación por nibbles de Williams mal leída). **No se
+metió ninguna en `puntajes.dat`**: queda como pista para `--detectar`, nada más.
 
 **La NVRAM es el hueco que queda.** Los juegos que no están en `hiscore.dat`
 (`qbert`, `tapper`, los Williams, los NeoGeo…) guardan las puntuaciones ahí,

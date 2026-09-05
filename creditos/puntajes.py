@@ -392,6 +392,107 @@ def detectar(datos):
     return unicos
 
 
+def region_util(datos, margen=16):
+    """Acota la zona con contenido de un fichero de NVRAM.
+
+    Una NVRAM son kilobytes casi todos a 00 o a ff, con la tabla en un rincon.
+    Buscar la tabla por todo el fichero es carisimo y ademas encuentra basura,
+    asi que primero se acota a donde hay algo escrito.
+    """
+    vivos = [i for i, b in enumerate(datos) if b not in (0, 0xff)]
+    if not vivos:
+        return None
+    ini = max(0, vivos[0] - margen)
+    fin = min(len(datos), vivos[-1] + 1 + margen)
+    return ini, fin
+
+
+def detectar_en_ventana(datos, tope=2048):
+    """Como detectar(), pero buscando la tabla DENTRO de un bloque grande.
+
+    Es lo que hace falta para la NVRAM: alli la tabla no ocupa el fichero
+    entero, asi que no vale exigir que el bloque se divida en partes iguales.
+
+    El primer intento fue deslizar una ventana llamando a detectar() en cada
+    posicion, y era inviable: minutos por fichero. Aqui se le da la vuelta --
+    para cada formato posible se leen de una pasada TODAS las posiciones
+    separadas por el mismo paso, y se buscan tramos seguidos que vayan de mayor
+    a menor. Es un barrido por formato en vez de una busqueda por posicion.
+    """
+    r = region_util(datos)
+    if not r:
+        return []
+    ini, fin = r
+    if fin - ini > tope:
+        fin = ini + tope
+    zona = datos[ini:fin]
+    L = len(zona)
+    salida = []
+
+    for w in range(4, 33):
+        for fmt, lmin, lmax in FORMATOS:
+            for lp in range(lmin, min(lmax, w) + 1):
+                for op in range(0, w - lp + 1):
+                    # Todas las posiciones de esta rejilla, de una pasada.
+                    val, pos = [], []
+                    k = op
+                    while k + lp <= L:
+                        t = zona[k:k + lp]
+                        val.append(numero(t, fmt) if _valido(t, fmt) else None)
+                        pos.append(k)
+                        k += w
+                    # Tramos seguidos que no suben y que son creibles.
+                    i = 0
+                    while i < len(val):
+                        if val[i] is None:
+                            i += 1
+                            continue
+                        j = i
+                        while (j + 1 < len(val) and val[j + 1] is not None
+                               and val[j + 1] <= val[j]):
+                            j += 1
+                        n = j - i + 1
+                        if 4 <= n <= 12:
+                            puntos = val[i:j + 1]
+                            # En un fichero grande hay rachas larguisimas de
+                            # ceros y de 0xffff (relleno de la memoria borrada)
+                            # que cumplen "no sube" sin significar nada. Una
+                            # tabla de verdad tiene varios valores DISTINTOS y
+                            # positivos, y casi ningun cero.
+                            distintos = {v for v in puntos if v}
+                            basura = (0xffff in puntos or 0xffffff in puntos
+                                      or puntos.count(0) > 1)
+                            if (_plausible(puntos) and max(puntos) >= 1000
+                                    and len(distintos) >= 3 and not basura):
+                                trozo = zona[pos[i]:pos[i] + n * w]
+                                nom = _nombre_posible(trozo, w, n, [(op, op + lp)])
+                                redondas = all(v % 10 == 0 for v in puntos)
+                                nota = (n * 2 + lp
+                                        + (12 if redondas else 0)
+                                        + (-12 if max(puntos) > 1000000 else 0)
+                                        + len(set(puntos)) * 3
+                                        + (nom[0] if nom else 0))
+                                salida.append({
+                                    "nota": nota, "entradas": n, "bytes": w,
+                                    "puntos": f"{op},{lp},{fmt}",
+                                    "nombre": (f"{nom[1]},3,{nom[2]}"
+                                               if nom else None),
+                                    "valores": puntos,
+                                    "desde": ini + pos[i] - op,
+                                })
+                        i = j + 1
+
+    salida.sort(key=lambda c: -c["nota"])
+    vistos, unicos = set(), []
+    for c in salida:
+        clave = tuple(c["valores"])
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(c)
+    return unicos[:6]
+
+
 # ------------------------------------------------------------------ el grueso
 def datos_de(juego, cfg, dir_hi):
     """De donde salen los bytes de ese juego. Devuelve (datos, origen, aviso).

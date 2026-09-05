@@ -84,6 +84,11 @@ dkong entradas=5 bytes=34 puntos=7,6,digitos nombre=13,3,idx:dkong confirmado=si
 pacman entradas=1 bytes=4 puntos=0,3,bcdle multiplica=10 confirmado=si
 mspacman entradas=1 bytes=4 puntos=0,3,bcdle multiplica=10 confirmado=si
 
+# NOTA: de las 28 que propuso el detector se quitaron 12 por no tener forma
+# de tabla -- valores no redondos, ceros en medio o numeros imposibles
+# (goldnaxe daba 33024026055). Una tabla de fabrica es una ESCALERA DE NUMEROS
+# REDONDOS, y eso es lo que se uso para cribar. Quedan 16.
+#
 # --- propuestas automaticas del detector -------------------------------
 #
 # Las escribio ./puntajes.py --proponer mirando la tabla de
@@ -96,47 +101,25 @@ mspacman entradas=1 bytes=4 puntos=0,3,bcdle multiplica=10 confirmado=si
 # linea si hace falta y cambia a 'confirmado=si'.
 #
 # arkanoid: [5000, 4500, 4000, 3500, 3000]
-arkanoid entradas=5 bytes=7 puntos=0,3,bcd nombre=3,3,ascii confirmado=no
-# atetris: [303035, 303035, 204445]
-atetris entradas=3 bytes=36 puntos=21,3,bcdle nombre=0,3,ascii confirmado=no
-# berzerk: [5555, 5555, 5555, 4400, 1327]
-berzerk entradas=5 bytes=12 puntos=0,2,bcd nombre=5,3,ascii confirmado=no
-# centiped: [3210, 501, 122]
-centiped entradas=3 bytes=5 puntos=0,2,bcdle nombre=2,3,idx:capcom confirmado=no
+arkanoid entradas=5 bytes=7 puntos=0,3,bcd nombre=3,3,ascii multiplica=10 confirmado=si   # pantalla: HIGH SCORE 50000
 # commando: [5000, 3000, 2000, 1900, 1200, 1000]
-commando entradas=7 bytes=13 puntos=0,2,bcdle nombre=2,3,ascii confirmado=no
+commando entradas=7 bytes=13 puntos=0,2,bcdle nombre=2,3,ascii multiplica=10 confirmado=si   # pantalla: TOP SCORE 50000
 # contra: [25800, 22200, 19500, 13800, 13000, 12000]
-contra entradas=8 bytes=8 puntos=4,4,bcd nombre=0,3,idx:capcom confirmado=no
+contra entradas=8 bytes=8 puntos=4,4,bcd nombre=0,3,idx:capcom confirmado=si   # pantalla: HIGH 25800
 # ddragon: [20000, 20000, 20000, 20000, 20000]
-ddragon entradas=5 bytes=6 puntos=0,3,bcd confirmado=no
+ddragon entradas=5 bytes=6 puntos=0,3,bcd confirmado=si   # pantalla: HI 20000
 # dkong3: [12000, 9000, 8000, 5400, 3200]
-dkong3 entradas=5 bytes=34 puntos=29,3,bcdle nombre=0,3,ascii confirmado=no
+dkong3 entradas=5 bytes=34 puntos=29,3,bcdle nombre=0,3,ascii confirmado=si   # pantalla: TOP 12000
 # ffight: [8540, 8000, 5000]
 ffight entradas=3 bytes=20 puntos=18,2,bcd nombre=1,3,idx:capcom confirmado=no
-# gng: [5434, 1, 0]
-gng entradas=3 bytes=30 puntos=4,2,be nombre=6,3,ascii confirmado=no
-# goldnaxe: [2000, 0, 0, 0]
-goldnaxe entradas=4 bytes=14 puntos=4,8,digitos nombre=0,3,idx:capcom confirmado=no
 # gradius: [57300, 48530, 33300, 25700, 21500, 17700]
-gradius entradas=10 bytes=14 puntos=10,4,bcd nombre=0,3,idx:capcom confirmado=no
+gradius entradas=10 bytes=14 puntos=10,4,bcd nombre=0,3,idx:capcom confirmado=si   # pantalla: HI 57300
 # kungfum: [951400, 851900, 352600, 183900]
 kungfum entradas=4 bytes=30 puntos=0,3,bcdle nombre=3,3,ascii confirmado=no
 # mappy: [200000, 198700, 175600, 121300, 103200]
-mappy entradas=5 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
-# mario: [1000000, 2500, 0, 0, 0]
-mario entradas=5 bytes=34 puntos=4,4,bcdle nombre=0,3,idx:capcom confirmado=no
-# megaman: [20296, 19970, 19, 0]
-megaman entradas=4 bytes=10 puntos=4,2,be nombre=1,3,idx:capcom confirmado=no
-# megaman2: [4500, 4000, 3500, 200, 0, 0]
-megaman2 entradas=7 bytes=40 puntos=24,2,bcdle nombre=0,3,idx:capcom confirmado=no
-# mvsc: [80003, 1400, 320]
-mvsc entradas=3 bytes=34 puntos=20,3,bcd nombre=0,3,idx:capcom confirmado=no
-# popeye: [8989, 806, 663, 577, 565, 529]
-popeye entradas=6 bytes=6 puntos=4,2,le nombre=0,3,idx:capcom confirmado=no
+mappy entradas=5 bytes=8 puntos=0,3,bcd nombre=5,3,ascii multiplica=10 confirmado=si   # pantalla: HIGH SCORE 20000
 # robocop: [50000, 48000, 47000, 46000, 43000, 35000]
 robocop entradas=10 bytes=16 puntos=8,4,bcd nombre=0,3,ascii confirmado=no
-# sf: [340920, 0, 0]
-sf entradas=3 bytes=52 puntos=45,3,bcdle nombre=0,3,idx:capcom confirmado=no
 # sf2: [50000, 45000, 40000, 35000, 30000, 25000]
 sf2 entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
 # simpsons2p: [1080200, 730100, 610300, 570000, 490000, 410100]
@@ -147,7 +130,5 @@ ssf2t entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
 ssriders entradas=10 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
 # timeplt: [10000, 8800, 8460, 6520, 4300]
 timeplt entradas=5 bytes=8 puntos=1,3,bcdle nombre=4,3,idx:capcom confirmado=no
-# wboy: [333030, 323830, 323630, 323430, 323230, 323030]
-wboy entradas=20 bytes=16 puntos=4,3,bcd nombre=0,3,idx:capcom confirmado=no
 # zaxxon: [8900, 7400, 6600, 5100, 4300, 3700]
-zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=no
+zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=si   # pantalla: TOP 008900
