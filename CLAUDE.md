@@ -2971,8 +2971,18 @@ cualquier criba automática.
 quitaron 12 por no tener forma de tabla — valores no redondos, ceros en medio o
 números imposibles (`goldnaxe` daba 33024026055).
 
+**Y hay juegos que guardan la tabla al reves.** Kung-Fu Master la tiene de
+MENOR a MAYOR: sus 20 posiciones acaban en el record (`00 48 52` -> 48520, que
+es lo que marca `TOP-048520`). El detector solo buscaba descendente y por eso
+proponia una lectura equivocada. Ahora acepta los dos sentidos y `orden=asc` le
+da la vuelta al descifrar, para que «puesto 1» sea siempre el mejor.
+
 **Cobertura hoy:** 94 juegos instalados, **59** con tabla localizable, **21**
-con receta, de ellas **13 confirmadas en pantalla**.
+con receta, de ellas **16 confirmadas en pantalla**.
+
+Las 5 que faltan (`ffight`, `simpsons2p`, `ssf2t`, `ssriders`, `timeplt`) no
+enseñaron su marcador en ninguno de los cinco instantes capturados: son juegos
+cuyo modo de atracción es casi todo cinemática o selección de personaje.
 
 **La NVRAM sigue sin resolverse, y se intentó.** `detectar_en_ventana()` busca
 la tabla deslizando una ventana por el fichero, porque ahí no ocupa el bloque

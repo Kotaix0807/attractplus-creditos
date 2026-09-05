@@ -230,11 +230,17 @@ def descifrar(datos, cfg):
     mult = int(cfg.get("multiplica", 1))
 
     salida = []
-    for i in range(n):
+    orden = range(n)
+    if cfg.get("orden") == "asc":
+        # Kung-Fu Master guarda sus 20 posiciones de MENOR a MAYOR: la ultima
+        # es el record. Se le da la vuelta para que 'puesto 1' sea siempre el
+        # mejor, como en todos los demas.
+        orden = range(n - 1, -1, -1)
+    for puesto, i in enumerate(orden):
         e = datos[i * ancho:(i + 1) * ancho]
         if len(e) < ancho:
             break
-        fila = {"puesto": i + 1, "puntos": numero(e[op:op + lp], fp) * mult,
+        fila = {"puesto": puesto + 1, "puntos": numero(e[op:op + lp], fp) * mult,
                 # Una receta 'confirmada' se comparo con lo que el juego ensena
                 # en pantalla. Las que no, las propuso el detector y pueden
                 # estar mal -- a dkong le sobraba un x10 y solo se vio mirando
@@ -268,7 +274,14 @@ FORMATOS = (("bcd", 2, 4), ("bcdle", 2, 4), ("digitos", 4, 8),
 
 
 def _descendente(v):
-    return all(v[i] >= v[i + 1] for i in range(len(v) - 1))
+    """Ordenada, en cualquiera de los dos sentidos.
+
+    Casi todos los juegos guardan el record primero, pero no todos: Kung-Fu
+    Master guarda sus 20 posiciones de menor a mayor. Buscar solo descendente
+    dejaba fuera ese caso y proponia una lectura equivocada.
+    """
+    return (all(v[i] >= v[i + 1] for i in range(len(v) - 1))
+            or all(v[i] <= v[i + 1] for i in range(len(v) - 1)))
 
 
 def _valido(trozo, fmt):
@@ -290,8 +303,8 @@ def _valido(trozo, fmt):
 
 def _plausible(puntos):
     """Descarta lo que no puede ser una tabla de puntuaciones."""
-    if puntos[0] <= 0:
-        return False                      # la primera posicion siempre puntua
+    if max(puntos) <= 0:
+        return False                      # alguna posicion tiene que puntuar
     if puntos[0] > 99999999:
         return False                      # ninguna recreativa llega ahi
     if len(set(puntos)) == 1 and puntos[0] > 0:

@@ -115,13 +115,13 @@ ffight entradas=3 bytes=20 puntos=18,2,bcd nombre=1,3,idx:capcom confirmado=no
 # gradius: [57300, 48530, 33300, 25700, 21500, 17700]
 gradius entradas=10 bytes=14 puntos=10,4,bcd nombre=0,3,idx:capcom confirmado=si   # pantalla: HI 57300
 # kungfum: [951400, 851900, 352600, 183900]
-kungfum entradas=4 bytes=30 puntos=0,3,bcdle nombre=3,3,ascii confirmado=no
+kungfum entradas=20 bytes=6 puntos=0,3,bcd nombre=3,3,ascii multiplica=10 orden=asc confirmado=si   # pantalla: TOP-048520
 # mappy: [200000, 198700, 175600, 121300, 103200]
 mappy entradas=5 bytes=8 puntos=0,3,bcd nombre=5,3,ascii multiplica=10 confirmado=si   # pantalla: HIGH SCORE 20000
 # robocop: [50000, 48000, 47000, 46000, 43000, 35000]
-robocop entradas=10 bytes=16 puntos=8,4,bcd nombre=0,3,ascii confirmado=no
+robocop entradas=10 bytes=16 puntos=8,4,bcd nombre=0,3,ascii confirmado=si   # pantalla: HI 50000
 # sf2: [50000, 45000, 40000, 35000, 30000, 25000]
-sf2 entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
+sf2 entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=si   # pantalla: NIN 50000
 # simpsons2p: [1080200, 730100, 610300, 570000, 490000, 410100]
 simpsons2p entradas=10 bytes=8 puntos=3,4,bcd nombre=0,3,ascii confirmado=no
 # ssf2t: [50000, 45000, 40000, 35000, 30000, 25000]
