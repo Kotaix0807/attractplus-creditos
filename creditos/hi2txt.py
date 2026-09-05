@@ -153,7 +153,16 @@ def _recorrer(nodo, datos, pos, charsets, filas, sueltos, dentro_bucle=None):
             n = _entero(hijo.get("count"), 0)
             for i in range(n):
                 fila = {}
-                pos = _recorrer(hijo, datos, pos, charsets, filas, sueltos, fila)
+                try:
+                    pos = _recorrer(hijo, datos, pos, charsets, filas,
+                                    sueltos, fila)
+                except NoSeSabe:
+                    # Los datos se acabaron a mitad de la tabla. Pasa cuando el
+                    # XML describe una version de hiscore.dat distinta de la
+                    # instalada: el bloque que volcamos es mas corto. Vale mas
+                    # quedarse con las posiciones completas que rendirse y no
+                    # dar ninguna.
+                    break
                 if fila:
                     filas.append(fila)
         elif hijo.tag == "elt":

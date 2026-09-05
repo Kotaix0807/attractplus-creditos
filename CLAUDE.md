@@ -2924,7 +2924,7 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 62 juegos descifrables** — 58 por hi2txt y 4 con
+**Cobertura: de 21 recetas a 66 juegos descifrables** — 61 por hi2txt y 5 con
 recetas propias. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -2987,6 +2987,54 @@ Y la regla que faltaba, que salió de romperlo: **si el XML declara una fuente,
 no se busca fuera de ella.** Al permitir el comodín para todos, `arkanoid` pasó
 a leer su `nvram` en vez de su tabla, y devolvía **0 en vez de 50000 sin dar
 ningún error** — un descifrado perfectamente válido y perfectamente falso.
+
+### `byte-swap`: nueve juegos daban basura sin avisar
+
+El hallazgo más importante de esta tanda, y salió buscando otra cosa. Los XML
+pueden declarar **`byte-swap="2"`**: los bytes van intercambiados por parejas,
+porque la placa vuelca su memoria en palabras de 16 bits. Lo usan 63 XML, y de
+los juegos de esta cabina afecta a **nueve** — todos los NeoGeo, `mwalk` y
+`goldnaxe`.
+
+No lo implementaba, y el fallo es **mudo**: el descifrado no da error, devuelve
+números y nombres perfectamente formados pero equivocados. Se ve a simple vista
+en el `saveram` de un NeoGeo, donde pone `ABKCPUR MAO` en vez de `BACKUP RAM`.
+Con el arreglo salen las tablas reconocibles: `mwalk` 50000/45000/40000 con
+iniciales `M.J`, `mslug2` 107400 APE / 98410 BAT / 89330 CAT.
+
+### Descifrar «lo que quepa», y el filtro que hace falta detrás
+
+Cuando el XML describe más posiciones de las que hay en los datos —porque
+describe otra versión de `hiscore.dat`— vale más quedarse con las completas que
+rendirse. Pero eso deja pasar basura, así que hay un filtro después: se recortan
+las posiciones vacías del final, se corta donde la tabla deja de estar ordenada,
+y se exige que la primera llegue a 1000.
+
+Los dos límites salieron de equivocarme en las dos direcciones:
+
+- Sin filtro, `tmnt` daba **cien** posiciones de 312, 257, 206… Números que
+  bajan y no son puntuaciones de nadie.
+- Con el filtro demasiado estricto (tope de 40 posiciones) se caía `avsp`, que
+  tiene una tabla **de verdad** de 49 (300000, 250000, 200000, 150000…). El tope
+  está en 64 por eso.
+
+### `atetris` guarda las puntuaciones en ASCII
+
+Diez puntuaciones de seis dígitos seguidas (`007000006500…`) y después los diez
+nombres en un bloque aparte, con 18 bytes de firma (`TETRISTETRISTETRIS`) en
+medio. De ahí dos cosas nuevas en `puntajes.dat`: el formato `texto` y la clave
+`nombres=`, para las placas que no intercalan los campos.
+
+### Lo que NO se pudo, y por qué
+
+**Los NeoGeo no tienen tabla todavía.** Descifrado su `saveram`, sólo contiene
+la cabecera `BACKUP RAM OK` y el nombre del juego (`SAMURAI`, `FATAL FURY`,
+`DOUBLE DRAGON`, `STREET HOOP`). La tabla aparece cuando alguien juega: **no es
+que falte la receta, es que no hay nada que leer**.
+
+Y probar las 3102 estructuras del corpus contra un juego que no tiene la suya
+**no funciona**: las placas no comparten la posición de la tabla ni dentro de la
+misma familia. Se intentó con los NeoGeo y sólo salieron falsos positivos.
 
 ### Las otras fuentes que pasó Eloy
 

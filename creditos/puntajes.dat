@@ -132,3 +132,11 @@ ssriders entradas=10 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
 timeplt entradas=5 bytes=8 puntos=1,3,bcdle nombre=4,3,idx:capcom confirmado=no
 # zaxxon: [8900, 7400, 6600, 5100, 4300, 3700]
 zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=si   # pantalla: TOP 008900
+# Atari Tetris guarda TODO en ASCII: 10 puntuaciones de 6 digitos seguidas
+# ("007000006500...") y despues los 10 nombres de 3 letras en un bloque aparte,
+# no intercalados. De ahi 'nombres=', que da el desplazamiento absoluto de ese
+# segundo bloque. Sale la escalera 7000/6500/6000/.../2500, que tiene toda la
+# pinta de la tabla de fabrica.
+# (entre las puntuaciones y los nombres hay 18 bytes de firma,
+# 'TETRISTETRISTETRIS', por eso los nombres empiezan en el 78 y no en el 60)
+atetris entradas=10 bytes=6 puntos=0,6,texto nombres=78,3,ascii confirmado=no

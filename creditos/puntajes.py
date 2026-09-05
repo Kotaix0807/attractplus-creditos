@@ -197,6 +197,11 @@ def numero(datos, modo):
     try:
         if modo == "bcd":            # 0x00 0x30 0x00 -> 3000
             return int(datos.hex())
+        if modo == "texto":      # los digitos van escritos en ASCII: "007000"
+            t = datos.decode("ascii", "ignore").strip()
+            if not t.isdigit():
+                raise RecetaNoEncaja(f"{datos.hex()} no son digitos ASCII")
+            return int(t)
         if modo == "digitos":        # un digito decimal por byte
             return int("".join(str(b) for b in datos) or "0")
         if modo == "bcdle":          # BCD pero con el byte bajo primero
@@ -232,6 +237,10 @@ def descifrar(datos, cfg):
     ancho = int(cfg["bytes"])
     op, lp, fp = campo(cfg["puntos"])
     on, ln, fn = campo(cfg["nombre"]) if "nombre" in cfg else (0, 0, "")
+    # Algunas placas no intercalan los campos: guardan TODAS las puntuaciones
+    # seguidas y luego todos los nombres (Atari Tetris). 'nombres=' da el
+    # desplazamiento absoluto de ese segundo bloque.
+    par = campo(cfg["nombres"]) if "nombres" in cfg else None
     mult = int(cfg.get("multiplica", 1))
 
     salida = []
@@ -252,7 +261,11 @@ def descifrar(datos, cfg):
                 # su tabla de atraccion. El programa que lea el JSON deberia
                 # tratarlas con cuidado.
                 "confirmado": cfg.get("confirmado", "no") == "si"}
-        if ln:
+        if par:
+            base, largo, alf = par
+            fila["nombre"] = texto(datos[base + i * largo:base + (i + 1) * largo],
+                                   alf or "ascii")
+        elif ln:
             fila["nombre"] = texto(e[on:on + ln], fn)
         if "nivel" in cfg:
             oL, lL, _ = campo(cfg["nivel"] + ",,")
@@ -516,6 +529,57 @@ DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 FABRICA = {}              # tablas leidas de la RAM con --fabrica
 
 
+def _recortar(filas):
+    """Quita las posiciones vacias del final: son relleno, no puntuaciones."""
+    while filas and not filas[-1].get("puntos"):
+        filas.pop()
+    return filas
+
+
+def _cortar_donde_deja_de_ordenar(filas):
+    """Se queda con el tramo ordenado del principio.
+
+    Cuando el XML declara mas posiciones de las que la tabla tiene de verdad,
+    detras vienen bytes que no son puntuaciones. Lo real va ordenado y el
+    relleno rompe el orden, asi que ahi esta el corte: avsp declaraba 49
+    posiciones y las buenas son las primeras.
+    """
+    if len(filas) < 3:
+        return filas
+    p = [f["puntos"] for f in filas]
+    baja = p[0] >= p[1]
+    fin = 1
+    while fin < len(p) and ((p[fin - 1] >= p[fin]) if baja else (p[fin - 1] <= p[fin])):
+        fin += 1
+    return filas[:fin]
+
+
+def _parece_tabla(filas):
+    """Ultimo filtro antes de dar un descifrado por bueno.
+
+    Hace falta porque descifrar "lo que quepa" cuando los datos son mas cortos
+    que la estructura tambien deja pasar basura: tmnt salia con CIEN posiciones
+    de 312, 257, 206... Numeros que bajan, pero que no son puntuaciones de
+    nadie. Es preferible decir "no se descifra" que publicar eso.
+    """
+    # 64 y no 40: Alien vs Predator tiene una tabla DE VERDAD de 49 posiciones
+    # (300000, 250000, 200000, 150000, 100000, 90000...), asi que un tope bajo
+    # tiraba un descifrado correcto. Lo que separa a tmnt, que salia con cien,
+    # no es la longitud sino que sus valores no son puntuaciones de nadie.
+    if not filas or len(filas) > 64:
+        return False
+    p = [f["puntos"] for f in filas]
+    # La primera posicion de una tabla de fabrica no baja de 1000 en ninguno de
+    # los juegos de esta cabina. Es lo que separa una tabla de verdad de una
+    # sucesion de bytes que resulta ir en orden: tmnt salia con 312, 257, 206.
+    if max(p) < 1000:
+        return False
+    # Una tabla va ordenada, en un sentido o en el otro.
+    baja = all(p[i] >= p[i + 1] for i in range(len(p) - 1))
+    sube = all(p[i] <= p[i + 1] for i in range(len(p) - 1))
+    return baja or sube
+
+
 def datos_de(juego, cfg, dir_hi, fabrica=None):
     """De donde salen los bytes de ese juego. Devuelve (datos, origen, aviso).
 
@@ -597,7 +661,8 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
                 import hi2txt
                 filas, _ = hi2txt.puntuaciones(
                     xml, datos, ".hi" if origen in ("hi", "fabrica") else origen)
-                if filas:
+                filas = _cortar_donde_deja_de_ordenar(_recortar(filas))
+                if filas and _parece_tabla(filas):
                     for f in filas:
                         f["receta"] = "hi2txt"
                         f["confirmado"] = True
