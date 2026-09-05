@@ -347,13 +347,25 @@ mame_ini() {
 }
 
 # De las columnas de las tablas, cual es la de esta maquina.
-elige() {   # $1=debian $2=arch $3=fedora $4=opensuse -> el que toque
+#
+# El primer argumento es SOLO para el aviso: si a una fila le faltan columnas
+# hay que decirlo, porque el sintoma natural es de los malos. En apt y pacman
+# la fila corta funciona (sus columnas van delante), asi que el fallo no se ve
+# aqui; en Fedora la dependencia se quedaria sin instalar y sin explicacion.
+elige() {   # $1=de-que-fila $2=debian $3=arch $4=fedora $5=opensuse
+	local que="$1"; shift
+	local nombre
 	case "$GESTOR" in
-		pacman) echo "$2" ;;
-		dnf)    echo "$3" ;;
-		zypper) echo "$4" ;;
-		*)      echo "$1" ;;   # apt, y lo desconocido: al menos se dice algo
+		pacman) nombre="${2:-}" ;;
+		dnf)    nombre="${3:-}" ;;
+		zypper) nombre="${4:-}" ;;
+		*)      nombre="${1:-}" ;;   # apt, y lo desconocido
 	esac
+	if [ -z "$nombre" ]; then
+		echo "  AVISO: en la tabla, '$que' no tiene nombre de paquete para $GESTOR" >&2
+		return 0
+	fi
+	echo "$nombre"
 }
 
 # La primera columna de HERRAMIENTAS admite alternativas: "magick|convert" se
@@ -376,13 +388,13 @@ paquetes_que_faltan() {
 				# En RPM no se traduce: rpm publica un provides por cada .pc,
 				# asi que se pide el modulo y que el gestor busque quien lo da.
 				dnf|zypper) echo "pkgconfig($mod)" ;;
-				*)          elige "$deb" "$arch" ;;
+				*)          elige "$mod" "$deb" "$arch" ;;
 			esac
 		done <<< "$LIBRERIAS"
 		while read -r bin deb arch fed sus; do
 			[ -n "$bin" ] || continue
 			hay_binario "$bin" && continue
-			elige "$deb" "$arch" "$fed" "$sus"
+			elige "$bin" "$deb" "$arch" "$fed" "$sus"
 		done <<< "$HERRAMIENTAS"
 		# Y las que el emulador necesita para arrancar
 		[ -n "${MAME:-}" ] && [ -x "${MAME:-}" ] && paquetes_del_emulador
@@ -416,7 +428,7 @@ paquetes_del_emulador() {   # $1=binario (por defecto $MAME)
 	while read -r pre deb arch fed sus; do
 		[ -n "$pre" ] || continue
 		if grep -q "^$pre" <<< "$faltantes"; then
-			elige "$deb" "$arch" "$fed" "$sus"
+			elige "$pre" "$deb" "$arch" "$fed" "$sus"
 		fi
 	done <<< "$LIBRERIAS_EMULADOR" | sort -u
 	# Las que no estan en la tabla se dicen por su nombre, que es mejor que
