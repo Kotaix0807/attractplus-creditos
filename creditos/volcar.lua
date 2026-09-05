@@ -19,9 +19,18 @@ GA_D_SUB = emu.add_machine_frame_notifier(function ()
 	for spec in ESPEC:gmatch('[^;]+') do
 		local cpu, espacio, dir, largo =
 			spec:match('([^,]*),([^,]*),([^,]*),([^,]*)')
-		local d = manager.machine.devices[':' .. cpu]
-		if d then
-			local sp = d.spaces[espacio]
+		-- El "espacio" de hiscore.dat no siempre es un espacio de la CPU: puede
+		-- ser un SHARE de memoria, escrito como "<nombre>/share" (missile guarda
+		-- ahi su tabla). Es lo mismo que hace el plugin hiscore en init.lua:129.
+		local nombre, clase = espacio:match('([^/]*)/?([^/]*)')
+		local sp
+		if clase == 'share' then
+			sp = manager.machine.memory.shares[nombre]
+		else
+			local d = manager.machine.devices[':' .. cpu]
+			if d then sp = d.spaces[espacio] end
+		end
+		do
 			if sp then
 				local base, n = tonumber(dir, 16), tonumber(largo, 16)
 				local i = 0

@@ -2924,7 +2924,7 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 61 juegos descifrables** — 57 por hi2txt y 4 con
+**Cobertura: de 21 recetas a 62 juegos descifrables** — 58 por hi2txt y 4 con
 recetas propias. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -2971,6 +2971,22 @@ Los tres daban «no se descifra» sin más, y ninguno era culpa de la base:
 - **La tabla de fábrica vale como `.hi`.** Mientras nadie haya jugado, lo que
   leímos de la RAM con `--fabrica` es exactamente lo que habría en el `.hi`, así
   que se usa cuando el XML pide `.hi` y todavía no existe.
+
+### Dos sitios más donde mirar, y una regla que faltaba
+
+- **El «espacio» de `hiscore.dat` puede ser un SHARE de memoria**, escrito
+  `<nombre>/share` en vez de `program` — Missile Command guarda ahí su tabla.
+  `volcar.lua` lo trataba como espacio de CPU y no volcaba nada. Se resuelve
+  igual que en el plugin (`init.lua:129`): `manager.machine.memory.shares`.
+- **MAME nombra el fichero por el CHIP, no por una lista corta.** Además de
+  `nvram`, `saveram`, `eeprom` y `x2212` hay cosas como `at28c16` (la EEPROM de
+  Namco Classic Collection). Cuando el XML no dice nada, se prueba cualquier
+  fichero que haya en la carpeta del juego.
+
+Y la regla que faltaba, que salió de romperlo: **si el XML declara una fuente,
+no se busca fuera de ella.** Al permitir el comodín para todos, `arkanoid` pasó
+a leer su `nvram` en vez de su tabla, y devolvía **0 en vez de 50000 sin dar
+ningún error** — un descifrado perfectamente válido y perfectamente falso.
 
 ### Las otras fuentes que pasó Eloy
 
@@ -3152,6 +3168,102 @@ Detalles que lleva dentro:
 
 **No está probado en Arch** — aquí no hay ninguna máquina Arch. Lo que sí está
 probado es que se niega a correr donde no toca.
+
+## Que corra en cualquier distro, no solo en Ubuntu
+
+Encargo de Eloy el 2026-09-05. Cuatro fallos de portabilidad, y **ninguno da la
+cara en esta maquina**: los cuatro se manifiestan sólo en la distro que no es.
+
+### 1. `instalar.sh` decia soportar Fedora y no era verdad
+
+Es el que peor pinta tenia, porque el soporte estaba **a medias y en silencio**.
+`GESTOR=dnf` se detectaba y habia rama de instalacion, pero `columna()` decia:
+
+```bash
+[ "$GESTOR" = pacman ] && echo 3 || echo 2      # o Arch, o Debian
+```
+
+O sea que en Fedora se llegaba a `sudo dnf install libx11-dev build-essential`,
+con **todos** los nombres equivocados. No es que faltara una columna: es que la
+que habia estaba mal y no lo decia.
+
+**La solucion para las librerias no es otra tabla.** En las distros de RPM, rpm
+genera solo un *provides* virtual por cada `.pc` que instala un paquete, asi que:
+
+```bash
+sudo dnf install "pkgconfig(x11)"        # encuentra el paquete se llame como se llame
+```
+
+Encaja con lo que el fichero ya hacia —la primera columna de la tabla **ya era**
+el modulo de pkg-config— y no hay nombres que mantener. Sólo `HERRAMIENTAS`
+(binarios: `gcc-c++`, `cmake`…) y `LIBRERIAS_EMULADOR` (las `.so` que pide `ldd`)
+necesitan nombres de verdad, y ahi si hay cuatro columnas.
+
+Ahora `elige()` reparte por gestor y `instalar_rpm()` **criba antes de instalar**
+con `dnf repoquery --whatprovides` o `zypper search --provides`, por el mismo
+motivo por el que ya se hacia en Arch: un nombre que no existe aborta la
+instalacion entera, y perder veinte paquetes por uno no vale la pena.
+
+Comprobado generando la lista que pediria cada gestor: apt y pacman dan lo mismo
+que antes (no hay regresion), dnf y zypper dan nombres coherentes. **Instalar de
+verdad en Fedora u openSUSE no se ha probado: aqui no hay ninguna maquina.** Por
+eso la criba previa importa tanto.
+
+### 2. ImageMagick 7 no instala `convert`
+
+`aspecto.sh` e `integracion.sh` llamaban a `convert` e `identify`. La version 7
+—Arch, Fedora 41+, Debian 13— trae **un solo `magick`** que hace de los dos.
+Ubuntu 24.04 todavia lleva la 6, asi que aqui no se ve.
+
+Se elige el que haya, y en arrays (`"${CONVERTIR[@]}"`) porque en la 7 la orden
+son **dos palabras**: `magick identify`.
+
+### 3. Cada script suponia la ruta de las roms de Debian
+
+`/usr/share/games/mame/roms` sólo existe en Debian y derivados. La forma buena ya
+estaba inventada en `instalar.sh` (`mame_opcion()`, preguntarle a MAME con
+`-showconfig`) y `videos.sh` ya la usaba; los otros cuatro no.
+
+Ahora esta en **`creditos/comun.sh`**, que cargan los cinco. Y al escribirlo
+aparecio una trampa que la version de `videos.sh` tampoco cubria:
+
+> **El rompath son VARIAS rutas separadas por `;`.** En esta maquina MAME declara
+> `$HOME/mame/roms;/usr/local/share/games/mame/roms;/usr/share/games/mame/roms`,
+> y las roms estan en la **tercera**.
+
+Quedarse con «la primera que exista» —que fue mi primer intento— habria
+encontrado **11 juegos en vez de 112**, sin dar ningun error. Se devuelven todas
+y busca MAME, que para eso las declara. Para los `find` que enumeran roms,
+`listar_roms()` recorre todos los directorios que existan.
+
+Verificado con `aviso_mame.sh`, que lanza MAME de verdad: 56 comprobaciones en
+verde con las rutas nuevas.
+
+### 4. El binario de 7-Zip no se llama igual en todas partes
+
+`importar_cheats.py` exigia `7z` y su mensaje de error decia `apt install
+p7zip-full`. En Arch y Fedora el paquete `7zip` trae **`7zz`**, no `7z`. Ahora
+prueba `7z`, `7za`, `7zz` y `7zr`, y el mensaje da el paquete de cada distro.
+
+### Y lo que se quito del repositorio
+
+- **`creditos/__pycache__/*.pyc`**: generados, y atados a Python 3.12, que es
+  justo lo contrario de lo que se busca. Ignorados desde ahora.
+- **`creditos/sq`**: un ELF **x86-64** de 386 KB que entro con el `git subtree` y
+  al que no llama nadie. `pruebas/correr.sh` ya se compila su propio `sqhost` en
+  cada maquina, que es lo correcto: un binario versionado no arranca en ARM.
+- `sandbox.py` se fue de la raiz a **`arduino/`**, con `Arcade.ino`, que es su
+  pareja: no es basura, es el banco de pruebas del puerto serie de Eloy.
+- `daemon.py` y `arduino/sandbox.py` no tenian **shebang**, asi que `./daemon.py`
+  no funcionaba.
+
+### Aviso para las tres sesiones: `git add -A` barre lo ajeno
+
+Con tres sesiones en el mismo arbol, un `git commit -a` se lleva lo que las otras
+tengan a medias en el indice. Paso: el commit `53a8227`, que hablaba de
+puntuaciones, se llevo dentro esta limpieza entera. No se perdio nada, pero el
+mensaje describe la mitad de lo que hay. **Stagear por ruta.**
+
 
 ## Próximos pasos
 

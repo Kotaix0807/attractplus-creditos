@@ -50,6 +50,11 @@ def mame_opcion(clave, mame=None):
     Es la misma leccion que en instalar.sh y videos.sh: en esta maquina las
     rutas de MAME son unas y en la cabina otras, y -showconfig es quien sabe
     cual de sus mame.ini manda. Devuelve el valor con $HOME ya expandido.
+
+    OJO con 'rompath': puede traer VARIAS rutas separadas por ';' (aqui son
+    tres). Se devuelve la cadena entera y se le pasa asi a MAME, que ya sabe
+    recorrerlas. Quedarse con la primera que exista deja fuera casi todas las
+    roms.
     """
     import subprocess
     for cand in ([mame] if mame else []) + [
@@ -545,9 +550,18 @@ def datos_de(juego, cfg, dir_hi, fabrica=None):
         except Exception:
             quiere = []
 
-    # El orden de preferencia sale del XML; si no dice nada, .hi primero.
+    # El orden de preferencia sale del XML; si no dice nada, .hi primero. Y de
+    # ultimo recurso, CUALQUIER fichero que MAME haya dejado en la carpeta del
+    # juego: los nombres son del chip, no un juego de tres o cuatro conocidos
+    # (ncv2 guarda en 'at28c16', que es una EEPROM de Atmel).
+    # Los ficheros sueltos SOLO se prueban cuando el XML no dice nada. Si el
+    # XML pide el .hi y no lo hay, leer el nvram en su lugar da datos
+    # garantizadamente equivocados -- y encima sin fallar: arkanoid pasaba a
+    # marcar 0 en vez de 50000 y parecia un descifrado valido.
+    sueltos = (sorted(os.listdir(carpeta))
+               if not quiere and os.path.isdir(carpeta) else [])
     orden = quiere or [".hi"]
-    for nombre in orden + [".hi", "nvram", "saveram", "eeprom", "earom", "x2212"]:
+    for nombre in orden + ([".hi"] if not quiere else []) + sueltos:
         if fuente not in ("auto", "hi", "nvram", nombre):
             continue
         if nombre == ".hi":
@@ -635,7 +649,7 @@ def marcar_defectos(juego, filas, defectos):
     return filas
 
 
-def capturar_fabrica(juegos, bloques, mame, romlist_dir):
+def capturar_fabrica(juegos, bloques, mame, rompath):
     """Arranca cada juego y lee de la RAM su tabla DE FABRICA.
 
     Hace falta porque el plugin hiscore solo escribe su .hi cuando la tabla
@@ -662,7 +676,7 @@ def capturar_fabrica(juegos, bloques, mame, romlist_dir):
         entorno = dict(os.environ, GA_D_BLOQUES=espec, GA_D_FRAME="1800")
         try:
             r = subprocess.run(
-                [mame, j, "-rompath", romlist_dir, "-video", "none",
+                [mame, j, "-rompath", rompath, "-video", "none",
                  "-sound", "none", "-noswitchres", "-str", "45", "-nothrottle",
                  "-skip_gameinfo", "-autoboot_script", lua, "-autoboot_delay", "0"],
                 capture_output=True, text=True, timeout=180, env=entorno,
