@@ -193,12 +193,37 @@ def _elegir_estructura(raiz, datos, fuente):
     return candidatas[0][0] if candidatas else None
 
 
+def resolver(ruta_xml, saltos=8):
+    """Sigue las redirecciones <sameas id="otro"/> hasta el XML de verdad.
+
+    NO es un caso raro: 2322 de los 3102 XML son redirecciones. Los clones y
+    las variantes de un mismo juego comparten estructura y se apuntan al
+    original (rbtapper -> tapper -> journey). Sin seguirlas se pierde la mayor
+    parte de la base, y encima en silencio: el fichero existe y parece vacio.
+    """
+    visto = set()
+    while saltos > 0:
+        if not os.path.exists(ruta_xml):
+            raise NoSeSabe(f"no existe {os.path.basename(ruta_xml)}")
+        try:
+            raiz = ET.parse(ruta_xml).getroot()
+        except ET.ParseError as e:
+            raise NoSeSabe(f"XML ilegible: {e}")
+        sa = raiz.find("sameas")
+        if sa is None or not sa.get("id"):
+            return ruta_xml, raiz
+        destino = sa.get("id")
+        if destino in visto:
+            raise NoSeSabe(f"redirecciones en bucle en {destino}")
+        visto.add(destino)
+        ruta_xml = os.path.join(os.path.dirname(ruta_xml), destino + ".xml")
+        saltos -= 1
+    raise NoSeSabe("demasiadas redirecciones seguidas")
+
+
 def descifrar_con_xml(ruta_xml, datos, fuente=None):
     """Devuelve (filas, sueltos). Lanza NoSeSabe si el XML pide algo no cubierto."""
-    try:
-        raiz = ET.parse(ruta_xml).getroot()
-    except ET.ParseError as e:
-        raise NoSeSabe(f"XML ilegible: {e}")
+    ruta_xml, raiz = resolver(ruta_xml)
     if raiz.find("structure") is None:
         raise NoSeSabe("ese juego aun no tiene estructura descrita")
 
@@ -255,7 +280,7 @@ def _columnas(raiz):
 def puntuaciones(ruta_xml, datos, fuente=None):
     """Normaliza a la forma que usa puntajes.py: puesto, puntos, nombre."""
     filas, sueltos = descifrar_con_xml(ruta_xml, datos, fuente)
-    raiz = ET.parse(ruta_xml).getroot()
+    ruta_xml, raiz = resolver(ruta_xml)   # los <format> viven en el XML final
     fmts = _formatos(raiz)
     cols = _columnas(raiz)
 
@@ -322,3 +347,18 @@ def buscar_db(rutas=()):
         if c and os.path.isdir(c):
             return c
     return None
+
+
+def fuentes_declaradas(ruta_xml):
+    """Que ficheros sabe leer ese XML: ".hi", "nvram", "saveram", "x2212"...
+
+    Importa porque MAME no llama "nvram" a todo: los NeoGeo guardan en
+    'saveram', Star Wars en 'x2212' y Gauntlet en 'eeprom', todos dentro de
+    ~/.mame/nvram/<juego>/. Buscando solo un fichero llamado 'nvram' se
+    quedaban fuera 10 juegos que si tenian sus datos escritos.
+    """
+    try:
+        _, raiz = resolver(ruta_xml)
+    except NoSeSabe:
+        return []
+    return [st.get("file", ".hi") for st in raiz.findall("structure")]

@@ -2924,10 +2924,23 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 48 juegos descifrables** de los 94 — 42 por
-hi2txt y 6 con recetas propias, que son las que hi2txt aún no cubre
-(`pacman`, `mspacman`, `tapper`, `rbtapper`, `gradius`…). O sea que las dos
+**Cobertura: de 21 recetas a 55 juegos descifrables** de los 94 — 52 por
+hi2txt y 3 con recetas propias, que son las que hi2txt aún no cubre. Las dos
 fuentes se complementan.
+
+**Comprobado contra el marcador en pantalla: 15 de 15 al número exacto**, sin
+una sola regresión respecto a lo que yo había verificado a mano.
+
+Dos cosas más que hicieron falta para llegar ahí, y las dos eran fallos míos:
+
+- **`<sameas id="otro"/>`: 2322 de los 3102 XML son redirecciones.** Los clones
+  y variantes comparten estructura y se apuntan al original
+  (`rbtapper` → `tapper` → `journey`). Sin seguirlas se pierde la mayor parte
+  de la base, y **en silencio**: el fichero existe y parece vacío.
+- **MAME no llama `nvram` a todo.** Los NeoGeo guardan en `saveram`, Star Wars
+  en `x2212` y Gauntlet en `eeprom`, todos dentro de `~/.mame/nvram/<juego>/`.
+  Buscando sólo un fichero llamado `nvram` se quedaban fuera diez juegos que sí
+  tenían sus datos escritos. Ahora se le pregunta al XML qué fichero quiere.
 
 Tres detalles que costaron encontrarse, y ninguno da error:
 

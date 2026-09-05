@@ -521,13 +521,29 @@ def datos_de(juego, cfg, dir_hi):
     """
     fuente = (cfg or {}).get("fuente", "auto")
     hi = os.path.join(dir_hi, juego + ".hi")
-    nv = os.path.expanduser(f"~/.mame/nvram/{juego}/nvram")
+    carpeta = os.path.expanduser(f"~/.mame/nvram/{juego}")
 
     if fuente in ("auto", "hi") and os.path.exists(hi) and os.path.getsize(hi):
         return open(hi, "rb").read(), "hi", None
-    if fuente in ("auto", "nvram") and os.path.exists(nv) and os.path.getsize(nv):
-        return open(nv, "rb").read(), "nvram", None
-    return None, None, "sin datos guardados todavia (ni .hi ni nvram)"
+
+    # MAME no llama "nvram" a todos los ficheros de memoria persistente: los
+    # NeoGeo guardan en 'saveram', Star Wars en 'x2212', Gauntlet en 'eeprom'.
+    # Se le pregunta al XML cual quiere, y si no hay XML se prueban los
+    # nombres habituales.
+    quiere = []
+    if DB_HI2TXT:
+        try:
+            import hi2txt
+            quiere = [f for f in hi2txt.fuentes_declaradas(
+                os.path.join(DB_HI2TXT, juego + ".xml")) if f != ".hi"]
+        except Exception:
+            quiere = []
+    for nombre in quiere + ["nvram", "saveram", "eeprom", "earom", "x2212"]:
+        ruta = os.path.join(carpeta, nombre)
+        if os.path.exists(ruta) and os.path.getsize(ruta):
+            if fuente in ("auto", "nvram", nombre):
+                return open(ruta, "rb").read(), nombre, None
+    return None, None, "sin datos guardados todavia (ni .hi ni memoria persistente)"
 
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
