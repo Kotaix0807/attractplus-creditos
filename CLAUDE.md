@@ -2866,8 +2866,39 @@ BCD guarda `003000`.
 > comparado con lo que el juego enseña en pantalla. El razonamiento «esas
 > puntuaciones no pueden ser» no vale como prueba.
 
-`asteroid` sigue sin receta: su bloque está a ceros porque nadie ha jugado, y de
-una tabla vacía no se deduce el formato.
+### `asteroid`: sin receta, y por qué
+
+Se intentó y **se deja sin resolver a propósito**, porque una receta equivocada
+es peor que ninguna — el mismo criterio que en `creditos.dat` con las
+direcciones ambiguas.
+
+- **No enseña su tabla en el modo de atracción**: sólo la demo con
+  `1 COIN 1 PLAY`, así que no hay nada contra lo que correlacionar.
+- **Escribirle un patrón no vale.** Su bloque (`0x001d`, 53 bytes) lleva también
+  **estado**, y al escribirlo el juego saltó a `YOUR SCORE IS ONE OF THE TEN
+  BEST / PLEASE ENTER YOUR INITIALS`. Es la lección que ya estaba escrita para
+  el barrido de créditos, y resulta que vale igual para una placa en marcha, no
+  sólo para una que se autoprueba.
+- **Jugando de verdad** (moneda, START y disparar solo 60 s) sólo cambiaron 4
+  bytes: el 0 pasó de `00` a `0x59` —parece la puntuación, unos 590 puntos— y
+  los 21, 22 y 23 son estado. Y esos tres caen **dentro** de lo que sería la
+  quinta entrada si la tabla fuera de 10×5, así que el bloque mezcla tabla y
+  estado.
+
+Para cerrarlo haría falta terminar una partida y simular la entrada de
+iniciales (rotar + hiperespacio), que ya es otro proyecto.
+
+### Las direcciones de `tapper` y `rbtapper`, verificadas
+
+`rbtapper` tenía su `e011` heredada de `tapper` por parecido, no comprobada. Se
+comprobó ejecutando, con `tapper` de control, y las dos pasan: escribir 0 se
+queda puesto y una moneda lo sube 0→1.
+
+**Trampa que costó una pasada: Tapper y Root Beer Tapper corren a 30 Hz**, no a
+60. Un guion que espere «frames» y se lance con `-str 15` nunca llega al frame
+480, porque ahí 15 segundos son 450 frames. En placas MCR hay que contar a 30.
+Explica de paso por qué sus líneas de `arranque.dat` llevan `segundos=3` y
+parecen tan cortas: son 90 frames, no 180.
 
 ### Los nombres ficticios
 
@@ -2882,6 +2913,28 @@ capturarla antes de que nadie juegue.**
 Ya mordió al probarlo: capturé la base con Pac-Man marcando 48800, así que dio
 por «de fábrica» una puntuación de verdad. La de fábrica de Pac-Man es **0**, y
 hubo que corregirla a mano.
+
+### La comprobación de Lua 5.5 en `pruebas/correr.sh`
+
+La cabina tiene **dos binarios de MAME con Lua distinta**: el nuestro lleva 5.4
+y el de la distro 5.5. En 5.5 la variable de control de un `for` es **const**,
+así que asignarle valor es un error de **compilación** y el fichero entero deja
+de cargar:
+
+```lua
+for linea in f:lines() do
+    linea = linea:gsub(...)     -- revienta con 5.5, pasa con 5.4
+```
+
+Le pasó a `ajustes.lua`, y es un fallo **mudo**: probando con 5.4 no se ve.
+
+`correr.sh` pasa ahora `luac -p` sobre todos los `.lua` de `creditos/`, que
+cuesta milisegundos. **En la cabina el `lua` del sistema ES 5.5.1**, así que la
+comprobación es real allí; donde el `luac` disponible no sea de 5.5 se salta
+avisando, en vez de romper la tanda. Los 9 ficheros compilan.
+
+Ojo: eso también significa que **probar contra nuestro binario no detecta este
+fallo**, porque 5.4 lo permite.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 

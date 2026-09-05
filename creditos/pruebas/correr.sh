@@ -79,3 +79,42 @@ $LUA prueba_cerrojo.lua
 echo
 echo "### importador de la coleccion de cheats ###"
 ./prueba_importar.sh
+
+# --- compatibilidad con Lua 5.5 --------------------------------------------
+#
+# La cabina tiene DOS binarios de MAME con Lua distinta: el nuestro lleva 5.4 y
+# el de la distro 5.5. En 5.5 la variable de control de un 'for' es CONST, asi
+# que asignarle valor es un error de COMPILACION y el fichero entero deja de
+# cargar:
+#
+#     for linea in f:lines() do
+#         linea = linea:gsub(...)     -- revienta con 5.5, pasa con 5.4
+#
+# Le paso a ajustes.lua y es MUDO: probando con 5.4 no se ve. Esta comprobacion
+# es gratis y lo caza. Se salta -- avisando -- si el luac de la maquina no es de
+# 5.5, para no romper la tanda donde no se pueda comprobar.
+echo
+echo "### compatibilidad con Lua 5.5 ###"
+LUAC=""
+for c in luac5.5 luac; do
+	if command -v $c >/dev/null && $c -v 2>&1 | grep -q "Lua 5\.5"; then
+		LUAC=$c; break
+	fi
+done
+if [ -z "$LUAC" ]; then
+	echo "  sin luac de 5.5 en esta maquina: me la salto"
+	echo "  (en la cabina si lo hay: 'lua -v' dice 5.5.1)"
+else
+	fallos_lua=0
+	for f in ../*.lua; do
+		if $LUAC -p "$f" 2>/tmp/luac_err.$$; then
+			echo "  ok   $(basename "$f")"
+		else
+			echo "  FALLA $(basename "$f"): $(head -1 /tmp/luac_err.$$)"
+			fallos_lua=$((fallos_lua + 1))
+		fi
+	done
+	rm -f /tmp/luac_err.$$
+	[ "$fallos_lua" -eq 0 ] && echo "  los $(ls ../*.lua | wc -l) ficheros compilan con Lua 5.5" \
+	                        || { echo "  $fallos_lua ficheros NO compilan con Lua 5.5"; exit 1; }
+fi
