@@ -48,6 +48,33 @@
 #               con los creditos de la sesion anterior (mwalk, tapper). Ojo:
 #               tampoco conservaran las puntuaciones.
 #
+# CUANDO PONER nvram=0 Y CUANDO NO (revisado el 2026-09-05)
+#
+# La NVRAM de muchas placas guarda DOS cosas a la vez: los creditos y las
+# puntuaciones. Apagarla quita los creditos viejos, pero tambien tira los
+# puntajes. No hace falta elegir siempre, porque hay dos formas de conservar
+# los puntajes:
+#
+#   1. El juego esta en hiscore.dat (el plugin 'hiscore' de MAME, 5856 juegos).
+#      Entonces las puntuaciones se guardan aparte, en su .hi, y nvram=0 es
+#      seguro: se van los creditos y los puntajes se quedan.
+#
+#   2. No esta en hiscore.dat, pero SI tiene direccion verificada en
+#      creditos.dat. Entonces NO se pone nvram=0: el barrido de creditos.lua ya
+#      pone el contador a 0 al arrancar, asi que la NVRAM se puede dejar
+#      encendida y conserva las puntuaciones.
+#
+#   3. No esta en ninguno de los dos. Ahi si hay que elegir, y se pone nvram=0
+#      (los puntajes se pierden). La salida es buscarle la direccion con
+#      buscar_creditos.sh y pasar al caso 2.
+#
+# NUNCA a un juego de CPS3 (sfiii3): ahi la "NVRAM" son los 81 MB de la flash
+# con el juego grabado desde el CD, y sin ella vuelve a pedir los ~70 minutos
+# de reescritura.
+#
+# Y recuerda que nvram=0 evita GUARDAR, no CARGAR: si el fichero viejo ya tiene
+# creditos, hay que borrar ~/.mame/nvram/<juego>/ una vez ademas del ajuste.
+#
 #   auto=1      en vez de usar los segundos tal cual, se alarga solo hasta
 #               detectar que la placa esta lista. Solo funciona en los juegos
 #               que estan en creditos.dat, porque la senal que se mira es su
@@ -58,11 +85,11 @@
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto velocidad=0 segundos=5
 simpsons velocidad=0 segundos=11 video=16
-tapper velocidad=0 segundos=3 nvram=0
+tapper velocidad=0 segundos=3
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
-rbtapper velocidad=0 segundos=3 nvram=0
+rbtapper velocidad=0 segundos=3
 pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=1 velocidad=0
 nrallyx segundos=13 velocidad=0 indicador=0 video=28

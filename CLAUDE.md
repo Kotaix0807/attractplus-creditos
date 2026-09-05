@@ -2778,6 +2778,101 @@ Medido con Pac-Man, 22 segundos emulados:
 El AVI sale identico (`-aviwrite` guarda todos los fotogramas emulados, tenga
 freno o no): son 249 MB en los dos casos.
 
+## Puntuaciones sin créditos: `puntajes.py`
+
+Pedido por Eloy el 2026-09-05: conservar los puntajes de cada juego **sin**
+arrastrar los créditos entre sesiones, y dejarlos en un fichero para que otro
+programa suyo los lea después, sin contar los nombres ficticios que traen
+algunos juegos de fábrica.
+
+### La pieza que ya estaba: el plugin `hiscore` de MAME
+
+MAME trae un plugin `hiscore` (activado en la cabina) que lee la tabla de
+puntuaciones **de la RAM del juego** y la escribe en `<hi_path>/<juego>.hi`.
+Eso es exactamente lo que permite separar las dos cosas: **los créditos viven
+en la NVRAM y las puntuaciones no tienen por qué**.
+
+Su `hiscore.dat` cubre **5856 juegos** y dice *dónde* vive la tabla de cada uno
+y cuánto ocupa:
+
+```
+@<cpu>,<espacio>,<direccion>,<longitud>,<espera1>,<espera2>[,<relleno>]
+```
+
+**Lo que NO dice es cómo está ordenada por dentro**, y eso cambia con cada
+placa. Comprobado también que `sort_hiscore.lua` del plugin no ayuda: es sólo
+un utilitario para ordenar el `.dat`.
+
+### La regla de `nvram=0`, revisada juego a juego
+
+La NVRAM de muchas placas guarda **créditos y puntuaciones a la vez**, así que
+apagarla quita los créditos viejos pero también tira los puntajes. No hace
+falta elegir siempre:
+
+| situación | qué hacer |
+|---|---|
+| está en `hiscore.dat` | `nvram=0` es **seguro**: los puntajes se guardan aparte |
+| no está, pero sí en `creditos.dat` **verificado** | **NO** poner `nvram=0`: el barrido ya pone los créditos a 0 y la NVRAM conserva los puntajes |
+| en ninguno de los dos | `nvram=0` y se pierden los puntajes (o se le busca la dirección) |
+
+**Corregido con esto:** `tapper` y `rbtapper` tenían `nvram=0` y no les hacía
+falta — los dos están en `creditos.dat` con dirección verificada (`e011`), así
+que el barrido les limpia los créditos y ahora conservan sus puntuaciones. Se
+les borró la NVRAM vieja una vez, porque `nvram=0` evita **guardar**, no
+**cargar**. `mwalk` se queda con `nvram=0`: no está en ninguna de las dos
+tablas, así que ahí sí hay que elegir.
+
+**Nunca a un CPS3** (`sfiii3`): ahí la «NVRAM» son los 81 MB de la flash con el
+juego grabado del CD, y sin ella vuelve a pedir los ~70 minutos de reescritura.
+
+### `puntajes.py` + `puntajes.dat`
+
+`puntajes.py` traduce esos `.hi` a un JSON legible. **Va fuera de MAME a
+propósito**: no toca `creditos.lua`, no depende de la versión de Lua del
+emulador y se puede lanzar con la cabina apagada.
+
+El reparto de responsabilidades copia el de `creditos.dat`:
+
+- **`hiscore.dat`** (de MAME) dice *dónde* está la tabla → trocea el `.hi`.
+- **`puntajes.dat`** (nuestro) dice *cómo* se lee ese bloque.
+
+```
+1943  entradas=6 bytes=16 puntos=0,8,digitos nombre=8,3,idx:capcom
+```
+
+Añadir un juego es **añadir una línea**, no tocar código. Formatos de
+puntuación: `bcd`, `bcdle`, `digitos` (un dígito decimal por byte), `be`, `le`;
+de nombre: `ascii` o `idx:<alfabeto>` para las placas con tabla de caracteres
+propia.
+
+Descifrados y **verificados contra los `.hi` de la cabina** (las cinco tablas
+salen siendo las de fábrica conocidas, que es la comprobación):
+
+| juego | tabla | lo que sale |
+|---|---|---|
+| `1943` | 6×16 | 20000 TAE, 15000 YAM, 10000 POO… (defecto de Capcom) |
+| `bublbobl` | 5×7 | 30000 I.F, MTJ, NSO, KIM, YSH (defecto de Taito) |
+| `dkong` | 5×34 | 76500, 61000, 59500, 50500, 43000, sin iniciales |
+| `pacman` / `mspacman` | 1×4 | una sola puntuación, sin iniciales |
+
+Dos cosas que **quedan por confirmar en pantalla**: el `multiplica=10` de
+`bublbobl` y el de `dkong` (sin él salen 3000 y 7650, y las puntuaciones de
+Donkey Kong son siempre múltiplos de 100). `asteroid` sigue sin receta.
+
+### Los nombres ficticios
+
+Un juego recién instalado trae una tabla puesta por la ROM — las iniciales de
+Q*bert, o las `I.F / MTJ / NSO` de Bubble Bobble. Ésas no son de nadie.
+
+`./puntajes.py --capturar` apunta la tabla actual como la de fábrica en
+`puntajes_defecto.json`, y a partir de ahí cada entrada del JSON lleva
+`"defecto": true/false` (o `null` si nadie capturó la base). **Hay que
+capturarla antes de que nadie juegue.**
+
+Ya mordió al probarlo: capturé la base con Pac-Man marcando 48800, así que dio
+por «de fábrica» una puntuación de verdad. La de fábrica de Pac-Man es **0**, y
+hubo que corregirla a mano.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
