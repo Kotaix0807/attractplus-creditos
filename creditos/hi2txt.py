@@ -65,6 +65,14 @@ def _quitar_nibbles(datos, modo):
     return fuera
 
 
+def _intercambiar(datos, paso):
+    """Invierte el orden de los bytes dentro de cada grupo de 'paso'."""
+    b = bytearray(datos)
+    for i in range(0, len(b) - paso + 1, paso):
+        b[i:i + paso] = b[i:i + paso][::-1]
+    return bytes(b)
+
+
 def _quitar_bytes(datos, valor):
     return bytes(b for b in datos if b != valor)
 
@@ -254,8 +262,15 @@ def descifrar_con_xml(ruta_xml, datos, fuente=None):
     ultimo = None
     for st in candidatas:
         filas, sueltos = [], {}
+        # byte-swap="2": los bytes van intercambiados por parejas. Lo usan las
+        # placas de 16 bits que vuelcan la memoria en palabras (los NeoGeo, el
+        # System 18 de mwalk). Sin esto el descifrado no falla: devuelve
+        # numeros y nombres, pero equivocados -- en el saveram de un NeoGeo se
+        # lee "ABKCPUR MAO" donde pone "BACKUP RAM".
+        paso = _entero(st.get("byte-swap"), 0)
+        crudos = _intercambiar(datos, paso) if paso > 1 else datos
         try:
-            _recorrer(st, datos, 0, _charsets(raiz), filas, sueltos)
+            _recorrer(st, crudos, 0, _charsets(raiz), filas, sueltos)
         except NoSeSabe as e:
             ultimo = e
             continue
