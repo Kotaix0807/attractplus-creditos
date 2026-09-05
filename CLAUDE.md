@@ -2924,8 +2924,9 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 66 juegos descifrables** — 61 por hi2txt y 5 con
-recetas propias. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
+**Cobertura: de 21 recetas a 62 juegos descifrables** — 56 por hi2txt y 6 con
+recetas propias. **De ellos, 16 comparados con el marcador del propio juego**;
+del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
 
@@ -3035,6 +3036,48 @@ que falte la receta, es que no hay nada que leer**.
 Y probar las 3102 estructuras del corpus contra un juego que no tiene la suya
 **no funciona**: las placas no comparten la posición de la tabla ni dentro de la
 misma familia. Se intentó con los NeoGeo y sólo salieron falsos positivos.
+
+### Medir por una ruta y publicar por otra: el número estaba inflado
+
+Estuve dando **66** cuando la cifra real era **59**. El script de medición
+tenía su propia copia de la lógica de descifrado, más permisiva que la del
+export: no aplicaba el filtro de plausibilidad. O sea que medía una cosa y se
+publicaba otra.
+
+> **Regla:** un script que mide cobertura tiene que llamar a la MISMA función
+> que produce el resultado, no reimplementarla.
+
+Al arreglarlo salieron dos cosas más:
+
+- **El filtro estaba demasiado apretado.** Exigir que la primera posición
+  llegase a 1000 tiraba tres casos buenos para cazar uno malo: `asteroid` con
+  una única puntuación de 590 (real), y `kof99`/`kof2000` con su escalera
+  100/90/80/70/60. El tope de posiciones basta para tirar la basura.
+- **Estaba afirmando de más.** Marcaba como `confirmado` todo lo que viniera de
+  hi2txt. Que acierte los 12 de mi muestra da confianza, pero no es lo mismo
+  que haberlo mirado: `kof99` da 100/90/80 donde `kof97` da 100000/80000, y una
+  de las dos lecturas está mal. Ahora `confirmado` sólo lo llevan los 16 vistos
+  en pantalla.
+
+### Los NeoGeo, resuelto a medias jugando
+
+Su `saveram` arranca con la tabla vacía, así que se jugó automáticamente
+(moneda, START y aporrear botones) para que la escribieran. El resultado es
+desigual y no se puede suponer por familia:
+
+| juego | qué pasó |
+|---|---|
+| `samsho` | cambiaron 31 bytes, ninguno en la zona de la tabla: **no guarda puntuaciones** |
+| `doubledr` | apareció la tabla, con iniciales ASCII |
+| `strhoop` | también escribió en esa zona |
+
+`doubledr` quedó descifrado a partir de ahí: entradas de 16 bytes desde
+`0x325`, BCD de 3 y tres letras, con `swap=2`. Sale
+**10000 TAC, 9000 KSI, 8000 MAR, 7000 SZU, 6000 OHS**.
+
+**Ojo:** esas puntuaciones las hizo el guion jugando, no un jugador. Si molesta
+tener récords falsos, se borra `~/.mame/nvram/<juego>/saveram` y vuelve de
+fábrica.
 
 ### Las otras fuentes que pasó Eloy
 

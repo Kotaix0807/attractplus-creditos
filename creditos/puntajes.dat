@@ -140,3 +140,10 @@ zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=s
 # (entre las puntuaciones y los nombres hay 18 bytes de firma,
 # 'TETRISTETRISTETRIS', por eso los nombres empiezan en el 78 y no en el 60)
 atetris entradas=10 bytes=6 puntos=0,6,texto nombres=78,3,ascii confirmado=no
+
+# Double Dragon de NeoGeo. Su saveram arranca VACIO -- solo la cabecera
+# "BACKUP RAM OK" y el nombre del juego -- y la tabla no existe hasta que
+# alguien juega: se descubrio jugando automaticamente. Entradas de 16 bytes
+# desde 0x325, BCD de 3 y tres letras ASCII. swap=2 porque la placa vuelca en
+# palabras de 16 bits.
+doubledr fuente=saveram swap=2 desde=0x325 entradas=5 bytes=16 puntos=0,3,bcd nombre=5,3,ascii confirmado=no

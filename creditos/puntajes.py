@@ -525,6 +525,12 @@ def detectar_en_ventana(datos, tope=2048):
 
 
 # ------------------------------------------------------------------ el grueso
+# Los unicos comparados con lo que el juego ensena en su marcador. El resto se
+# lee bien hasta donde se sabe, pero nadie lo ha mirado en pantalla.
+VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
+               "dkong", "dkong3", "gradius", "kungfum", "mappy", "mspacman",
+               "pacman", "robocop", "sf2", "zaxxon"}
+
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 FABRICA = {}              # tablas leidas de la RAM con --fabrica
 
@@ -569,10 +575,11 @@ def _parece_tabla(filas):
     if not filas or len(filas) > 64:
         return False
     p = [f["puntos"] for f in filas]
-    # La primera posicion de una tabla de fabrica no baja de 1000 en ninguno de
-    # los juegos de esta cabina. Es lo que separa una tabla de verdad de una
-    # sucesion de bytes que resulta ir en orden: tmnt salia con 312, 257, 206.
-    if max(p) < 1000:
+    # Nada de exigir un minimo alto. Lo probe con 1000 y se llevaba por delante
+    # tres casos buenos para cazar uno malo: asteroid con una unica puntuacion
+    # de 590 (real, de una partida), y kof99/kof2000 con su escalera
+    # 100/90/80/70/60. El tope de posiciones ya basta para tirar la basura.
+    if max(p) <= 0:
         return False
     # Una tabla va ordenada, en un sentido o en el otro.
     baja = all(p[i] >= p[i + 1] for i in range(len(p) - 1))
@@ -665,7 +672,13 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
                 if filas and _parece_tabla(filas):
                     for f in filas:
                         f["receta"] = "hi2txt"
-                        f["confirmado"] = True
+                        # 'confirmado' significa comparado con el marcador del
+                        # propio juego, y eso solo se ha hecho con 15. Que
+                        # hi2txt acierte esos 15 da confianza en los demas,
+                        # pero no es lo mismo y no hay que decir que si lo es:
+                        # kof99 da 100/90/80 donde kof97 da 100000/80000, y una
+                        # de las dos lecturas esta mal.
+                        f["confirmado"] = juego in VERIFICADOS
                     return filas, origen, None
             except Exception as e:
                 aviso = f"hi2txt no pudo: {e}"
@@ -675,8 +688,18 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
 
     # El .hi es la concatenacion de los bloques que declara hiscore.dat, en
     # orden. 'bloque=N' elige cual de ellos lleva la tabla.
+    # swap=2: los bytes van intercambiados por parejas (placas de 16 bits).
+    # Es lo mismo que el byte-swap de los XML de hi2txt, pero para las recetas
+    # propias, que tambien lo necesitan al leer un saveram de NeoGeo.
+    paso = int(cfg.get("swap", 0))
+    if paso > 1:
+        b = bytearray(datos)
+        for i in range(0, len(b) - paso + 1, paso):
+            b[i:i + paso] = b[i:i + paso][::-1]
+        datos = bytes(b)
+
     idx = int(cfg.get("bloque", 0))
-    if origen == "nvram":
+    if origen in ("nvram", "saveram", "eeprom", "earom", "x2212", "at28c16"):
         # En la NVRAM no hay bloques de hiscore.dat: la receta dice el
         # desplazamiento a pelo con 'desde='.
         desde = int(cfg.get("desde", "0"), 0)
