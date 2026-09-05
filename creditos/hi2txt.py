@@ -168,6 +168,22 @@ def _recorrer(nodo, datos, pos, charsets, filas, sueltos, dentro_bucle=None):
     return pos
 
 
+def _estructuras(raiz, datos, fuente):
+    """Todas las estructuras validas para esa fuente, la mas probable primero."""
+    con_tam, sin_tam, resto = [], [], []
+    for st in raiz.findall("structure"):
+        f = st.get("file", ".hi")
+        if fuente and f != fuente and not (fuente == "hi" and f == ".hi"):
+            continue
+        chk = st.find("check")
+        tam = None
+        if chk is not None and chk.find("size") is not None:
+            tam = _entero(chk.find("size").text)
+        (con_tam if tam == len(datos) else
+         sin_tam if tam is None else resto).append(st)
+    return con_tam + sin_tam + resto
+
+
 def _elegir_estructura(raiz, datos, fuente):
     """Un juego puede traer varias estructuras (versiones de MAME distintas).
 
@@ -227,12 +243,25 @@ def descifrar_con_xml(ruta_xml, datos, fuente=None):
     if raiz.find("structure") is None:
         raise NoSeSabe("ese juego aun no tiene estructura descrita")
 
-    st = _elegir_estructura(raiz, datos, fuente)
-    if st is None:
+    candidatas = _estructuras(raiz, datos, fuente)
+    if not candidatas:
         raise NoSeSabe(f"no hay estructura para la fuente {fuente}")
-    filas, sueltos = [], {}
-    _recorrer(st, datos, 0, _charsets(raiz), filas, sueltos)
-    return filas, sueltos
+    # Se prueban TODAS por orden de preferencia y vale la primera que descifre.
+    # Elegir solo por el tamano declarado fallaba en los juegos cuyo XML
+    # describe una version de hiscore.dat distinta de la que hay instalada:
+    # decia "los datos se acaban antes que la estructura" y se rendia teniendo
+    # otra estructura buena al lado.
+    ultimo = None
+    for st in candidatas:
+        filas, sueltos = [], {}
+        try:
+            _recorrer(st, datos, 0, _charsets(raiz), filas, sueltos)
+        except NoSeSabe as e:
+            ultimo = e
+            continue
+        if filas or sueltos:
+            return filas, sueltos
+    raise ultimo or NoSeSabe("ninguna estructura encaja con estos datos")
 
 
 def _formatos(raiz):

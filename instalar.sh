@@ -134,6 +134,7 @@ paso "Mirando que hay en esta maquina"
 if   command -v pacman  >/dev/null; then GESTOR=pacman
 elif command -v apt-get >/dev/null; then GESTOR=apt
 elif command -v dnf     >/dev/null; then GESTOR=dnf
+elif command -v zypper  >/dev/null; then GESTOR=zypper
 else GESTOR=""; fi
 
 DISTRO="$( . /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-desconocida}" )"
@@ -145,15 +146,17 @@ echo "  paquetes: ${GESTOR:-no reconocido}"
 # todavia no hay con que dibujar un cuadro.
 if [ "$PREGUNTAR" = 1 ] && [ -t 0 ] && ! command -v whiptail >/dev/null && [ -n "$GESTOR" ]; then
 	case "$GESTOR" in
-		pacman) paq=libnewt ;;   # en Arch whiptail lo trae libnewt
-		*)      paq=whiptail ;;
+		pacman)        paq=libnewt ;;   # en Arch whiptail lo trae libnewt
+		dnf|zypper)    paq=newt ;;      # y en los RPM, newt
+		*)             paq=whiptail ;;
 	esac
 	read -r -p "  whiptail no esta, y con el se ve mucho mejor. Instalar $paq? [S/n] " r
 	case "${r:-s}" in
 		[SsYy]*) case "$GESTOR" in
 					pacman) sudo pacman -S --needed --noconfirm "$paq" ;;
 					apt)    sudo apt-get update && sudo apt-get install -y "$paq" ;;
-					dnf)    sudo dnf install -y newt ;;
+					dnf)    sudo dnf install -y "$paq" ;;
+					zypper) sudo zypper -n install "$paq" ;;
 				 esac ;;
 		*) echo "  vale, sigo en modo texto" ;;
 	esac
@@ -240,6 +243,11 @@ echo "  creditos: ${CREDITOS:-no encontrado}"
 # En Arch las cabeceras van dentro del paquete normal; en Debian van aparte en
 # un -dev. De ahi que las dos columnas no se parezcan.
 #
+# En las distros de RPM (Fedora, openSUSE) NO hace falta columna: rpm genera
+# solo un "provides" virtual por cada .pc que instala un paquete, asi que
+# `dnf install "pkgconfig(x11)"` encuentra el paquete se llame como se llame.
+# Es mas robusto que una tabla de nombres y no hay que mantenerlo.
+#
 #            comprobacion      debian                   arch
 LIBRERIAS="
 x11               libx11-dev               libx11
@@ -265,15 +273,20 @@ libavutil         libavutil-dev            ffmpeg
 libswscale        libswscale-dev           ffmpeg
 libswresample     libswresample-dev        ffmpeg
 "
+# Estas no llevan .pc, asi que aqui si hacen falta los cuatro nombres. La
+# primera columna admite alternativas separadas por "|": basta con que exista
+# UNA. Sirve para ImageMagick, que en su version 7 dejo de instalar `convert`
+# y solo trae `magick`.
+#            comprobacion      debian                   arch          fedora               opensuse
 HERRAMIENTAS="
-git               git                      git
-make              build-essential          base-devel
-g++               build-essential          base-devel
-pkg-config        pkg-config               base-devel
-cmake             cmake                    cmake
-ffmpeg            ffmpeg                   ffmpeg
-curl              curl                     curl
-convert           imagemagick              imagemagick
+git               git                      git           git                  git
+make              build-essential          base-devel    make                 make
+g++               build-essential          base-devel    gcc-c++              gcc-c++
+pkg-config        pkg-config               base-devel    pkgconf-pkg-config   pkg-config
+cmake             cmake                    cmake         cmake                cmake
+ffmpeg            ffmpeg                   ffmpeg        ffmpeg-free          ffmpeg
+curl              curl                     curl          curl                 curl
+magick|convert    imagemagick              imagemagick   ImageMagick          ImageMagick
 "
 
 # Donde guarda MAME cada cosa. NO se puede suponer: en Ubuntu el ini esta en
@@ -303,23 +316,43 @@ mame_ini() {
 	echo "${rutas%%;*}/mame.ini"
 }
 
-columna() {   # $1=arch|debian -> numero de campo
-	[ "$GESTOR" = pacman ] && echo 3 || echo 2
+# De las columnas de las tablas, cual es la de esta maquina.
+elige() {   # $1=debian $2=arch $3=fedora $4=opensuse -> el que toque
+	case "$GESTOR" in
+		pacman) echo "$2" ;;
+		dnf)    echo "$3" ;;
+		zypper) echo "$4" ;;
+		*)      echo "$1" ;;   # apt, y lo desconocido: al menos se dice algo
+	esac
+}
+
+# La primera columna de HERRAMIENTAS admite alternativas: "magick|convert" se
+# da por satisfecha si existe cualquiera de las dos.
+hay_binario() {   # $1 = "nombre" o "nombre1|nombre2"
+	local un
+	for un in ${1//|/ }; do
+		command -v "$un" >/dev/null 2>&1 && return 0
+	done
+	return 1
 }
 
 # Lo que falta, ya traducido a nombres de paquete y sin repetidos.
 paquetes_que_faltan() {
-	local col; col=$( columna )
 	{
 		while read -r mod deb arch; do
 			[ -n "$mod" ] || continue
 			pkg-config --exists "$mod" 2>/dev/null && continue
-			[ "$col" = 3 ] && echo "$arch" || echo "$deb"
+			case "$GESTOR" in
+				# En RPM no se traduce: rpm publica un provides por cada .pc,
+				# asi que se pide el modulo y que el gestor busque quien lo da.
+				dnf|zypper) echo "pkgconfig($mod)" ;;
+				*)          elige "$deb" "$arch" ;;
+			esac
 		done <<< "$LIBRERIAS"
-		while read -r bin deb arch; do
+		while read -r bin deb arch fed sus; do
 			[ -n "$bin" ] || continue
-			command -v "$bin" >/dev/null 2>&1 && continue
-			[ "$col" = 3 ] && echo "$arch" || echo "$deb"
+			hay_binario "$bin" && continue
+			elige "$deb" "$arch" "$fed" "$sus"
 		done <<< "$HERRAMIENTAS"
 		# Y las que el emulador necesita para arrancar
 		[ -n "${MAME:-}" ] && [ -x "${MAME:-}" ] && paquetes_del_emulador
@@ -334,27 +367,26 @@ paquetes_que_faltan() {
 #
 # es lo que le paso a Eloy en Mint, y el sintoma es feo: MAME no arranca, el
 # -listxml no devuelve nada y la lista de juegos sale sin un solo dato.
-#           libreria                 debian                  arch
+#           libreria       debian                arch          fedora             opensuse
 LIBRERIAS_EMULADOR="
-libSDL2_ttf              libsdl2-ttf-2.0-0        sdl2_ttf
-libSDL2-2.0              libsdl2-2.0-0            sdl2
-libSDL2_image            libsdl2-image-2.0-0      sdl2_image
-libfontconfig            libfontconfig1           fontconfig
-libasound                libasound2t64            alsa-lib
-libpulse                 libpulse0                libpulse
-libpipewire              libpipewire-0.3-0        libpipewire
+libSDL2_ttf              libsdl2-ttf-2.0-0     sdl2_ttf      SDL2_ttf           libSDL2_ttf-2_0-0
+libSDL2-2.0              libsdl2-2.0-0         sdl2          SDL2               libSDL2-2_0-0
+libSDL2_image            libsdl2-image-2.0-0   sdl2_image    SDL2_image         libSDL2_image-2_0-0
+libfontconfig            libfontconfig1        fontconfig    fontconfig         libfontconfig1
+libasound                libasound2t64         alsa-lib      alsa-lib           libasound2
+libpulse                 libpulse0             libpulse      pulseaudio-libs    libpulse0
+libpipewire              libpipewire-0.3-0     libpipewire   pipewire-libs      libpipewire-0_3-0
 "
 
 paquetes_del_emulador() {   # $1=binario (por defecto $MAME)
 	local bin="${1:-$MAME}"
-	local col; col=$( columna )
 	local faltantes; faltantes=$( ldd "$bin" 2>/dev/null | awk '/not found/{print $1}' )
 	[ -n "$faltantes" ] || return 0
 	local lib
-	while read -r pre deb arch; do
+	while read -r pre deb arch fed sus; do
 		[ -n "$pre" ] || continue
 		if grep -q "^$pre" <<< "$faltantes"; then
-			[ "$col" = 3 ] && echo "$arch" || echo "$deb"
+			elige "$deb" "$arch" "$fed" "$sus"
 		fi
 	done <<< "$LIBRERIAS_EMULADOR" | sort -u
 	# Las que no estan en la tabla se dicen por su nombre, que es mejor que
@@ -411,8 +443,40 @@ Es una cabina que ya funciona, asi que la decision es tuya. Actualizar ahora?" s
 			fi
 			;;
 		apt)    sudo apt-get update && sudo apt-get install -y "$@" ;;
-		dnf)    sudo dnf install -y "$@" ;;
+		# En RPM se criba antes, por el mismo motivo que en Arch: un nombre
+		# que no existe en esa version de los repos aborta la instalacion
+		# entera, y perder veinte paquetes por uno no vale la pena.
+		dnf)    instalar_rpm dnf "$@" ;;
+		zypper) instalar_rpm zypper "$@" ;;
 		*)      return 1 ;;
+	esac
+}
+
+# Cierto si el gestor sabe de que paquete habla. Acepta tanto un nombre normal
+# como un provides virtual del tipo "pkgconfig(x11)".
+lo_conoce() {   # $1=gestor $2=paquete
+	case "$1" in
+		dnf)    dnf -q repoquery --whatprovides "$2" 2>/dev/null | grep -q . ;;
+		zypper) zypper -n -q search --provides --match-exact "$2" 2>/dev/null | grep -q . ;;
+		*)      return 0 ;;
+	esac
+}
+
+instalar_rpm() {   # $1=dnf|zypper  $2.. = paquetes
+	local g="$1"; shift
+	local buenos=() malos=() p
+	for p in "$@"; do
+		if lo_conoce "$g" "$p"; then buenos+=( "$p" ); else malos+=( "$p" ); fi
+	done
+	if [ ${#malos[@]} -gt 0 ]; then
+		aviso "  Estos no existen con ese nombre en tus repositorios:"
+		printf '    %s\n' "${malos[@]}"
+		aviso "  Sigo con el resto; instala esos a mano si algo falla luego."
+	fi
+	[ ${#buenos[@]} -gt 0 ] || return 0
+	case "$g" in
+		dnf)    sudo dnf install -y "${buenos[@]}" ;;
+		zypper) sudo zypper -n install "${buenos[@]}" ;;
 	esac
 }
 
@@ -425,6 +489,7 @@ tarea_dependencias() {
 			pacman) sudo pacman -S --needed --noconfirm base-devel ;;
 			apt)    sudo apt-get update && sudo apt-get install -y pkg-config ;;
 			dnf)    sudo dnf install -y pkgconf-pkg-config ;;
+			zypper) sudo zypper -n install pkg-config ;;
 		esac
 	fi
 

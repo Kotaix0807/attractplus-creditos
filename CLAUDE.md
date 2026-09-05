@@ -2924,9 +2924,10 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 55 juegos descifrables** de los 94 — 52 por
-hi2txt y 3 con recetas propias, que son las que hi2txt aún no cubre. Las dos
-fuentes se complementan.
+**Cobertura: de 21 recetas a 61 juegos descifrables** — 57 por hi2txt y 4 con
+recetas propias. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
+en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
+Las dos fuentes se complementan.
 
 **Comprobado contra el marcador en pantalla: 15 de 15 al número exacto**, sin
 una sola regresión respecto a lo que yo había verificado a mano.
@@ -2953,6 +2954,23 @@ Tres detalles que costaron encontrarse, y ninguno da error:
 - **`*10` y `+1` son operaciones implícitas**: el identificador ES la
   operación. **706 de los 3.102 XML** referencian un formato que no definen,
   así que no es un descuido suyo sino parte del formato.
+
+### Tres fallos más al aplicar hi2txt, todos por elegir mal
+
+Los tres daban «no se descifra» sin más, y ninguno era culpa de la base:
+
+- **Cogía el fichero equivocado.** Juegos como `simpsons2p` tienen un `eeprom`
+  escrito Y una estructura que describe el `.hi`. Al elegir el `eeprom` sólo
+  porque estaba ahí, fallaba con «no hay estructura para la fuente eeprom»
+  teniendo el dato bueno al lado. **Ahora el orden lo manda el XML**, no una
+  lista fija mía.
+- **Sólo probaba una estructura.** Un XML puede describir varias (versiones
+  distintas de `hiscore.dat`), y yo elegía por el tamaño declarado y me rendía.
+  Ahora se prueban todas y vale la primera que descifre — eso solo recuperó
+  `tmnt`, `xevious` y `galaxian`.
+- **La tabla de fábrica vale como `.hi`.** Mientras nadie haya jugado, lo que
+  leímos de la RAM con `--fabrica` es exactamente lo que habría en el `.hi`, así
+  que se usa cuando el XML pide `.hi` y todavía no existe.
 
 ### Las otras fuentes que pasó Eloy
 

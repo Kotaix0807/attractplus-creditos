@@ -81,8 +81,10 @@ comprobar() {  # nombre, condicion_ya_evaluada, detalle
 }
 
 # 1. el marcador se dibuja encima del fondo del layout
-brillo() { convert "$1" -crop 400x60+20+950 +repage -format '%[fx:mean]' info: 2>/dev/null; }
-FONDO=$(convert "$D/screen.png" -crop 400x60+20+500 +repage -format '%[fx:mean]' info: 2>/dev/null || echo 0)
+# ImageMagick 7 solo trae `magick`; la 6 solo `convert`. Se usa el que haya.
+if command -v magick >/dev/null; then CONVERTIR=( magick ); else CONVERTIR=( convert ); fi
+brillo() { "${CONVERTIR[@]}" "$1" -crop 400x60+20+950 +repage -format '%[fx:mean]' info: 2>/dev/null; }
+FONDO=$("${CONVERTIR[@]}" "$D/screen.png" -crop 400x60+20+500 +repage -format '%[fx:mean]' info: 2>/dev/null || echo 0)
 CON=$(brillo "$D/screen.png")
 comprobar "el marcador se ve encima del layout" \
 	"$(awk -v a="$CON" -v b="$FONDO" 'BEGIN{print (a>b+0.01)?1:0}')" "marcador=$CON fondo=$FONDO"

@@ -47,9 +47,21 @@ CAPTURAS="${CAPTURAS:-$HOME/.attract/scraper/$EMU/snap}"
 VER=""
 [ "${1:-}" = "--ver" ] && VER=1
 
-for p in ffmpeg ffprobe convert identify; do
+for p in ffmpeg ffprobe; do
 	command -v "$p" >/dev/null || { echo "hace falta $p" >&2; exit 1; }
 done
+
+# ImageMagick 7 dejo de instalar `convert` e `identify`: trae un solo `magick`
+# que hace de los dos. En Arch, Fedora 41+ y Debian 13 ya es asi, y en Ubuntu
+# 24.04 todavia es la 6. Se usa el que haya, en vez de suponer uno.
+if command -v magick >/dev/null; then
+	CONVERTIR=( magick );  IDENTIFICAR=( magick identify )
+elif command -v convert >/dev/null; then
+	CONVERTIR=( convert ); IDENTIFICAR=( identify )
+else
+	echo "hace falta ImageMagick (el binario 'magick', o 'convert' en la 6)" >&2
+	exit 1
+fi
 [ -d "$CAPTURAS" ] || { echo "no encuentro $CAPTURAS" >&2; exit 1; }
 
 # La rotacion de cada juego, de un tiron: -listxml por juego cuesta ~1 s y son
@@ -94,7 +106,7 @@ for f in "$CAPTURAS"/*.png "$CAPTURAS"/*.mp4; do
 	fi
 
 	if [ "${f##*.}" = "png" ]; then
-		crudo="$(identify -format '%wx%h' "$f")"
+		crudo="$("${IDENTIFICAR[@]}" -format '%wx%h' "$f")"
 	else
 		crudo="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
 			-of csv=p=0:s=x "$f")"
@@ -107,7 +119,7 @@ for f in "$CAPTURAS"/*.png "$CAPTURAS"/*.mp4; do
 	[ -n "$VER" ] && { hechos=$((hechos+1)); continue; }
 
 	if [ "${f##*.}" = "png" ]; then
-		convert "$f" -filter Lanczos -resize "${nuevo}!" "$f.tmp.png" &&
+		"${CONVERTIR[@]}" "$f" -filter Lanczos -resize "${nuevo}!" "$f.tmp.png" &&
 			mv "$f.tmp.png" "$f" && hechos=$((hechos+1))
 	else
 		# A un temporal y luego mv: si ffmpeg se cae a medias, el video

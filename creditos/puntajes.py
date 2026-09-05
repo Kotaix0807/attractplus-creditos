@@ -507,46 +507,60 @@ def detectar_en_ventana(datos, tope=2048):
 
 
 # ------------------------------------------------------------------ el grueso
-def datos_de(juego, cfg, dir_hi):
+DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
+FABRICA = {}              # tablas leidas de la RAM con --fabrica
+
+
+def datos_de(juego, cfg, dir_hi, fabrica=None):
     """De donde salen los bytes de ese juego. Devuelve (datos, origen, aviso).
 
-    Hay DOS sitios, y hay que mirar los dos para cubrir todos los juegos:
+    Hay TRES sitios, y el orden lo decide el XML de hi2txt, no una lista fija:
 
-      .hi     lo escribe el plugin hiscore, y solo para los juegos que estan en
-              hiscore.dat (5856). Es el caso bueno: separa puntuaciones de
-              creditos.
-      nvram   los que NO estan en hiscore.dat guardan sus puntuaciones en la
-              NVRAM de la placa, mezcladas con los creditos. Ahi no hay nada
-              que separar, pero SI se pueden leer.
+      .hi      lo escribe el plugin hiscore, para los juegos de hiscore.dat.
+      fabrica  la tabla que leimos nosotros de la RAM con --fabrica. Sirve como
+               .hi mientras nadie haya jugado, que es el caso de casi todos.
+      memoria  nvram, saveram, eeprom, x2212... MAME no los llama a todos
+               igual, asi que se prueba lo que el XML pida.
+
+    Preguntar al XML es lo que arregla el caso que mas fallaba: juegos como
+    simpsons2p tienen un fichero 'eeprom' escrito Y una estructura que describe
+    el .hi. Cogiendo el eeprom por estar ahi, el descifrado fallaba con "no hay
+    estructura para la fuente eeprom" teniendo el dato bueno al lado.
     """
     fuente = (cfg or {}).get("fuente", "auto")
     hi = os.path.join(dir_hi, juego + ".hi")
     carpeta = os.path.expanduser(f"~/.mame/nvram/{juego}")
 
-    if fuente in ("auto", "hi") and os.path.exists(hi) and os.path.getsize(hi):
-        return open(hi, "rb").read(), "hi", None
+    def leer(ruta):
+        if os.path.exists(ruta) and os.path.getsize(ruta):
+            return open(ruta, "rb").read()
+        return None
 
-    # MAME no llama "nvram" a todos los ficheros de memoria persistente: los
-    # NeoGeo guardan en 'saveram', Star Wars en 'x2212', Gauntlet en 'eeprom'.
-    # Se le pregunta al XML cual quiere, y si no hay XML se prueban los
-    # nombres habituales.
     quiere = []
     if DB_HI2TXT:
         try:
             import hi2txt
-            quiere = [f for f in hi2txt.fuentes_declaradas(
-                os.path.join(DB_HI2TXT, juego + ".xml")) if f != ".hi"]
+            quiere = hi2txt.fuentes_declaradas(
+                os.path.join(DB_HI2TXT, juego + ".xml"))
         except Exception:
             quiere = []
-    for nombre in quiere + ["nvram", "saveram", "eeprom", "earom", "x2212"]:
-        ruta = os.path.join(carpeta, nombre)
-        if os.path.exists(ruta) and os.path.getsize(ruta):
-            if fuente in ("auto", "nvram", nombre):
-                return open(ruta, "rb").read(), nombre, None
-    return None, None, "sin datos guardados todavia (ni .hi ni memoria persistente)"
 
-
-DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
+    # El orden de preferencia sale del XML; si no dice nada, .hi primero.
+    orden = quiere or [".hi"]
+    for nombre in orden + [".hi", "nvram", "saveram", "eeprom", "earom", "x2212"]:
+        if fuente not in ("auto", "hi", "nvram", nombre):
+            continue
+        if nombre == ".hi":
+            d = leer(hi)
+            if d:
+                return d, "hi", None
+            if fabrica and juego in fabrica:
+                return bytes.fromhex(fabrica[juego]), "fabrica", None
+        else:
+            d = leer(os.path.join(carpeta, nombre))
+            if d:
+                return d, nombre, None
+    return None, None, "sin datos guardados todavia"
 
 
 def puntajes_de(juego, bloques, cfg, dir_hi):
@@ -558,7 +572,7 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
     yo habia comprobado contra el marcador en pantalla, hi2txt acierta los 12
     que tiene descritos, al numero exacto.
     """
-    datos, origen, aviso = datos_de(juego, cfg, dir_hi)
+    datos, origen, aviso = datos_de(juego, cfg, dir_hi, FABRICA)
     if datos is None:
         return None, None, aviso
 
@@ -568,7 +582,7 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
             try:
                 import hi2txt
                 filas, _ = hi2txt.puntuaciones(
-                    xml, datos, ".hi" if origen == "hi" else origen)
+                    xml, datos, ".hi" if origen in ("hi", "fabrica") else origen)
                 if filas:
                     for f in filas:
                         f["receta"] = "hi2txt"
@@ -730,6 +744,8 @@ def main():
 
     f_fab = os.path.join(AQUI, "puntajes_fabrica.json")
     fabrica = json.load(open(f_fab)) if os.path.exists(f_fab) else {}
+    global FABRICA
+    FABRICA = fabrica
 
     if a.fabrica:
         mame = a.mame or os.path.expanduser(
@@ -796,7 +812,7 @@ def main():
 
     if a.detectar:
         for j in juegos:
-            datos, origen, aviso = datos_de(j, recetas.get(j), dir_hi)
+            datos, origen, aviso = datos_de(j, recetas.get(j), dir_hi, fabrica)
             if datos is None and j in fabrica:
                 datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
             if datos is None:
@@ -842,7 +858,7 @@ def main():
             # los juegos desde el primer dia y el programa que lo lea no se
             # queda sin nada. Cuando aparezca la receta, la misma entrada pasa a
             # traer los puntajes descifrados.
-            datos, org, _ = datos_de(j, recetas.get(j), dir_hi)
+            datos, org, _ = datos_de(j, recetas.get(j), dir_hi, fabrica)
             if datos is not None:
                 resultado[j] = {"descifrado": False, "origen": org,
                                 "motivo": aviso, "crudo": datos.hex()}

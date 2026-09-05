@@ -2,3 +2,9 @@ pruebas/sqhost
 pruebas/*.o
 *.bak
 *.bak2
+
+# generados por Python: atados a una version del interprete
+__pycache__/
+*.pyc
+# el interprete minimo de Squirrel lo compila correr.sh en cada maquina
+sq
