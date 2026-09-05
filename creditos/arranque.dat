@@ -75,5 +75,16 @@ sf2 segundos=5 velocidad=0
 sfiii3 segundos=25 velocidad=0
 simpsons2p segundos=11 velocidad=0 video=16
 mwalk segundos=0 nvram=0
+
+# Dragon's Lair es un LASERDISC: el "juego" es video que se reproduce a su
+# velocidad. Acelerar el emulador NO adelanta una carga, adelanta la PELICULA:
+# se ve a camara rapida y, con el frameskip del arranque, a saltos.
+#
+# Ademas no esta en creditos.dat, asi que no se usaban los 5 s de 'defecto'
+# sino GA_ARRANQUE_SIN, que son 900 frames = 15 SEGUNDOS de destrozo.
+#
+# segundos=0 apaga el arranque tapado entero. Es lo correcto para cualquier
+# juego de laserdisc, y de paso se ve su intro, que es la gracia del juego.
+dlair segundos=0
 contra segundos=7 velocidad=0 video=16
 defender velocidad=0
