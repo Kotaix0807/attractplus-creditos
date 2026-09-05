@@ -530,14 +530,39 @@ def datos_de(juego, cfg, dir_hi):
     return None, None, "sin datos guardados todavia (ni .hi ni nvram)"
 
 
+DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
+
+
 def puntajes_de(juego, bloques, cfg, dir_hi):
-    """Lee los datos del juego y los descifra. Devuelve (lista, origen, aviso)."""
+    """Lee los datos del juego y los descifra. Devuelve (lista, origen, aviso).
+
+    Se intenta PRIMERO con hi2txt-xml, que es una base comunitaria con la
+    estructura de unos 3.100 juegos, y solo si ese juego no esta descrito se
+    cae a las recetas propias de puntajes.dat. Validado: de los 13 juegos que
+    yo habia comprobado contra el marcador en pantalla, hi2txt acierta los 12
+    que tiene descritos, al numero exacto.
+    """
     datos, origen, aviso = datos_de(juego, cfg, dir_hi)
     if datos is None:
         return None, None, aviso
 
+    if DB_HI2TXT:
+        xml = os.path.join(DB_HI2TXT, juego + ".xml")
+        if os.path.exists(xml):
+            try:
+                import hi2txt
+                filas, _ = hi2txt.puntuaciones(
+                    xml, datos, ".hi" if origen == "hi" else origen)
+                if filas:
+                    for f in filas:
+                        f["receta"] = "hi2txt"
+                        f["confirmado"] = True
+                    return filas, origen, None
+            except Exception as e:
+                aviso = f"hi2txt no pudo: {e}"
+
     if not cfg:
-        return None, origen, f"sin receta ({len(datos)} bytes en {origen})"
+        return None, origen, aviso or f"sin receta ({len(datos)} bytes en {origen})"
 
     # El .hi es la concatenacion de los bloques que declara hiscore.dat, en
     # orden. 'bloque=N' elige cual de ellos lleva la tabla.
@@ -644,6 +669,8 @@ def main():
     ap.add_argument("--salida", default=os.environ.get(
         "SALIDA", os.path.expanduser("~/.attract/puntajes.json")))
     ap.add_argument("--hi", default=os.environ.get("HI_PATH"))
+    ap.add_argument("--hi2txt", default=None,
+                    help="carpeta db/ de hi2txt-xml (estructuras de ~3100 juegos)")
     ap.add_argument("-h", "--help", action="store_true")
     a = ap.parse_args()
     if a.help:
@@ -661,12 +688,24 @@ def main():
               file=sys.stderr)
         return 1
 
+    global DB_HI2TXT
+    try:
+        import hi2txt as _h
+        DB_HI2TXT = _h.buscar_db([a.hi2txt] if a.hi2txt else [])
+    except ImportError:
+        DB_HI2TXT = None
+
     bloques = leer_hiscore_dat(hd)
     recetas = leer_puntajes_dat(os.path.join(AQUI, "puntajes.dat"))
     f_def = os.path.join(AQUI, "puntajes_defecto.json")
     defectos = json.load(open(f_def)) if os.path.exists(f_def) else {}
 
     print(f"# hiscore.dat: {hd} ({len(bloques)} juegos)")
+    if DB_HI2TXT:
+        n_xml = len([f for f in os.listdir(DB_HI2TXT) if f.endswith(".xml")])
+        print(f"# hi2txt:     {DB_HI2TXT} ({n_xml} estructuras)")
+    else:
+        print("# hi2txt:     no encontrado (usa --hi2txt <carpeta db>)")
     print(f"# .hi:         {dir_hi}")
     print(f"# recetas:     {len(recetas)} en puntajes.dat")
 

@@ -2900,6 +2900,57 @@ queda puesto y una moneda lo sube 0→1.
 Explica de paso por qué sus líneas de `arranque.dat` llevan `segundos=3` y
 parecen tan cortas: son 90 frames, no 180.
 
+### hi2txt-xml: la base que resuelve las recetas
+
+Eloy pasó varias fuentes el 2026-09-05 y una lo cambió todo:
+**[hi2txt-xml](https://github.com/GreatStoneEx/hi2txt-xml)** (GreatStoneEx,
+GPL-2), una base comunitaria con la **estructura interna** de la tabla de unos
+**3.100 juegos**. Es exactamente la pieza que yo estaba deduciendo a mano:
+
+| | |
+|---|---|
+| `hiscore.dat` (de MAME) | dice **dónde** vive la tabla |
+| `hi2txt-xml` | dice **cómo** se lee por dentro |
+
+Su formato es rico y cubre lo que a mí se me atascó: `<loop>`, tipos
+`int`/`text`/`raw`, BCD, endianness, charsets con desplazamiento, y
+**`nibble-skip`/`byte-skip`** — la codificación por nibbles de Q*bert y los
+Williams. Y lee **tanto `.hi` como NVRAM**.
+
+`hi2txt.py` implementa el subconjunto que usan estos juegos. **Validado contra
+mis 13 verificaciones en pantalla: acierta los 12 que describe, al número
+exacto.** Eso es lo que permite fiarse de los otros 30.
+
+**No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
+que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
+
+**Cobertura: de 21 recetas a 48 juegos descifrables** de los 94 — 42 por
+hi2txt y 6 con recetas propias, que son las que hi2txt aún no cubre
+(`pacman`, `mspacman`, `tapper`, `rbtapper`, `gradius`…). O sea que las dos
+fuentes se complementan.
+
+Tres detalles que costaron encontrarse, y ninguno da error:
+
+- **`decoding-profile="bcd"` no siempre es BCD empaquetado.** Cuando todos los
+  bytes valen 0-9 la placa guarda **un dígito por byte**; leerlo como
+  empaquetado multiplicaba por diez mil (1943 daba 200000000 en vez de 20000).
+  Se distingue mirando los datos.
+- **Los `<format>` cuelgan de `<output>`**, no de la raíz. Buscándolos sólo en
+  la raíz salían vacíos y las puntuaciones perdían su `*10` en silencio.
+- **`*10` y `+1` son operaciones implícitas**: el identificador ES la
+  operación. **706 de los 3.102 XML** referencian un formato que no definen,
+  así que no es un descuido suyo sino parte del formato.
+
+### Las otras fuentes que pasó Eloy
+
+- **`hiscore.dat` oficial en GitHub**: comprobado, el de la cabina es
+  **idéntico** (mismo md5, 5.855 juegos). Ya estaba al día.
+- **MAMEworld high scores**: **no responde** (HTTP 000). Es el origen histórico
+  del `hiscore.dat` no oficial, ya integrado en MAME.
+- **Plugin de LaunchBox/BigBox**: es para Windows y no aplica aquí, pero fue
+  útil como pista — por dentro usa hi2txt, que es lo que confirmó cuál era la
+  buena.
+
 ### Cubrir muchos juegos: el `.hi` NO aparece solo
 
 Pedido por Eloy el 2026-09-05: *«que queden guardados los highscore de la mayor
