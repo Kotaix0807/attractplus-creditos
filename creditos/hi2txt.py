@@ -367,7 +367,12 @@ def puntuaciones(ruta_xml, datos, fuente=None):
 
 
 def buscar_db(rutas=()):
-    """Donde estan los XML. Se prueban los sitios habituales."""
+    """Donde estan los XML. Se prueban los sitios habituales.
+
+    OJO: esta lista esta ACOPLADA a hay_hi2txt() de instalar.sh, que mira los
+    mismos cuatro sitios para decidir si avisa al usuario de que se baje la
+    base. Si se cambia aqui, hay que cambiarla alli.
+    """
     for c in list(rutas) + [
             os.environ.get("HI2TXT_DB", ""),
             os.path.expanduser("~/hi2txt-xml/src/main/db"),
