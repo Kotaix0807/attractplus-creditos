@@ -1020,7 +1020,7 @@ segundo, y ahí se ve cuándo empieza lo que quieres:
 | `nrallyx` | test hasta los 12, lista de personajes, juego a los 28 | 28 |
 | `mappy` | título y personajes hasta los 35, demo a los 38 | 38 |
 
-Los valores viven en la tabla `SALTOS` del script. Y **`FORZAR=1` para rehacer
+Los valores viven en `arranque.dat`, como `video=N`. Y **`FORZAR=1` para rehacer
 uno que ya tiene vídeo**: sin eso el script lo salta, que es lo que hizo pensar
 a Eloy que cambiar el salto no servía de nada.
 
@@ -2732,8 +2732,33 @@ falta medirlo dos veces. Dos cuidados que costaron pensarlos:
   16 (medido con `--tira`: test hasta los 4, «PLEASE DEPOSIT COIN» a los 8,
   titulo a los 12).
 
-Precedencia: `SALTO=` de la linea de ordenes > tabla `SALTOS` medida >
+Precedencia: `SALTO=` de la linea de ordenes > `video=` de `arranque.dat` >
 `arranque.dat` > el defecto de 8. El script dice de donde salio cada uno.
+
+**Todo el ajuste por juego vive en `arranque.dat`** (pedido por Eloy el
+2026-09-05: *«así no debo ajustar el video de cada juego manualmente»*). Antes
+había una tabla `SALTOS` dentro de `videos.sh`, y afinar un juego obligaba a
+tocar el código. Ahora son dos claves más de `arranque.dat`, al lado de las de
+la carga:
+
+```
+contra segundos=7 velocidad=0 video=16
+```
+
+- **`video=N`** — el segundo en el que empieza lo que quieres grabar.
+- **`videodura=N`** — cuánto dura ese vídeo (opcional).
+
+**`creditos.lua` las ignora**, y eso está comprobado ejecutando su parser: guarda
+cualquier clave y sólo consulta las suyas, así que añadirlas no le afecta ni
+genera avisos.
+
+**Al regrabar se borra el vídeo anterior**, y no sólo el `.mp4`: AM+ prefiere el
+vídeo a la imagen fija y acepta varias extensiones, así que un `.avi` olvidado
+de una grabación vieja seguiría mandando sobre el `.mp4` nuevo y parecería que
+regrabar no sirve de nada. Se borran todas las extensiones de vídeo del juego
+(la `.png` no se toca: es el respaldo). Además se convierte a un temporal y se
+mueve al final, así el frontend nunca se encuentra un `.mp4` a medio escribir y
+un fallo de conversión deja el vídeo viejo en su sitio.
 
 **Y NO se ejecuta `creditos.lua` al grabar**, aunque sea lo que lee
 `arranque.dat` en la cabina: ese script tapa el arranque pintando la pantalla

@@ -21,6 +21,17 @@
 #               va acelerada, para ver de un vistazo si el ajuste hace algo.
 #               Apagado por defecto: en una cabina no pinta nada
 #
+#   video=N     SOLO para videos.sh: el segundo en el que empieza lo que
+#               quieres grabar como video de muestra. 'segundos=' dice cuando
+#               la placa esta lista, pero la demo llega despues: Contra arranca
+#               a los 7 y su demo empieza a los 16. Se mide con
+#               ./videos.sh --tira <juego>
+#
+#   videodura=N SOLO para videos.sh: cuanto dura ese video (por defecto 12 s)
+#
+# creditos.lua IGNORA esas dos: su parser guarda cualquier clave y solo consulta
+# las suyas. Estan aqui para que un unico fichero describa cada juego.
+#
 #   negro=0     acelera igual pero NO tapa la pantalla. Es como se ve el efecto
 #               de la velocidad mientras se ajusta un juego:
 #                 tapper segundos=10 velocidad=500 negro=0
@@ -46,7 +57,7 @@
 # Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto velocidad=0 segundos=5
-simpsons velocidad=0 segundos=11
+simpsons velocidad=0 segundos=11 video=16
 tapper velocidad=0 segundos=3 nvram=0
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
@@ -54,14 +65,15 @@ tapper velocidad=0 segundos=3 nvram=0
 rbtapper velocidad=0 segundos=3 nvram=0
 pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=1 velocidad=0
-nrallyx segundos=13 velocidad=0 indicador=0
-mappy segundos=13
+nrallyx segundos=13 velocidad=0 indicador=0 video=28
+mappy segundos=13 video=38
 digdug segundos=8
 ncv2 segundos=6 velocidad=0
 sf2 segundos=5 velocidad=0
 # sfiii3n es el set SIN CD (30 ficheros SIMM, ~80 MB) y aqui no esta; el que
 # hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
-sfiii3 segundos=13 velocidad=0
-simpsons2p segundos=11 velocidad=0
+sfiii3 segundos=25 velocidad=0
+simpsons2p segundos=11 velocidad=0 video=16
 mwalk segundos=0 nvram=0
-contra segundos=7 velocidad=0
+contra segundos=7 velocidad=0 video=16
+defender velocidad=0

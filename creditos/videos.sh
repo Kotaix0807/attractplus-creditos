@@ -5,8 +5,18 @@
 #   ./videos.sh                    # todos los de la romlist
 #   ./videos.sh --tira simpsons    # tira de fotogramas para MEDIR el salto
 #
-#   FORZAR=1 ./videos.sh simpsons  # rehacer uno que ya tenia video
-#   SALTO=20 FORZAR=1 ./videos.sh mappy
+#   FORZAR=1 ./videos.sh simpsons  # rehacer uno (borra el video anterior)
+#
+# El ajuste de cada juego NO esta en este script: esta en arranque.dat, al lado,
+# junto a los de la carga. Dos claves, las dos opcionales:
+#
+#   video=N       segundo en el que empieza lo que quieres grabar
+#   videodura=N   cuanto dura el video de ese juego
+#
+#   contra segundos=7 velocidad=0 video=16
+#
+# Sin 'video=' se usa 'segundos=' (cuando la placa termina de arrancar) como
+# suelo, y si tampoco lo hay, 8 s. creditos.lua ignora las dos claves nuevas.
 #
 # Por que grabarlos en vez de bajarlos: la fuente que AM+ trae incrustada
 # (progettosnaps.net/videosnaps/mp4/) devuelve 404 desde hace tiempo, y
@@ -84,51 +94,56 @@ EMU="${EMU:-groovymame}"
 DESTINO="${DESTINO:-$HOME/.attract/scraper/$EMU/snap}"
 ROMLIST="${ROMLIST:-$HOME/.attract/romlists/$EMU.txt}"
 
-# Cuanto hay que descartar de cada juego, MEDIDO con --tira. El defecto de 8 s
-# vale para las placas de los 80 que arrancan en un suspiro, pero no para las
-# que hacen un test largo ni para las que tardan en llegar al juego de verdad.
-declare -A SALTOS=(
-	[simpsons]=16    # 4 s "RAM ROM CHECK", 10 s patron de test, atraccion a los 14
-	[nrallyx]=28     # test hasta los 12, luego la lista de personajes; juego a los 28
-	[mappy]=38       # titulo y personajes hasta los 35; la demo empieza a los 38
-	[contra]=16      # test hasta los 4, "PLEASE DEPOSIT COIN" a los 8, titulo
-	                 # a los 12; la demo empieza a los 16
-)
-
 SALTO_DE_ORDENES="${SALTO:-}"   # si el usuario puso SALTO=, manda sobre todo
+DURA_DE_ORDENES="${DURA:-}"
 SALTO="${SALTO:-8}"        # segundos que se descartan del principio (la carga)
 DURA="${DURA:-12}"         # segundos que dura el video
 CALIDAD="${CALIDAD:-20}"   # crf de x264: mas bajo = mejor y mas grande
 AMPLIAR="${AMPLIAR:-1}"    # 0 para guardar al tamano crudo del juego
 
-# arranque.dat ya sabe cuanto tarda en arrancar cada placa: es exactamente el
-# numero que hay que descartar aqui. Se aprovecha en vez de medir dos veces.
+# --- todo el ajuste por juego vive en arranque.dat -------------------------
+#
+# Antes habia aqui una tabla SALTOS dentro del script, y eso obligaba a tocar
+# el codigo para afinar un juego. Ahora los dos numeros que necesita el video
+# son claves de arranque.dat, al lado de las de la carga:
+#
+#   video=N       segundo en el que empieza lo que quieres grabar
+#   videodura=N   cuanto dura el video de ese juego (opcional)
+#
+#   contra segundos=7 velocidad=0 video=16
+#
+# creditos.lua las ignora: su parser guarda cualquier clave y solo consulta las
+# suyas (comprobado ejecutandolo). Asi un solo fichero describe cada juego.
+#
+# Si no hay 'video=', se usa 'segundos=' -- arranque.dat ya sabe cuanto tarda
+# en arrancar cada placa, y es exactamente el numero que hay que descartar.
 #
 # OJO: se toma el DATO, no se ejecuta creditos.lua. Ese script tapa el arranque
 # pintando la pantalla de NEGRO, y ese negro entraria tal cual en el video.
 #
-# 'segundos=0' no significa "empieza ya", significa "a este juego no se le tapa
-# el arranque" (mwalk, que apenas se puede acelerar). Para el video no sirve, y
-# se cae al valor por defecto.
-# Dos cuidados, y los dos importan:
+# Dos cuidados con 'segundos=', y los dos importan:
 #
 #   1. Solo se mira la linea PROPIA del juego, nunca la de 'defecto'. La de
 #      defecto vale 5 s, que es MENOS que el salto general de 8: usarla haria
 #      que los juegos sin linea propia empezaran el video antes que antes.
 #   2. Es un SUELO, no el valor final. arranque.dat dice cuando la placa esta
 #      lista; la demo llega despues. Contra arranca a los 7 y su demo empieza a
-#      los 16. Para afinarlo esta --tira y la tabla SALTOS.
+#      los 16. Por eso existe 'video=', que si es el valor final.
+#
+# Y 'segundos=0' no significa "empieza ya", significa "a este juego no se le
+# tapa el arranque" (mwalk, que apenas se puede acelerar). Para el video no
+# sirve, y se cae al valor por defecto.
 AJUSTES="${AJUSTES:-$AQUI/arranque.dat}"
-salto_de_arranque() {   # $1=juego -> segundos, o nada
+
+clave_de_arranque() {   # $1=juego  $2=clave -> valor, o nada
 	[ -f "$AJUSTES" ] || return 1
 	local linea v
 	linea="$( grep -iE "^$1[[:space:]]" "$AJUSTES" 2>/dev/null | head -1 )"
 	[ -n "$linea" ] || return 1
-	v="$( printf '%s' "$linea" | grep -oE '(segundos|arranque)=[0-9]+' |
+	v="$( printf '%s' "$linea" | grep -oE "(^|[[:space:]])$2=[0-9]+" |
 	      head -1 | cut -d= -f2 )"
-	[ -n "$v" ] && [ "$v" -gt 0 ] 2>/dev/null || return 1
-	[ "$v" -lt "$SALTO" ] && v=$SALTO
-	echo "$v"
+	[ -n "$v" ] || return 1
+	printf '%s' "$v"
 }
 
 command -v ffmpeg >/dev/null || { echo "hace falta ffmpeg" >&2; exit 1; }
@@ -223,8 +238,9 @@ if [ "${1:-}" = "--tira" ]; then
 		printf '%4s' "${SEGUNDOS[$i]}"
 	done
 	echo
-	echo "Mira en que segundo empieza lo que quieres y ponlo en la tabla SALTOS,"
-	echo "o lanzalo asi:  SALTO=<segundos> FORZAR=1 $0 $j"
+	echo "Mira en que segundo empieza lo que quieres y apuntalo en $AJUSTES,"
+	echo "en la linea de $j, como  video=<segundos>  (creditos.lua la ignora)."
+	echo "Para probarlo sin tocar el fichero:  SALTO=<segundos> FORZAR=1 $0 $j"
 	exit 0
 fi
 
@@ -233,6 +249,31 @@ if [ $# -gt 0 ]; then
 else
 	mapfile -t JUEGOS < <(cut -d';' -f1 "$ROMLIST" | grep -v '^#')
 fi
+
+# AM+ prefiere el video a la imagen fija, y acepta varias extensiones. Si de
+# una grabacion anterior quedara un .avi o un .mkv, seguiria mandando sobre el
+# .mp4 nuevo y pareceria que regrabar no sirve de nada. Por eso al rehacer un
+# juego se borra TODO lo que sea video suyo, no solo el .mp4.
+#
+# La imagen fija (.png) NO se toca: es el respaldo cuando no hay video.
+EXT_VIDEO="mp4 avi mkv mpg mpeg mov webm m4v wmv flv ogv"
+
+video_existente() {   # $1=juego -> ruta del primero que encuentre, o nada
+	local e
+	for e in $EXT_VIDEO; do
+		[ -s "$DESTINO/$1.$e" ] && { printf '%s' "$DESTINO/$1.$e"; return 0; }
+	done
+	return 1
+}
+
+borrar_videos() {   # $1=juego
+	local e n=0
+	for e in $EXT_VIDEO; do
+		[ -e "$DESTINO/$1.$e" ] && { rm -f "$DESTINO/$1.$e" && n=$((n+1)); }
+	done
+	[ "$n" -gt 0 ] && printf '(borrado el anterior) '
+	return 0
+}
 
 mkdir -p "$DESTINO"
 TMP=$(mktemp -d /tmp/videos-mame.XXXXXX)
@@ -243,33 +284,40 @@ hechos=0; saltados=0; fallos=0
 for j in "${JUEGOS[@]}"; do
 	[ -n "$j" ] || continue
 
-	if [ -s "$DESTINO/$j.mp4" ] && [ "${FORZAR:-0}" != "1" ]; then
-		echo "  $j: ya tenia video (FORZAR=1 para rehacerlo)"
+	if ya="$( video_existente "$j" )" && [ "${FORZAR:-0}" != "1" ]; then
+		echo "  $j: ya tenia video ($(basename "$ya"), FORZAR=1 para rehacerlo)"
 		saltados=$((saltados+1))
 		continue
 	fi
 
-	# El salto del juego manda sobre el general. Asi cambiar SALTO en la linea
-	# de comandos sigue funcionando para un juego suelto.
-	# Precedencia: SALTO= de la linea de ordenes > la tabla medida con --tira >
-	# lo que diga arranque.dat > el defecto general.
-	if [ -n "${SALTO_DE_ORDENES:-}" ]; then
+	# Precedencia, de mas fuerte a mas debil:
+	#   SALTO= de la linea de ordenes > video= de arranque.dat >
+	#   segundos= de arranque.dat (como suelo) > el defecto general.
+	if [ -n "$SALTO_DE_ORDENES" ]; then
 		salto=$SALTO_DE_ORDENES; origen="SALTO="
-	elif [ -n "${SALTOS[$j]:-}" ]; then
-		salto=${SALTOS[$j]}; origen="medido"
-	elif salto=$( salto_de_arranque "$j" ); then
-		origen="arranque.dat"
+	elif salto=$( clave_de_arranque "$j" video ); then
+		origen="arranque.dat video="
+	elif salto=$( clave_de_arranque "$j" segundos ) && [ "$salto" -gt 0 ]; then
+		origen="arranque.dat segundos="
+		[ "$salto" -lt "$SALTO" ] && { salto=$SALTO; origen="defecto (segundos= es menor)"; }
 	else
 		salto=$SALTO; origen="defecto"
 	fi
 
-	echo -n "  $j: grabando (salto ${salto}s, $origen)... "
+	# La duracion tambien se puede fijar por juego.
+	if [ -n "$DURA_DE_ORDENES" ]; then
+		dura=$DURA_DE_ORDENES
+	elif ! dura=$( clave_de_arranque "$j" videodura ); then
+		dura=$DURA
+	fi
+
+	echo -n "  $j: grabando (salto ${salto}s, ${dura}s, $origen)... "
 
 	# El avi sale sin comprimir (unos 11 MB por segundo), por eso va a un
 	# temporal y se borra en cuanto se convierte.
 	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
 		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run $(( salto + DURA + 2 )) -nothrottle \
+		-seconds_to_run $(( salto + dura + 2 )) -nothrottle \
 		-aviwrite "$TMP/$j.avi" > "$TMP/$j.log" 2>&1 )
 
 	if [ ! -s "$TMP/$j.avi" ]; then
@@ -318,17 +366,22 @@ for j in "${JUEGOS[@]}"; do
 	final="$(( ${final%x*} - ${final%x*} % 2 ))x$(( ${final#*x} - ${final#*x} % 2 ))"
 	echo -n "($crudo -> $final) "
 
-	if ffmpeg -y -loglevel error -i "$TMP/$j.avi" -ss "$salto" -t "$DURA" \
+	# Se convierte a un temporal y solo entonces se sustituye el que hubiera.
+	# Asi el frontend nunca se encuentra un mp4 a medio escribir, y si la
+	# conversion falla el video viejo sigue en su sitio.
+	if ffmpeg -y -loglevel error -i "$TMP/$j.avi" -ss "$salto" -t "$dura" \
 		-vf "scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos" \
 		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p -an \
-		-movflags +faststart "$DESTINO/$j.mp4" 2>/dev/null \
-		&& [ -s "$DESTINO/$j.mp4" ]
+		-movflags +faststart "$TMP/$j.mp4" 2>/dev/null \
+		&& [ -s "$TMP/$j.mp4" ]
 	then
+		borrar_videos "$j"
+		mv -f "$TMP/$j.mp4" "$DESTINO/$j.mp4"
 		echo "$(du -h "$DESTINO/$j.mp4" | cut -f1)"
 		hechos=$((hechos+1))
 	else
-		rm -f "$DESTINO/$j.mp4"
-		echo "fallo la conversion"
+		rm -f "$TMP/$j.mp4"
+		echo "fallo la conversion (se deja el video que hubiera)"
 		fallos=$((fallos+1))
 	fi
 

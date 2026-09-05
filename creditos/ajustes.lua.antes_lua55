@@ -28,14 +28,9 @@ function M.leer(ruta)
 	local f = io.open(ruta, 'r')
 	if not f then return r, 'no se puede abrir ' .. tostring(ruta) end
 
-	-- OJO: no se puede escribir sobre la variable del for. En Lua 5.5 (la que
-	-- trae el MAME de GroovyArcade) la variable de control es CONST, y asignarle
-	-- valor es un error de COMPILACION: el fichero entero no carga. Con Lua 5.4
-	-- (la de un MAME compilado aqui) funcionaba, asi que el fallo solo aparece
-	-- en la cabina. El propio plugin 'data' de MAME tiene este mismo error.
-	for cruda in f:lines() do
+	for linea in f:lines() do
 		-- Fuera comentarios y espacios de los bordes
-		local linea = cruda:gsub('#.*$', ''):match('^%s*(.-)%s*$')
+		linea = linea:gsub('#.*$', ''):match('^%s*(.-)%s*$')
 
 		if linea ~= '' then
 			local nombre = linea:match('^(%S+)')

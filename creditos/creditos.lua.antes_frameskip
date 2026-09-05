@@ -80,11 +80,6 @@
 -- fino adicional por si algun juego concreto necesita mas margen.
 
 local function num(nombre, defecto)
-	-- 'nombre' puede venir nil: hay ajustes que solo existen en arranque.dat y
-	-- no tienen variable de entorno (se llaman con var=nil). Sin esta guarda,
-	-- os.getenv(nil) revienta y se lleva por delante el script entero justo
-	-- cuando ajustes.lua no ha podido cargar, que es el peor momento.
-	if not nombre then return defecto end
 	local v = tonumber(os.getenv(nombre) or '')
 	return v and math.floor(v) or defecto
 end
@@ -250,18 +245,6 @@ local FIJO = not AUTO
 local VELOCIDAD_PCT = math.max(0, ajuste('velocidad', 'GA_VELOCIDAD', 0))
 local VELOCIDAD = (VELOCIDAD_PCT == 0) and 0 or (VELOCIDAD_PCT / 100.0)
 local TURBO = (os.getenv('GA_TURBO') ~= '0') and (ajuste('turbo', nil, 1) ~= 0)
-
--- Frameskip durante el arranque, que es la OTRA mitad del fast forward de MAME.
---
--- El boton de fast forward no solo quita el freno: pone tambien el frameskip al
--- maximo (src/emu/video.cpp, 'effective_frameskip': si m_fastforward, devuelve
--- FRAMESKIP_LEVELS - 1). O sea que emula todos los fotogramas pero PINTA uno de
--- cada doce, y pintar es justo lo que sobra cuando la pantalla esta en negro.
---
--- 'fastforward' no esta expuesto en Lua, pero 'frameskip' se lee y se escribe
--- (luaengine.cpp:2201), asi que se replica exacto. MAME lo recorta a
--- MAX_FRAMESKIP el solo, de modo que 11 es "el maximo" sin depender del valor.
-local FRAMESKIP = math.floor(ajuste('frameskip', 'GA_FRAMESKIP', 11))
 
 -- nvram=0 en arranque.dat: la placa no guarda su NVRAM al salir.
 --
@@ -1061,7 +1044,6 @@ if ARRANQUE > 0 then
 				video = v,
 				throttled = v.throttled,
 				rate = v.throttle_rate,
-				frameskip = v.frameskip,
 			}
 
 			-- El sonido tambien: el test de arranque pita, y a toda velocidad
@@ -1079,20 +1061,12 @@ if ARRANQUE > 0 then
 				pcall(function() v.throttle_rate = VELOCIDAD end)
 			end
 
-			-- La otra mitad del fast forward. Con la pantalla en negro no se
-			-- pierde nada visible; con negro=0 se vera a saltos, que es lo
-			-- esperable de un fast forward.
-			if FRAMESKIP > 0 then
-				pcall(function() v.frameskip = FRAMESKIP end)
-			end
-
 			-- Copias locales, por lo mismo que en el cerrojo
 			local t = GA_ESTADO.turbo
 			local d = GA_ESTADO.deshaceres
 			d[#d + 1] = function()
 				pcall(function() t.video.throttled = t.throttled end)
 				pcall(function() t.video.throttle_rate = t.rate end)
-				pcall(function() t.video.frameskip = t.frameskip end)
 				if t.sonido then pcall(function() t.sonido.system_mute = t.mudo end) end
 			end
 		end
@@ -1130,7 +1104,6 @@ function fin_del_arranque()
 	if e.turbo then
 		pcall(function() e.turbo.video.throttled = e.turbo.throttled end)
 		pcall(function() e.turbo.video.throttle_rate = e.turbo.rate end)
-		pcall(function() e.turbo.video.frameskip = e.turbo.frameskip end)
 		if e.turbo.sonido then
 			pcall(function() e.turbo.sonido.system_mute = e.turbo.mudo end)
 		end
