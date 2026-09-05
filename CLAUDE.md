@@ -2855,9 +2855,19 @@ salen siendo las de fábrica conocidas, que es la comprobación):
 | `dkong` | 5×34 | 76500, 61000, 59500, 50500, 43000, sin iniciales |
 | `pacman` / `mspacman` | 1×4 | una sola puntuación, sin iniciales |
 
-Dos cosas que **quedan por confirmar en pantalla**: el `multiplica=10` de
-`bublbobl` y el de `dkong` (sin él salen 3000 y 7650, y las puntuaciones de
-Donkey Kong son siempre múltiplos de 100). `asteroid` sigue sin receta.
+**Y verificar en pantalla evitó un error de 10x.** Le había puesto
+`multiplica=10` a `dkong` razonando que sus puntuaciones son múltiplos de 100.
+Es **falso**: capturada su tabla de atracción en la cabina, el juego enseña
+`007650 / 006100 / 005950 / 005050 / 004300`, exactamente lo que da el
+descifrado crudo. En `bublbobl` sí era correcto — marca `HIGH SCORE 30000` y el
+BCD guarda `003000`.
+
+> **Regla:** una receta de `puntajes.dat` no está confirmada hasta que se ha
+> comparado con lo que el juego enseña en pantalla. El razonamiento «esas
+> puntuaciones no pueden ser» no vale como prueba.
+
+`asteroid` sigue sin receta: su bloque está a ceros porque nadie ha jugado, y de
+una tabla vacía no se deduce el formato.
 
 ### Los nombres ficticios
 

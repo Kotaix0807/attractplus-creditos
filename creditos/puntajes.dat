@@ -50,8 +50,8 @@
 # en ASCII directo. Sale la tabla de fabrica de Taito: I.F, MTJ, NSO, KIM, YSH.
 #
 # multiplica=10 porque el BCD guarda 003000 y el juego ensena 30000: estas
-# placas guardan la puntuacion sin el ultimo cero. POR CONFIRMAR jugando una
-# partida y comparando con lo que sale en pantalla.
+# placas guardan la puntuacion sin el ultimo cero. CONFIRMADO capturando su
+# modo de atraccion en la cabina: marca "HIGH SCORE 30000".
 bublbobl entradas=5 bytes=7 puntos=0,3,bcd nombre=4,3,ascii nivel=3,1 multiplica=10
 
 # --- pendientes ------------------------------------------------------------
@@ -71,10 +71,12 @@ bublbobl entradas=5 bytes=7 puntos=0,3,bcd nombre=4,3,ascii nivel=3,1 multiplica
 # El nombre son 3 caracteres en el 13, todos a 0x10 (espacio) en la tabla de
 # fabrica: Donkey Kong viene sin iniciales puestas. El alfabeto se dedujo de
 # los sufijos ordinales que guarda en el 3 (ST, ND, RD, TH, TH).
-# multiplica=10 porque sin el sale 7650, y en Donkey Kong todas las
-# puntuaciones son multiplos de 100. POR CONFIRMAR mirando la tabla que el
-# juego ensena en su modo de atraccion.
-dkong entradas=5 bytes=34 puntos=7,6,digitos nombre=13,3,idx:dkong multiplica=10
+# SIN multiplicador. Lo puse a 10 suponiendo que las puntuaciones de Donkey
+# Kong son multiplos de 100, y era FALSO: capturada su tabla de atraccion en la
+# cabina, la pantalla ensena 007650 / 006100 / 005950 / 005050 / 004300, que es
+# exactamente lo que da el descifrado crudo. Verificar en pantalla evito un
+# error de 10x.
+dkong entradas=5 bytes=34 puntos=7,6,digitos nombre=13,3,idx:dkong
 
 # Pac-Man y Ms. Pac-Man no tienen tabla: guardan UNA puntuacion y sin
 # iniciales. Son 3 bytes BCD con el byte bajo primero, y sin el ultimo cero
