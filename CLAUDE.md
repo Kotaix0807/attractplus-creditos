@@ -2900,6 +2900,77 @@ queda puesto y una moneda lo sube 0→1.
 Explica de paso por qué sus líneas de `arranque.dat` llevan `segundos=3` y
 parecen tan cortas: son 90 frames, no 180.
 
+### Cubrir muchos juegos: el `.hi` NO aparece solo
+
+Pedido por Eloy el 2026-09-05: *«que queden guardados los highscore de la mayor
+cantidad posible de juegos»*. El primer intento —arrancar los 94 juegos para que
+el plugin escribiera su `.hi`— **no podía funcionar**, y el motivo está en el
+código del plugin (`init.lua`):
+
+```lua
+if checksum ~= current_checksum and checksum ~= default_checksum then
+    write_scores( positions );
+```
+
+> **El plugin sólo escribe cuando la tabla CAMBIA respecto a como estaba al
+> arrancar.** Un juego que nadie ha jugado no deja ningún fichero.
+
+Por eso sólo había 6 `.hi`: son los 6 que alguien jugó. Sin datos no se puede ni
+deducir el formato ni apuntar la tabla de fábrica.
+
+**La salida: leer la tabla nosotros.** `volcar.lua` lee de la RAM el bloque que
+declara `hiscore.dat` y lo imprime; `./puntajes.py --fabrica` lo lanza para cada
+juego. Verificado en Donkey Kong: el volcado directo coincide **byte a byte**
+con su `.hi`.
+
+De ahí salieron **59 tablas de fábrica**, que sirven para las dos cosas a la
+vez: deducir formatos y alimentar el filtro de nombres ficticios de todos ellos.
+
+### El detector automático de formatos
+
+Escribir una receta a mano no escala. Pero una tabla de puntuaciones tiene una
+propiedad que la delata: **está ordenada de mayor a menor**. `--detectar` prueba
+anchos de entrada, desplazamientos y formatos, y propone las que encajan.
+
+Lo que de verdad lo hizo acertar fueron dos criterios tontos y muy selectivos:
+
+- en formato `digitos` **ningún byte puede pasar de 9**;
+- en BCD **ningún nibble puede ser A-F**.
+
+Más tres correctivos sacados de ver en qué se equivocaba: casi toda recreativa
+puntúa de 10 en 10; leer 4 bytes como entero da números de siete cifras (falso);
+y la primera posición de una tabla no baja de 1000 (si no, confunde la tabla con
+el campo de la ronda alcanzada, que también va ordenado).
+
+Acierta **3 de 6** a la primera, y la correcta suele estar entre las 2-3
+primeras. Por eso `--proponer` escribe las líneas con **`confirmado=no`** y
+nunca las da por buenas: cada fila del JSON lleva `"confirmado": true/false`.
+
+> **Sólo cuenta como confirmada la receta comparada con lo que el juego enseña
+> en pantalla.** A `dkong` le sobraba un ×10 y sólo se vio mirando su modo de
+> atracción.
+
+**Cobertura hoy:** 94 juegos instalados, **59** con tabla localizable, **33** con
+receta (6 confirmadas), **32** con tabla de fábrica apuntada.
+
+**La NVRAM es el hueco que queda.** Los juegos que no están en `hiscore.dat`
+(`qbert`, `tapper`, los Williams, los NeoGeo…) guardan las puntuaciones ahí,
+mezcladas con todo, y no hay ningún fichero que diga dónde ni cómo. Joust, por
+ejemplo, guarda nibbles con prefijo `0xf0`. Es trabajo por placa.
+
+### Dos fallos míos en el parser de `hiscore.dat`
+
+Los dos daban tamaños de bloque absurdos (dkong con 32 KB en vez de 179 bytes) y
+ninguno saltaba como error:
+
+- **Saltarme las líneas en blanco** hacía que los nombres se acumularan y cada
+  juego heredara los bloques de todos los anteriores.
+- **Los nombres con comentario detrás** (`pacmini:  ; missing`) no acababan en
+  `:`, así que el parser los tomaba por línea desconocida y reiniciaba el grupo
+  — dejando a `pacman` sin bloques.
+
+Arreglados, el fichero pasa de 5753 a **5862** juegos reconocidos.
+
 ### Los nombres ficticios
 
 Un juego recién instalado trae una tabla puesta por la ROM — las iniciales de

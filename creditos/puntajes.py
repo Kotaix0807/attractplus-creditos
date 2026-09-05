@@ -110,15 +110,28 @@ def leer_hiscore_dat(ruta):
         <juego>:            (varios seguidos: son alias del mismo bloque)
         @<cpu>,<espacio>,<dir>,<long>,<espera1>,<espera2>[,<relleno>]
     """
-    juegos, pendientes = {}, []
+    juegos, pendientes, en_bloques = {}, [], False
     for linea in open(ruta, encoding="utf-8", errors="replace"):
         linea = linea.strip()
         if not linea or linea.startswith(";"):
             continue
+        # Hay nombres con comentario detras: "pacmini:  ; missing". Sin quitarlo
+        # la linea no acaba en ":" y el parser la tomaba por desconocida,
+        # reiniciando el grupo y dejando a pacman sin bloques.
+        linea = linea.split(";")[0].strip()
+        if not linea:
+            continue
         if linea.endswith(":"):
-            # Varios nombres seguidos comparten los @ que vienen despues.
+            # Un nombre DESPUES de los @ empieza una entrada nueva. Sin este
+            # corte los nombres se acumulaban y cada juego heredaba los bloques
+            # de todos los anteriores: dkong salia con 32 KB en vez de 179
+            # bytes. Las lineas en blanco tambien separan, pero saltarselas era
+            # justo lo que ocultaba el fallo.
+            if en_bloques:
+                pendientes, en_bloques = [], False
             pendientes.append(linea[:-1].split(",")[0].lower())
         elif linea.startswith("@"):
+            en_bloques = True
             p = linea[1:].split(",")
             if len(p) >= 4:
                 try:
@@ -128,7 +141,7 @@ def leer_hiscore_dat(ruta):
                 for j in pendientes:
                     juegos.setdefault(j, []).append(bloque)
         else:
-            pendientes = []
+            pendientes, en_bloques = [], False
     return juegos
 
 
@@ -176,12 +189,15 @@ def texto(datos, modo):
 
 
 def numero(datos, modo):
-    if modo == "bcd":            # 0x00 0x30 0x00 -> 3000
-        return int(datos.hex())
-    if modo == "digitos":        # un digito decimal por byte
-        return int("".join(str(b) for b in datos) or "0")
-    if modo == "bcdle":          # BCD pero con el byte bajo primero
-        return int(datos[::-1].hex())
+    try:
+        if modo == "bcd":            # 0x00 0x30 0x00 -> 3000
+            return int(datos.hex())
+        if modo == "digitos":        # un digito decimal por byte
+            return int("".join(str(b) for b in datos) or "0")
+        if modo == "bcdle":          # BCD pero con el byte bajo primero
+            return int(datos[::-1].hex())
+    except ValueError:
+        raise RecetaNoEncaja(f"{datos.hex()} no es un {modo} valido")
     if modo == "le":
         return int.from_bytes(datos, "little")
     if modo == "be":
@@ -193,6 +209,16 @@ def campo(spec):
     """'0,3,bcd' -> (0, 3, 'bcd')"""
     p = spec.split(",")
     return int(p[0]), int(p[1]), (p[2] if len(p) > 2 else "")
+
+
+class RecetaNoEncaja(Exception):
+    """La receta no sabe leer estos bytes.
+
+    Pasa con las propuestas automaticas: el detector las dedujo de una tabla y
+    al aplicarlas a otra aparecen bytes que ese formato no admite (un BCD con
+    nibbles A-F, por ejemplo). No debe tumbar la herramienta: se marca ese
+    juego como no descifrable y se sigue con los demas.
+    """
 
 
 def descifrar(datos, cfg):
@@ -208,7 +234,13 @@ def descifrar(datos, cfg):
         e = datos[i * ancho:(i + 1) * ancho]
         if len(e) < ancho:
             break
-        fila = {"puesto": i + 1, "puntos": numero(e[op:op + lp], fp) * mult}
+        fila = {"puesto": i + 1, "puntos": numero(e[op:op + lp], fp) * mult,
+                # Una receta 'confirmada' se comparo con lo que el juego ensena
+                # en pantalla. Las que no, las propuso el detector y pueden
+                # estar mal -- a dkong le sobraba un x10 y solo se vio mirando
+                # su tabla de atraccion. El programa que lea el JSON deberia
+                # tratarlas con cuidado.
+                "confirmado": cfg.get("confirmado", "no") == "si"}
         if ln:
             fila["nombre"] = texto(e[on:on + ln], fn)
         if "nivel" in cfg:
@@ -219,29 +251,199 @@ def descifrar(datos, cfg):
     return salida
 
 
+# ----------------------------------------------------- deteccion automatica
+#
+# Escribir una receta a mano por juego no escala: hay 94 instalados y la idea es
+# que se puedan anadir mas. Pero una tabla de puntuaciones tiene una propiedad
+# que la delata y que casi ninguna otra estructura cumple: **esta ordenada de
+# mayor a menor**. Con eso y con que el bloque se divida en partes iguales se
+# puede buscar el formato a base de probar.
+#
+# El detector NO escribe nada en puntajes.dat: propone la linea y la persona
+# decide. Una receta equivocada es peor que ninguna, y eso ya costo un error de
+# 10x en dkong.
+
+FORMATOS = (("bcd", 2, 4), ("bcdle", 2, 4), ("digitos", 4, 8),
+            ("be", 2, 4), ("le", 2, 4))
+
+
+def _descendente(v):
+    return all(v[i] >= v[i + 1] for i in range(len(v) - 1))
+
+
+def _valido(trozo, fmt):
+    """Descarta lecturas imposibles ANTES de mirar si la tabla ordena.
+
+    Son dos comprobaciones baratas y muy selectivas:
+      - 'digitos' guarda un digito decimal por byte, asi que ningun byte
+        puede pasar de 9;
+      - 'bcd' guarda dos por byte, asi que ningun nibble puede ser A-F.
+    Sin esto el detector proponia leer como BCD campos que no lo son y salian
+    puntuaciones parecidas pero mal (15000 leido como 10500).
+    """
+    if fmt == "digitos":
+        return all(b <= 9 for b in trozo)
+    if fmt in ("bcd", "bcdle"):
+        return all((b >> 4) <= 9 and (b & 15) <= 9 for b in trozo)
+    return True
+
+
+def _plausible(puntos):
+    """Descarta lo que no puede ser una tabla de puntuaciones."""
+    if puntos[0] <= 0:
+        return False                      # la primera posicion siempre puntua
+    if puntos[0] > 99999999:
+        return False                      # ninguna recreativa llega ahi
+    if len(set(puntos)) == 1 and puntos[0] > 0:
+        return True                       # todas iguales: tipico de fabrica
+    return _descendente(puntos)
+
+
+def _nombre_posible(datos, w, n, prohibido):
+    """Busca un campo de 3 caracteres que parezca iniciales."""
+    mejor = None
+    for off in range(0, w - 2):
+        if any(off < p[1] and p[0] < off + 3 for p in prohibido):
+            continue
+        for alf in ("ascii", "idx:capcom"):
+            vistos = []
+            for i in range(n):
+                trozo = datos[i * w + off:i * w + off + 3]
+                try:
+                    t = texto(trozo, alf)
+                except Exception:
+                    t = ""
+                vistos.append(t)
+            # Iniciales de verdad: casi todo letras/digitos y no todo vacio.
+            utiles = [t for t in vistos if t and all(
+                c.isalnum() or c in " .-" for c in t)]
+            if len(utiles) >= max(2, n // 2):
+                nota = len(utiles) + (2 if any(t.strip() for t in vistos) else 0)
+                if not mejor or nota > mejor[0]:
+                    mejor = (nota, off, alf)
+    return mejor
+
+
+def detectar(datos):
+    """Devuelve una lista de recetas candidatas, la mejor primero."""
+    salida, L = [], len(datos)
+    for n in range(3, 21):
+        if L % n or L // n < 4 or L // n > 64:
+            continue
+        w = L // n
+        for fmt, lmin, lmax in FORMATOS:
+            for lp in range(lmin, min(lmax, w) + 1):
+                for op in range(0, w - lp + 1):
+                    trozos = [datos[i * w + op:i * w + op + lp] for i in range(n)]
+                    if not all(_valido(t, fmt) for t in trozos):
+                        continue
+                    try:
+                        puntos = [numero(t, fmt) for t in trozos]
+                    except ValueError:
+                        continue
+                    if not _plausible(puntos):
+                        continue
+                    nom = _nombre_posible(datos, w, n, [(op, op + lp)])
+                    # La nota premia lo que distingue a una tabla de verdad:
+                    #   - casi todas las recreativas puntuan de 10 en 10;
+                    #   - un campo de puntuacion LARGO es mejor que uno corto
+                    #     que da un numero parecido leyendo media cifra;
+                    #   - valores distintos entre si, no todo el mismo relleno.
+                    # Los pesos salen de mirar en que se equivocaba: proponia
+                    # leer 4 bytes como entero (numeros enormes y no redondos) y
+                    # trocear un bloque en el doble de entradas leyendo el
+                    # relleno (todas iguales). De ahi los dos correctivos
+                    # fuertes: casi toda recreativa puntua de 10 en 10, y una
+                    # tabla de verdad tiene valores DISTINTOS.
+                    redondas = all(v % 10 == 0 for v in puntos)
+                    # Un millon como techo NO es arbitrario: leer 4 bytes
+                    # como entero grande da siempre numeros de siete cifras, y
+                    # es el error tipico del detector. Las tablas de fabrica de
+                    # los clasicos se quedan muy por debajo. Es una penalizacion,
+                    # no un rechazo, porque hay juegos que si llegan.
+                    enorme = max(puntos) > 1000000
+                    nota = (n * 2 + lp
+                            + (12 if redondas else 0)
+                            + (-12 if enorme else 0)
+                            # Y por abajo: la PRIMERA posicion de una tabla no
+                            # baja de 1000 en ningun clasico. Sin esto el
+                            # detector confundia la tabla con el campo de la
+                            # ronda alcanzada, que tambien va ordenado de mayor
+                            # a menor y por eso colaba (31, 27, 23, 19, 15).
+                            + (-10 if max(puntos) < 1000 else 0)
+                            + len(set(puntos)) * 3
+                            + (4 if _descendente(puntos) and len(set(puntos)) > 1 else 0)
+                            + (nom[0] if nom else 0))
+                    salida.append({
+                        "nota": nota, "entradas": n, "bytes": w,
+                        "puntos": f"{op},{lp},{fmt}",
+                        "nombre": f"{nom[1]},3,{nom[2]}" if nom else None,
+                        "valores": puntos,
+                    })
+    salida.sort(key=lambda c: -c["nota"])
+    # Quitar duplicados que solo cambian el formato pero dan lo mismo
+    vistos, unicos = set(), []
+    for c in salida:
+        clave = (c["entradas"], c["bytes"], tuple(c["valores"]))
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(c)
+    return unicos
+
+
 # ------------------------------------------------------------------ el grueso
+def datos_de(juego, cfg, dir_hi):
+    """De donde salen los bytes de ese juego. Devuelve (datos, origen, aviso).
+
+    Hay DOS sitios, y hay que mirar los dos para cubrir todos los juegos:
+
+      .hi     lo escribe el plugin hiscore, y solo para los juegos que estan en
+              hiscore.dat (5856). Es el caso bueno: separa puntuaciones de
+              creditos.
+      nvram   los que NO estan en hiscore.dat guardan sus puntuaciones en la
+              NVRAM de la placa, mezcladas con los creditos. Ahi no hay nada
+              que separar, pero SI se pueden leer.
+    """
+    fuente = (cfg or {}).get("fuente", "auto")
+    hi = os.path.join(dir_hi, juego + ".hi")
+    nv = os.path.expanduser(f"~/.mame/nvram/{juego}/nvram")
+
+    if fuente in ("auto", "hi") and os.path.exists(hi) and os.path.getsize(hi):
+        return open(hi, "rb").read(), "hi", None
+    if fuente in ("auto", "nvram") and os.path.exists(nv) and os.path.getsize(nv):
+        return open(nv, "rb").read(), "nvram", None
+    return None, None, "sin datos guardados todavia (ni .hi ni nvram)"
+
+
 def puntajes_de(juego, bloques, cfg, dir_hi):
-    """Lee el .hi del juego y lo descifra. Devuelve (lista, aviso)."""
-    fichero = os.path.join(dir_hi, juego + ".hi")
-    if not os.path.exists(fichero):
-        return None, "sin datos guardados todavia"
-    datos = open(fichero, "rb").read()
-    if not datos:
-        return None, "el fichero esta vacio"
+    """Lee los datos del juego y los descifra. Devuelve (lista, origen, aviso)."""
+    datos, origen, aviso = datos_de(juego, cfg, dir_hi)
+    if datos is None:
+        return None, None, aviso
 
     if not cfg:
-        return None, f"sin receta en puntajes.dat ({len(datos)} bytes guardados)"
+        return None, origen, f"sin receta ({len(datos)} bytes en {origen})"
 
     # El .hi es la concatenacion de los bloques que declara hiscore.dat, en
     # orden. 'bloque=N' elige cual de ellos lleva la tabla.
     idx = int(cfg.get("bloque", 0))
-    desde = sum(b[3] for b in bloques[:idx]) if bloques else 0
-    largo = bloques[idx][3] if bloques and idx < len(bloques) else len(datos)
+    if origen == "nvram":
+        # En la NVRAM no hay bloques de hiscore.dat: la receta dice el
+        # desplazamiento a pelo con 'desde='.
+        desde = int(cfg.get("desde", "0"), 0)
+        largo = len(datos) - desde
+    else:
+        desde = sum(b[3] for b in bloques[:idx]) if bloques else 0
+        largo = bloques[idx][3] if bloques and idx < len(bloques) else len(datos)
     trozo = datos[desde:desde + largo]
     if len(trozo) < int(cfg["entradas"]) * int(cfg["bytes"]):
-        return None, (f"el bloque {idx} tiene {len(trozo)} bytes y la receta "
-                      f"pide {int(cfg['entradas']) * int(cfg['bytes'])}")
-    return descifrar(trozo, cfg), None
+        return None, origen, (f"el bloque tiene {len(trozo)} bytes y la receta "
+                              f"pide {int(cfg['entradas']) * int(cfg['bytes'])}")
+    try:
+        return descifrar(trozo, cfg), origen, None
+    except RecetaNoEncaja as e:
+        return None, origen, f"la receta no encaja con estos datos ({e})"
 
 
 def marcar_defectos(juego, filas, defectos):
@@ -264,10 +466,65 @@ def marcar_defectos(juego, filas, defectos):
     return filas
 
 
+def capturar_fabrica(juegos, bloques, mame, romlist_dir):
+    """Arranca cada juego y lee de la RAM su tabla DE FABRICA.
+
+    Hace falta porque el plugin hiscore solo escribe su .hi cuando la tabla
+    CAMBIA respecto a como estaba al arrancar (init.lua: comprueba
+    'checksum ~= default_checksum'). O sea que un juego que nadie ha jugado no
+    deja ningun fichero, y sin datos no hay ni receta ni base de fabrica.
+
+    Leyendola nosotros se consigue las dos cosas de golpe, y para TODOS los
+    juegos que esten en hiscore.dat, no solo para los seis que alguien jugo.
+    """
+    import subprocess
+    lua = os.path.join(AQUI, "volcar.lua")
+    if not os.path.exists(lua):
+        print(f"falta {lua}", file=sys.stderr)
+        return {}
+
+    salida = {}
+    for n, j in enumerate(juegos, 1):
+        b = bloques.get(j)
+        if not b:
+            print(f"  {n:>3}/{len(juegos)}  {j:<12} no esta en hiscore.dat")
+            continue
+        espec = ";".join(f"{c.lstrip(':')},{e},{a:x},{l:x}" for c, e, a, l in b)
+        entorno = dict(os.environ, GA_D_BLOQUES=espec, GA_D_FRAME="1800")
+        try:
+            r = subprocess.run(
+                [mame, j, "-rompath", romlist_dir, "-video", "none",
+                 "-sound", "none", "-noswitchres", "-str", "45", "-nothrottle",
+                 "-skip_gameinfo", "-autoboot_script", lua, "-autoboot_delay", "0"],
+                capture_output=True, text=True, timeout=180, env=entorno,
+                cwd=os.path.dirname(mame))
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"  {n:>3}/{len(juegos)}  {j:<12} no arranco ({e})")
+            continue
+        m = re.search(r"^\[volcado\] ([0-9a-f]*)$", r.stdout, re.M)
+        if not m or not m.group(1):
+            motivo = "sin volcado"
+            if re.search(r"NOT FOUND|missing|Fatal error", r.stdout + r.stderr):
+                motivo = "faltan roms"
+            print(f"  {n:>3}/{len(juegos)}  {j:<12} {motivo}")
+            continue
+        salida[j] = m.group(1)
+        print(f"  {n:>3}/{len(juegos)}  {j:<12} {len(m.group(1)) // 2} bytes")
+    return salida
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("juegos", nargs="*")
     ap.add_argument("--listar", action="store_true")
+    ap.add_argument("--detectar", action="store_true",
+                    help="propone recetas mirando los datos guardados")
+    ap.add_argument("--proponer", action="store_true",
+                    help="anade a puntajes.dat la mejor receta de cada juego")
+    ap.add_argument("--fabrica", action="store_true",
+                    help="arranca cada juego y lee de la RAM su tabla de fabrica")
+    ap.add_argument("--mame", default=None)
+    ap.add_argument("--roms", default=None)
     ap.add_argument("--capturar", action="store_true",
                     help="apunta la tabla actual como la de fabrica")
     ap.add_argument("--salida", default=os.environ.get(
@@ -302,6 +559,100 @@ def main():
     disponibles = sorted(f[:-3] for f in os.listdir(dir_hi) if f.endswith(".hi"))
     juegos = a.juegos or disponibles
 
+    f_fab = os.path.join(AQUI, "puntajes_fabrica.json")
+    fabrica = json.load(open(f_fab)) if os.path.exists(f_fab) else {}
+
+    if a.fabrica:
+        mame = a.mame or os.path.expanduser(
+            "~/.local/share/groovymame-cabina/mame")
+        roms = a.roms or mame_opcion("rompath", mame) or ""
+        if not os.path.exists(mame):
+            print(f"no encuentro el emulador en {mame} (usa --mame)", file=sys.stderr)
+            return 1
+        lista = a.juegos or [l.split(";")[0] for l in
+                             open(os.path.expanduser(
+                                 "~/.attract/romlists/groovymame.txt"))][1:]
+        print(f"# emulador: {mame}\n# roms: {roms}\n")
+        nuevos = capturar_fabrica(lista, bloques, mame, roms)
+        fabrica.update(nuevos)
+        json.dump(fabrica, open(f_fab, "w"), indent=1)
+        print(f"\n# {len(nuevos)} tablas de fabrica nuevas, "
+              f"{len(fabrica)} en total -> {f_fab}")
+        return 0
+
+    if a.proponer:
+        dat = os.path.join(AQUI, "puntajes.dat")
+        ya = set(recetas)
+        nuevas = []
+        for j in sorted(set(list(fabrica) + disponibles)):
+            if j in ya:
+                continue
+            datos, origen, _ = datos_de(j, recetas.get(j), dir_hi)
+            if datos is None and j in fabrica:
+                datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
+            if datos is None:
+                continue
+            b = bloques.get(j, [])
+            trozo = datos[:b[0][3]] if b else datos
+            c = detectar(trozo)
+            if not c:
+                continue
+            mejor = c[0]
+            nuevas.append((j, mejor,
+                           f"{j} entradas={mejor['entradas']} bytes={mejor['bytes']} "
+                           f"puntos={mejor['puntos']}"
+                           + (f" nombre={mejor['nombre']}" if mejor["nombre"] else "")
+                           + " confirmado=no"))
+        if not nuevas:
+            print("\nno hay nada nuevo que proponer")
+            return 0
+        with open(dat, "a", encoding="utf-8") as f:
+            f.write("\n# --- propuestas automaticas del detector "
+                    "-------------------------------\n#\n"
+                    "# Las escribio ./puntajes.py --proponer mirando la tabla de\n"
+                    "# fabrica de cada juego. Llevan 'confirmado=no' porque NADIE\n"
+                    "# las ha comparado con lo que el juego ensena en pantalla, y\n"
+                    "# esa comparacion es la unica prueba: a dkong le sobraba un\n"
+                    "# x10 y solo se vio mirando su modo de atraccion.\n"
+                    "#\n# Para confirmar una: mira su tabla en el juego, corrige la\n"
+                    "# linea si hace falta y cambia a 'confirmado=si'.\n#\n")
+            for j, mejor, linea in nuevas:
+                f.write(f"# {j}: {mejor['valores'][:6]}\n{linea}\n")
+        print(f"\n# {len(nuevas)} propuestas anadidas a {dat}")
+        for j, mejor, _ in nuevas[:15]:
+            print(f"   {j:<12} {mejor['valores'][:5]}")
+        if len(nuevas) > 15:
+            print(f"   ... y {len(nuevas) - 15} mas")
+        return 0
+
+    if a.detectar:
+        for j in juegos:
+            datos, origen, aviso = datos_de(j, recetas.get(j), dir_hi)
+            if datos is None and j in fabrica:
+                datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
+            if datos is None:
+                print(f"\n{j}: {aviso} (prueba --fabrica)")
+                continue
+            b = bloques.get(j, [])
+            trozo = datos[:b[0][3]] if (b and origen == "hi") else datos
+            print(f"\n=== {j} ({origen}, {len(trozo)} bytes) ===")
+            cands = detectar(trozo)
+            if not cands:
+                print("  nada que parezca una tabla ordenada de puntuaciones.")
+                print("  Puede que el bloque mezcle tabla y estado (le pasa a")
+                print("  asteroid), o que el juego guarde una sola puntuacion.")
+                continue
+            for k, c in enumerate(cands[:4], 1):
+                linea = (f"{j} entradas={c['entradas']} bytes={c['bytes']} "
+                         f"puntos={c['puntos']}"
+                         + (f" nombre={c['nombre']}" if c["nombre"] else "")
+                         + (" fuente=nvram" if origen == "nvram" else ""))
+                print(f"  {k}) {c['valores'][:8]}")
+                print(f"     {linea}")
+            print("  Elige la que tenga pinta de puntuaciones y pegala en "
+                  "puntajes.dat.")
+        return 0
+
     if a.listar:
         print(f"\n{'juego':<14} {'receta':<8} datos")
         for j in disponibles:
@@ -315,16 +666,47 @@ def main():
 
     resultado, sin_receta = {}, []
     for j in juegos:
-        filas, aviso = puntajes_de(j, bloques.get(j, []), recetas.get(j), dir_hi)
+        filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
+                                           recetas.get(j), dir_hi)
         if filas is None:
+            # Aun sin receta se exporta lo que hay: asi el fichero cubre TODOS
+            # los juegos desde el primer dia y el programa que lo lea no se
+            # queda sin nada. Cuando aparezca la receta, la misma entrada pasa a
+            # traer los puntajes descifrados.
+            datos, org, _ = datos_de(j, recetas.get(j), dir_hi)
+            if datos is not None:
+                resultado[j] = {"descifrado": False, "origen": org,
+                                "motivo": aviso, "crudo": datos.hex()}
             sin_receta.append((j, aviso))
             continue
-        resultado[j] = marcar_defectos(j, filas, defectos)
+        resultado[j] = {"descifrado": True, "origen": origen,
+                        "puestos": marcar_defectos(j, filas, defectos)}
 
     if a.capturar:
-        for j, filas in resultado.items():
+        # La base sale de las tablas que --fabrica leyo de la RAM: son las que
+        # trae la ROM antes de que nadie juegue, que es justo la definicion de
+        # "nombre ficticio". Asi se cubren TODOS los juegos capturados, no solo
+        # los pocos que alguien ha jugado ya.
+        for j, crudo in sorted(fabrica.items()):
+            cfg = recetas.get(j)
+            if not cfg:
+                continue
+            datos = bytes.fromhex(crudo)
+            b = bloques.get(j, [])
+            idx = int(cfg.get("bloque", 0))
+            desde = sum(x[3] for x in b[:idx]) if b else 0
+            largo = b[idx][3] if b and idx < len(b) else len(datos)
+            trozo = datos[desde:desde + largo]
+            if len(trozo) < int(cfg["entradas"]) * int(cfg["bytes"]):
+                continue
+            try:
+                filas = descifrar(trozo, cfg)
+            except RecetaNoEncaja as e:
+                print(f"  {j:<12} la receta no encaja: {e}")
+                continue
             defectos[j] = [[f.get("nombre", ""), f["puntos"]] for f in filas]
-            print(f"  {j}: {len(filas)} entradas apuntadas como de fabrica")
+            print(f"  {j:<12} {len(filas)} entradas de fabrica  "
+                  f"{[f['puntos'] for f in filas[:4]]}")
         json.dump(defectos, open(f_def, "w"), indent=1, ensure_ascii=False)
         print(f"\nBase de fabrica en {f_def}")
         return 0
@@ -336,19 +718,26 @@ def main():
     os.replace(tmp, a.salida)      # atomico: nadie lee un JSON a medias
 
     print()
-    for j, filas in sorted(resultado.items()):
+    descifrados = {j: r for j, r in resultado.items() if r.get("descifrado")}
+    for j, r in sorted(descifrados.items()):
+        filas = r["puestos"]
         reales = [f for f in filas if f.get("defecto") is False]
-        print(f"  {j:<12} {len(filas)} entradas, "
+        print(f"  {j:<12} [{r['origen']}] {len(filas)} entradas, "
               f"{len(reales) if defectos.get(j) else '?'} de jugadores")
         for f in filas[:3]:
             marca = {True: " (de fabrica)", False: "", None: " (?)"}[f.get("defecto")]
             print(f"       {f['puesto']}. {f.get('nombre', ''):<6} "
                   f"{f['puntos']:>10}{marca}")
     if sin_receta:
-        print(f"\n  sin descifrar ({len(sin_receta)}):")
-        for j, aviso in sin_receta:
+        con_datos = [x for x in sin_receta if x[0] in resultado]
+        print(f"\n  con datos pero SIN descifrar ({len(con_datos)}): "
+              "van al JSON en crudo")
+        for j, aviso in con_datos[:12]:
             print(f"       {j:<12} {aviso}")
-    print(f"\n# {len(resultado)} juegos -> {a.salida}")
+        if len(con_datos) > 12:
+            print(f"       ... y {len(con_datos) - 12} mas")
+        print("  Para sacarles la receta:  ./puntajes.py --detectar <juego>")
+    print(f"\n# {len(resultado)} juegos ({len(descifrados)} descifrados) -> {a.salida}")
     return 0
 
 
