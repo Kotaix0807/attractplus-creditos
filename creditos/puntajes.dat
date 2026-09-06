@@ -172,3 +172,16 @@ tmnt2po entradas=10 bytes=2 puntos=0,2,bcd nombres=200,4,ascii confirmado=si   #
 # Namco). OJO: los valores SUBEN de 3600 en 3600, asi que casi seguro son
 # TIEMPOS y no puntuaciones -- es la tabla de records de tiempo del juego.
 tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado=no
+
+# Samurai Shodown IV y V. Su saveram trae tabla DE FABRICA (no hace falta
+# jugar): entradas de 8 bytes desde 0x422, tres letras ASCII y un valor de 4
+# en BCD. swap=2 como todos los NeoGeo.
+#
+# El numero de entradas delata que son: 13 en samsho4 y 28 en samsho5, que es
+# el numero de personajes de cada juego. O sea que es un record POR PERSONAJE,
+# no una tabla de diez mejores. De fabrica todos valen 600000.
+#
+# Sin confirmar: no he visto ese numero en el marcador del juego, y de fabrica
+# son todos iguales, asi que no hay orden que ayude a validarlo.
+samsho4 fuente=saveram swap=2 desde=0x422 entradas=13 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
+samsho5 fuente=saveram swap=2 desde=0x422 entradas=28 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no

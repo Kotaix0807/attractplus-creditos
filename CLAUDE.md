@@ -2924,7 +2924,7 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 65 juegos descifrables** — 56 por hi2txt y 9 con
+**Cobertura: de 21 recetas a 67 juegos descifrables** — 56 por hi2txt y 11 con
 recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
@@ -3128,6 +3128,31 @@ por mirar la pantalla en vez de razonar.
 **`tekken` no son puntuaciones sino tiempos**: los valores SUBEN de 3600 en
 3600, que es un minuto a 60 fps. Es su tabla de récords de tiempo. Se exporta
 igual, pero conviene saberlo.
+
+### Qué NeoGeo hay que jugar y cuáles no
+
+Pregunta de Eloy el 2026-09-05. La respuesta no es «todos», y averiguarlo salió
+barato: arrancar cada juego limpio, jugar automáticamente y comparar la zona de
+la tabla. Tres resultados distintos:
+
+| juego | zona de la tabla al arrancar | qué cambió al jugar | conclusión |
+|---|---|---|---|
+| `samsho4` | **1008 bytes, con iniciales** | nada | ya trae tabla: **descifrar, no jugar** |
+| `samsho5` | **943 bytes, con iniciales** | nada | igual |
+| `samsho3` | vacía | **39 bytes** | **hay que jugarlo** |
+| `fatfury1`, `strhoop` | vacía | 2 bytes | dudoso |
+| `samsho2` | vacía | nada | probablemente no guarda |
+
+`samsho4` y `samsho5` quedaron descifrados sin tocar el mando: entradas de 8
+bytes desde `0x422`, tres letras ASCII y un valor BCD de 4. Y el número de
+entradas delata qué son: **13 en samsho4 y 28 en samsho5, que es el número de
+personajes de cada juego**. O sea que no es una tabla de diez mejores sino un
+récord **por personaje**.
+
+**Aviso sobre el método:** mi guion juega aporreando botones al azar, así que en
+un juego de lucha no puntúa casi nada. Que la zona no cambie **no demuestra** que
+el juego no guarde puntuaciones; sólo que mi partida no dio para batir la marca.
+La prueba es concluyente en un sentido (si cambia, guarda) y no en el otro.
 
 ### Las otras fuentes que pasó Eloy
 
