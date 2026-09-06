@@ -2924,8 +2924,8 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 73 juegos descifrables** de los 91 que pueden
-guardar puntuaciones — 56 por hi2txt y 17 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
+**Cobertura: de 21 recetas a 74 juegos descifrables de los 87** que pueden
+guardar puntuaciones — 56 por hi2txt y 18 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -3250,6 +3250,29 @@ iniciales en el noveno. Da `10180 HRO / 9540 RYO / 9000 NAT / 8600 MIM`.
 **Cuidado con el modo SNK al leer los resultados:** como allí `0x00` = 'A', una
 zona de ceros se lee como `AAA` y parece un nombre. Si una propuesta trae
 muchas 'A', casi seguro es un falso positivo — le pasó a `mk3`.
+
+### Cuatro juegos que NO guardan puntuaciones, comprobado jugando
+
+Eloy jugó a mano y trajo los números: `gauntlet` 5975, `samsho` 1250, `samsho2`
+«más de 12000», y `btoads` sin poder entrar al ranking. Con eso se pudo separar
+lo que guarda de lo que no, comparando cada fichero contra un arranque limpio:
+
+| juego | qué cambió al jugar | conclusión |
+|---|---|---|
+| `samsho2` | la escalera BCD `7000/6000/5000` de `0x33a`: la tercera pasó a **5308** | **guarda** |
+| `gauntlet`, `gauntlet2p` | 24 bytes, todos contadores y sumas de control | no guarda |
+| `btoads` | 66 bytes, valores enormes con pinta de estadísticas | no guarda |
+| `samsho` | 25 bytes, ninguno donde estaría la tabla | no guarda |
+
+Ni el 5975 de Gauntlet ni el 1250 de Samurai Shodown aparecen en el fichero **en
+ninguna codificación**, lo cual concuerda con lo que Eloy vio: no pudo registrar
+iniciales en ninguno de los dos. Esos cuatro pasan a la lista de excluidos, que
+es lo correcto — el denominador baja de 91 a 87.
+
+**De `samsho2` queda una duda honesta:** su tabla no lleva iniciales y Eloy
+recuerda haber pasado de 12000, pero el byte marca 5308. Puede llevar un `×10`
+(53080) o puede fallar la memoria. No hay tabla en pantalla que lo aclare, así
+que se exporta el número crudo con `confirmado=no`.
 
 ### `polepos`: identificado pero NO añadido
 

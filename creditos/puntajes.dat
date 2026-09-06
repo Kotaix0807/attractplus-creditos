@@ -244,3 +244,13 @@ sfiii3 entradas=19 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
 # Lo encontro buscar_tabla.py en cuanto se le enseno a probar alfabetos
 # INDEXADOS: en ASCII no hay nada que ver en este volcado.
 sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom confirmado=no
+
+# Samurai Shodown II. De fabrica tiene una escalera BCD de 2 bytes en 0x33a:
+# 7000 / 6000 / 5000, y la partida de Eloy cambio la tercera a 5308. O sea que
+# ESE es su sitio.
+#
+# Sin confirmar la ESCALA: Eloy recuerda haber pasado de 12000 y aqui sale
+# 5308, asi que puede llevar un x10 (53080) o puede ser que su memoria falle.
+# No hay tabla en pantalla que lo aclare, asi que se da el numero crudo.
+# La tabla no lleva iniciales: solo los tres numeros.
+samsho2 fuente=saveram swap=2 desde=0x33a entradas=3 bytes=2 puntos=0,2,bcd confirmado=no
