@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!-- Datos de los juegos de laserdisc para el frontend.
+     Hypseus no tiene un -listxml como MAME, asi que sin esto sus entradas
+     saldrian en la lista con el nombre del directorio y sin año ni fabricante,
+     y cantarian entre los demas. AM+ lee este fichero por 'import_extras'.
+     Los datos son los que MAME declara para el mismo set. -->
+<mame build="hypseus">
+	<machine name="lair">
+		<description>Dragon's Lair (US Rev. F2)</description>
+		<year>1983</year>
+		<manufacturer>Cinematronics</manufacturer>
+		<input players="1" buttons="1">
+			<control type="joy" ways="4"/>
+		</input>
+		<display type="raster" rotate="0"/>
+		<driver status="good"/>
+	</machine>
+</mame>

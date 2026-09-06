@@ -3356,6 +3356,98 @@ puntuaciones, se llevo dentro esta limpieza entera. No se perdio nada, pero el
 mensaje describe la mitad de lo que hay. **Stagear por ruta.**
 
 
+## Dragon's Lair no va en MAME: va en Hypseus (Daphne)
+
+Decidido por Eloy el 2026-09-05 tras probarlo en la cabina. Los sintomas que
+traia eran tres: *«se salta muchas partes»*, *«no se escucha el audio del modo
+attract»* y *«se ve todo muy confuso para el usuario»*.
+
+**Yo defendi la via de MAME con mediciones que no cubrian lo que el veia**, y me
+equivoque. Conviene apuntar por que, porque el error es facil de repetir:
+
+- Medi que el emulador va al 100,00%, que los CHD son exactos (SHA1 correcto,
+  driver `status="good"`) y que los cinco mandos llegan al puerto que lee la
+  placa. Todo cierto, y todo insuficiente.
+- **Todas mis pruebas llevaban `-sound none`**, asi que el sintoma del audio no
+  lo habria detectado nunca.
+- Y comprobar que las señales llegan al chip NO es comprobar que las escenas
+  salgan en el orden correcto. Lo del puente levadizo saltado se me escapaba por
+  diseño de la prueba.
+
+Lo unico que si arregle en MAME se queda: `dlair segundos=0` en `arranque.dat`,
+porque el arranque tapado le metia 900 frames (`GA_ARRANQUE_SIN`, al no estar en
+`creditos.dat`) sin freno y con frameskip 10 — o sea 15 segundos de pelicula a
+camara rapida. **A un laserdisc no se le acelera el arranque nunca**: no hay
+carga que tapar, hay pelicula que reproducir.
+
+### Como se convierte el CHD al formato de Daphne
+
+Las piezas que pide Hypseus son cuatro, y **las ROMs ya las tienes**: su set
+`lair` son los mismos cuatro `dl_f2_u*.bin` del `dlair.zip` de MAME, con los
+mismos CRC. No hay que bajar nada.
+
+```bash
+chdman extractld -i dlair.chd -o dlair.avi          # 29 GB, unos 4 minutos
+ffmpeg -i dlair.avi \
+  -vf "crop=720:480:0:44,fieldmatch,yadif=deint=interlaced,decimate,scale=640:480" \
+  -pix_fmt yuv420p -c:v mpeg2video -b:v 5000k -an -f mpeg2video lair.m2v
+ffmpeg -i dlair.avi -vn -c:a libvorbis -q:a 5 -ar 44100 lair.ogg
+```
+
+De 29 GB se queda en **815 MB**. Cuatro cosas que costaron y que no son opcionales:
+
+- **`crop=720:480:0:44`**. El CHD sale a 720x**524**: esas 44 lineas de mas son
+  los datos VBI del laserdisc, y se ven como una franja rayada arriba.
+- **`-pix_fmt yuv420p`**. Sin forzarlo, ffmpeg elige 4:2:2 (porque la fuente es
+  `yuyv422`) y **Hypseus vuelca a una textura `SDL_PIXELFORMAT_YV12`, que es
+  4:2:0** (`video/video.cpp:2013`). Los planos de croma miden el doble de lo que
+  espera y se leen desplazados: **colores raros**. Era justo lo que Eloy veia.
+- **Quitar el telecine** (`fieldmatch`+`decimate`). La animacion es de 24 fps
+  llevada a 29,97; el tutorial del propio Daphne exige 23,976 para este juego.
+- **`extractld`, no `extractav`**: en chdman moderno se llama asi. Y `chdman` no
+  se construye con `make TOOLS=1` a secas — hace falta **`REGENIE=1`**, o sale
+  con codigo 0 sin hacer nada porque los makefiles no traen ese objetivo.
+
+### Version: v2.12.1, no la ultima
+
+La actual (v3.0.2) exige **SDL3**, que no existe en los repos de Ubuntu 24.04
+aunque si en Arch. La `v2.12.1` es *«the last sdl2 version»* y SDL2 esta en las
+dos, asi que **lo que se prueba en el portatil es lo que corre en la cabina**.
+Sus mejoras son de SDL3 (arreglan fallos que el propio SDL3 introdujo) y ninguna
+toca laserdisc. Si algun dia se sube, la forma correcta no es meter sdl3 en la
+tabla de paquetes sino comprobar `pkg-config --exists sdl3` y elegir rama.
+
+### Aparece mezclado en la misma lista, y eso tiene truco
+
+Eloy lo pidio asi: que no se note que usa otro emulador. Sale gratis porque
+**`--build-romlist` acepta VARIOS emuladores con un solo `-o`** y cada entrada
+lleva el suyo en la tercera columna:
+
+```bash
+attractplus --build-romlist groovymame hypseus -o groovymame
+```
+
+> **Trampa: reconstruir la lista con un solo emulador BORRA a Dragon's Lair sin
+> avisar.** Hay que pasar los dos siempre.
+
+Pero la primera pasada dejo `lair;lair;hypseus;;;` — sin titulo ni datos, y en el
+menu cantaba. Hypseus no tiene `-listxml`, asi que AM+ no tenia de donde sacarlos.
+La salida es **`import_extras`, que acepta un XML en formato listxml**
+(`scraper_general.cpp:252`): `config/cabina/laserdisc.xml` le da titulo, año,
+fabricante y controles, y la entrada queda indistinguible de las de MAME.
+
+Tres detalles mas de `hypseus.cfg`:
+
+- **`workdir` es imprescindible**: hypseus busca `./roms`, `./ram` y `./pics` con
+  rutas relativas, y lanzado desde otro sitio no encuentra ni sus ROMs.
+- **`[name]`, no `[romfilename]`**, para que la misma linea valga para cualquier
+  laserdisc que se añada despues.
+- El video vive en `~/shared/roms/daphne/` y `vldp/lair/` solo tiene **enlaces**,
+  para no duplicar 815 MB.
+
+Y `dlair.zip` sale del rompath de MAME (a `retirados/`), o los dos emuladores se
+pelearian por el mismo juego.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
