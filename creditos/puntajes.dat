@@ -236,3 +236,11 @@ xevious entradas=5 bytes=16 puntos=0,3,bcd multiplica=10 nombre=3,10,idx:namco c
 # partir del octavo. Sale la escalera 100000 / 90000 / 80000, que es lo que
 # delato la estructura -- 0x000186a0 es 100000 clavado.
 sfiii3 entradas=19 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
+
+# Street Fighter. Entradas de 16 bytes: la puntuacion son 8 bytes con un digito
+# decimal en cada uno, y las iniciales van en el 9 indexadas al estilo Capcom
+# (0x0a = 'A'). Sale 10180 HRO / 9540 RYO / 9000 NAT / 8600 MIM.
+#
+# Lo encontro buscar_tabla.py en cuanto se le enseno a probar alfabetos
+# INDEXADOS: en ASCII no hay nada que ver en este volcado.
+sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom confirmado=no

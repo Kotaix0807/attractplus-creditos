@@ -2924,8 +2924,8 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 72 juegos descifrables** de los 91 que pueden
-guardar puntuaciones — 56 por hi2txt y 16 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
+**Cobertura: de 21 recetas a 73 juegos descifrables** de los 91 que pueden
+guardar puntuaciones — 56 por hi2txt y 17 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -3234,6 +3234,22 @@ indexadas al principio y la puntuación en el octavo. Da `100000 SDM / 90000 MOO
 **La lección que se repite:** los números redondos de una tabla de fábrica son
 un ancla. `0x000186a0` = 100000 es reconocible de un vistazo, y a partir de ahí
 la estructura se deduce sola.
+
+### El buscador tenía un punto ciego: las iniciales indexadas
+
+`buscar_tabla.py` sólo miraba texto **ASCII**, y muchas placas guardan las
+iniciales como **índice de letra**. En esos juegos no hay ni un byte imprimible
+en la tabla, así que el buscador no veía absolutamente nada — y yo lo
+interpretaba como «este juego no tiene tabla».
+
+Los desplazamientos que aparecen una y otra vez son tres: `0x0a` = 'A' (Capcom),
+`0x00` = 'A' (SNK) y `0x11` = 'A' (Donkey Kong). Probándolos, `sf` cayó en el
+primer intento: 10 entradas de 16 bytes con la puntuación en 8 dígitos y las
+iniciales en el noveno. Da `10180 HRO / 9540 RYO / 9000 NAT / 8600 MIM`.
+
+**Cuidado con el modo SNK al leer los resultados:** como allí `0x00` = 'A', una
+zona de ceros se lee como `AAA` y parece un nombre. Si una propuesta trae
+muchas 'A', casi seguro es un falso positivo — le pasó a `mk3`.
 
 ### `polepos`: identificado pero NO añadido
 

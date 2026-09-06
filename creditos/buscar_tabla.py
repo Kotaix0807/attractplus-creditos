@@ -19,19 +19,30 @@ def swap(d, paso=2):
 
 LETRAS = set(range(0x41, 0x5B)) | {0x20, 0x2E, 0x2D} | set(range(0x30, 0x3A))
 
-def iniciales(d, i, n=3):
-    """¿Hay n caracteres imprimibles con pinta de iniciales en i?"""
-    t = d[i:i+n]
-    if len(t) < n or all(c == 0x20 for c in t):
-        return None
-    if not all(c in LETRAS for c in t):
-        return None
-    return t.decode("ascii")
+# Muchas placas NO guardan las iniciales en ASCII sino como INDICE de letra.
+# Los desplazamientos que aparecen una y otra vez: 0x0a = 'A' (Capcom),
+# 0x00 = 'A' (SNK) y 0x11 = 'A' (Donkey Kong). Sin probarlos, en esos juegos no
+# hay ningun texto que encontrar y el buscador no ve absolutamente nada.
+INDICES = {"capcom": 0x0a, "snk": 0x00, "dkong": 0x11}
 
-def rejillas(d, minimo=4):
+def iniciales(d, i, n=3, modo="ascii"):
+    """¿Hay n caracteres con pinta de iniciales en i?"""
+    t = d[i:i+n]
+    if len(t) < n or all(c == 0x20 for c in t) or all(c == 0 for c in t):
+        return None
+    if modo == "ascii":
+        if not all(c in LETRAS for c in t):
+            return None
+        return t.decode("ascii")
+    base = INDICES[modo]
+    if not all(base <= c < base + 26 for c in t):
+        return None
+    return "".join(chr(ord("A") + c - base) for c in t)
+
+def rejillas(d, minimo=4, modo="ascii"):
     """Posiciones + paso donde se repiten iniciales regularmente."""
     fuera = []
-    marcas = [i for i in range(len(d) - 3) if iniciales(d, i)]
+    marcas = [i for i in range(len(d) - 3) if iniciales(d, i, modo=modo)]
     juego = set(marcas)
     def texto_corrido(ini, paso, n):
         """¿Es una cadena de texto en vez de una tabla?
@@ -107,16 +118,18 @@ def puntuacion(d, ini, paso, n, ancho=24):
     return mejor
 
 def analiza(nombre, datos):
-    for etiqueta, d in (("normal", datos), ("swap=2", swap(datos))):
+    for etiqueta, d, modo in [(f"{e}/{m}", dd, m)
+                              for e, dd in (("normal", datos), ("swap", swap(datos)))
+                              for m in ("ascii", "capcom", "snk", "dkong")]:
         cands = []
-        for n, paso, ini in rejillas(d):
+        for n, paso, ini in rejillas(d, modo=modo):
             m = puntuacion(d, ini, paso, n)
             if m:
                 cands.append((m[0], n, paso, ini, m))
         cands.sort(reverse=True)
         for _, n, paso, ini, m in cands[:1]:
             nota, rel, largo, fmt, vals = m
-            noms = [iniciales(d, ini + k * paso) for k in range(n)]
+            noms = [iniciales(d, ini + k * paso, modo=modo) for k in range(n)]
             desde = ini + rel
             print(f"  {nombre:<10} [{etiqueta}] {n} entradas de {paso}B desde {desde:#x}")
             print(f"     puntos={-rel if rel<0 else 0},{largo},{fmt}  {vals[:6]}")
