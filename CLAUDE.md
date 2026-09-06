@@ -3292,6 +3292,42 @@ nombre**: es una tabla inicializada con valores de relleno, no puntuaciones de
 nadie. Se deja fuera por el mismo criterio de siempre — una receta inventada es
 peor que ninguna.
 
+### La pasada de comprobacion: 15 juegos descifraban mal, en silencio
+
+Pedida por Eloy el 2026-09-06. La clave fue darse cuenta de que hi2txt trae una
+**referencia independiente**: sus 2697 tablas de fábrica ya descifradas. Comparar
+mi salida contra ellas, juego a juego, es una prueba de verdad y no una
+plausibilidad. `auditar_puntajes.py` hace esa pasada.
+
+La primera ejecución sacó **15 juegos mal de 58 comparables** — un 26%, y
+ninguno daba error. Dos causas, las dos sistemáticas:
+
+**1. `base="16"` con `nibble-skip` no es hexadecimal.** Ahí el atributo dice que
+cada nibble guarda una cifra DECIMAL, y yo interpretaba el número resultante en
+base 16. Mario Bros daba 73728 donde marca 12000 — que es literalmente
+`0x12000` — y Robotron 65536 donde marca 10000. Arreglarlo corrigió seis juegos
+de golpe: `mario`, `robotron`, `defender`, `wboy`, `rampage` y `starwars`.
+
+**2. `table-index="loop_reverse_index"`: la tabla va guardada del peor al mejor.**
+Lo declaran 55 XML. Ignorarlo no da error: devuelve la tabla entera al revés,
+con la peor puntuación como si fuera la primera. Kung-Fu Master salía con 14950
+arriba cuando su marcador dice `TOP-048520`. Corrigió `kungfum`, `missile` y
+`qbert`.
+
+Quedaron 6, y no todos son fallos míos:
+
+| juego | qué pasa |
+|---|---|
+| `centiped`, `galaga` | su fuente está a `0xFF` o con basura: es un problema de DATOS, no de receta |
+| `joust`, `punchout` | mi lectura es una escalera coherente pero distinta de la referencia: probablemente su fichero ya tiene partidas, o la referencia describe otra revisión |
+| `mk`, `mk2` | el primer valor coincide exacto con la referencia; falla una entrada intermedia |
+
+**Y una decisión medida, no supuesta.** El recorte que corta la tabla donde deja
+de estar ordenada arreglaba `mk` si se quitaba… pero **hacía caer la cobertura de
+75 juegos a 70**, porque sin él otras tablas se llenan de basura y no pasan el
+filtro. Con la referencia delante se puede comparar de verdad: se queda el
+recorte.
+
 ### Las otras fuentes que pasó Eloy
 
 - **`hiscore.dat` oficial en GitHub**: comprobado, el de la cabina es

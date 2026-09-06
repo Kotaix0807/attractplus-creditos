@@ -91,7 +91,12 @@ def _leer_int(trozo, elt):
         digitos = _quitar_nibbles(trozo, elt.get("nibble-skip"))
         if little:
             digitos = digitos[::-1]
-        return int("".join(f"{d:x}" for d in digitos) or "0", 16 if base == 16 else 10)
+        # Los digitos que salen de los nibbles son DECIMALES, siempre. El
+        # base="16" del XML no dice "interpreta el numero en hexadecimal": dice
+        # que cada nibble guarda una cifra decimal. Leerlo en base 16 daba
+        # 0x12000 = 73728 donde Mario Bros marca 12000, y 0x10000 = 65536 donde
+        # Robotron marca 10000. Afectaba a toda la familia Williams.
+        return int("".join(f"{d:x}" for d in digitos) or "0", 10)
 
     if perfil in ("bcd", "bcd-le"):
         t = trozo[::-1] if (perfil == "bcd-le" or little) else trozo
@@ -330,10 +335,26 @@ def _columnas(raiz):
     return cols
 
 
+def _al_reves(raiz):
+    """table-index="loop_reverse_index": la tabla va guardada del peor al mejor.
+
+    Lo declaran 55 XML, entre ellos kungfum, missile y qbert. Ignorarlo no da
+    ningun error: devuelve la tabla entera en orden inverso, con la peor
+    puntuacion como si fuera la primera. Kung-Fu Master salia con 14950 arriba
+    cuando su marcador dice TOP-048520.
+    """
+    for e in raiz.iter("elt"):
+        if e.get("table-index") == "loop_reverse_index":
+            return True
+    return False
+
+
 def puntuaciones(ruta_xml, datos, fuente=None):
     """Normaliza a la forma que usa puntajes.py: puesto, puntos, nombre."""
     filas, sueltos = descifrar_con_xml(ruta_xml, datos, fuente)
     ruta_xml, raiz = resolver(ruta_xml)   # los <format> viven en el XML final
+    if _al_reves(raiz):
+        filas = filas[::-1]
     fmts = _formatos(raiz)
     cols = _columnas(raiz)
 
