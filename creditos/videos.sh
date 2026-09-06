@@ -3,7 +3,8 @@
 #
 #   ./videos.sh pacman dkong       # esos juegos
 #   ./videos.sh                    # todos los de la romlist
-#   ./videos.sh --tira simpsons    # tira de fotogramas para MEDIR el salto
+#   ./videos.sh --tira simpsons    # tira de fotogramas para MEDIR el salto a ojo
+#   ./videos.sh --medir            # mide el salto SOLO y lo escribe en arranque.dat
 #
 #   FORZAR=1 ./videos.sh simpsons  # rehacer uno (borra el video anterior)
 #
@@ -178,7 +179,10 @@ case "${1:-}" in
 		sed -n '2,16p' "$0" | sed 's/^# \?//'
 		exit 0 ;;
 	--*)
-		[ "$1" = --tira ] || { echo "opcion desconocida: $1 (prueba --ayuda)" >&2; exit 1; } ;;
+		case "$1" in
+			--tira|--medir) ;;
+			*) echo "opcion desconocida: $1 (prueba --ayuda)" >&2; exit 1 ;;
+		esac ;;
 esac
 
 # --tira <juego>: graba un minuto y saca una tira de fotogramas, para VER en
@@ -186,7 +190,11 @@ esac
 if [ "${1:-}" = "--tira" ]; then
 	[ $# -eq 2 ] || { echo "uso: $0 --tira <juego>" >&2; exit 1; }
 	j="$2"
-	command -v montage >/dev/null || { echo "hace falta imagemagick" >&2; exit 1; }
+	# ImageMagick 7 no instala 'montage' ni 'convert' sueltos: trae un solo
+	# 'magick' que hace de todos. En Ubuntu 24.04 aun es la 6.
+	if command -v magick >/dev/null;   then MONTAR=( magick montage )
+	elif command -v montage >/dev/null; then MONTAR=( montage )
+	else echo "hace falta imagemagick" >&2; exit 1; fi
 
 	T=$(mktemp -d /tmp/tira-mame.XXXXXX)
 	echo "grabando un minuto de $j..."
@@ -214,10 +222,10 @@ if [ "${1:-}" = "--tira" ]; then
 	# correspondencia se imprime tambien por pantalla.
 	FUENTE="$( fc-match -f '%{file}' sans 2>/dev/null )"
 	if [ -n "$FUENTE" ] && [ -f "$FUENTE" ]; then
-		montage "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 -background gray \
+		"${MONTAR[@]}" "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 -background gray \
 			-font "$FUENTE" -pointsize 14 -label '%t s' "$SALIDA" 2>/dev/null
 	fi
-	[ -s "$SALIDA" ] || montage "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 \
+	[ -s "$SALIDA" ] || "${MONTAR[@]}" "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 \
 		-background gray "$SALIDA"
 	rm -rf "$T"
 
@@ -231,6 +239,102 @@ if [ "${1:-}" = "--tira" ]; then
 	echo "Mira en que segundo empieza lo que quieres y apuntalo en $AJUSTES,"
 	echo "en la linea de $j, como  video=<segundos>  (creditos.lua la ignora)."
 	echo "Para probarlo sin tocar el fichero:  SALTO=<segundos> FORZAR=1 $0 $j"
+	exit 0
+fi
+
+# --medir [juegos...]: mide SOLO el salto y lo escribe en arranque.dat.
+#
+# Por que hace falta: de los juegos instalados, la gran mayoria no tiene linea
+# propia en arranque.dat, asi que caian en el salto ciego de 8 s y sus videos
+# empezaban EN LA PANTALLA DE TEST de la placa. Ese era el fallo.
+#
+# Y no se arregla tirando de 'segundos=', aunque lo parezca: esa clave dice
+# cuando la placa acepta monedas, no cuando empieza algo que merezca la pena
+# grabar. Contra esta lista a los 7 y su demo empieza a los 16. La linea
+# 'defecto' es peor todavia: son 5 s, menos que los 8 de ahora.
+#
+# Lo que se hace es medirlo de verdad, con medir_video.py, y DEJARLO ESCRITO en
+# arranque.dat como 'video=N'. Asi la proxima grabacion ya no mide nada: sale
+# de arranque.dat, que es donde tiene que estar el ajuste de cada juego.
+if [ "${1:-}" = "--medir" ]; then
+	shift
+	VENTANA="${VENTANA:-60}"     # segundos emulados que se graban para medir
+	HOJA="${HOJA:-$PWD/medidas.png}"
+
+	if [ $# -gt 0 ]; then
+		JUEGOS=( "$@" )
+	else
+		mapfile -t JUEGOS < <(cut -d';' -f1 "$ROMLIST" | grep -v '^#')
+	fi
+
+	T=$(mktemp -d /tmp/medir-mame.XXXXXX)
+	trap 'rm -rf "$T"' EXIT
+	medidos=0; saltados=0; fallos=0
+	MUESTRAS=(); ETIQUETAS=()
+
+	echo "# midiendo ${#JUEGOS[@]} juego(s), ventana de ${VENTANA}s emulados"
+	for j in "${JUEGOS[@]}"; do
+		[ -n "$j" ] || continue
+		if [ -z "${FORZAR:-}" ] && ya=$( clave_de_arranque "$j" video ); then
+			echo "  $j: ya tenia video=$ya (FORZAR=1 para volver a medirlo)"
+			saltados=$((saltados+1)); continue
+		fi
+
+		echo -n "  $j: grabando... "
+		( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
+			-video soft -sound none -noswitchres -window -resolution 640x480 \
+			-seconds_to_run "$VENTANA" -nothrottle \
+			-aviwrite "$T/$j.avi" > "$T/$j.log" 2>&1 )
+		if [ ! -s "$T/$j.avi" ]; then
+			echo "no se pudo grabar"
+			grep -iE "not found|missing|fatal|required|unknown system" "$T/$j.log" |
+				head -2 | sed 's/^/      /'
+			fallos=$((fallos+1)); rm -f "$T/$j.avi" "$T/$j.log"; continue
+		fi
+
+		echo -n "midiendo... "
+		punto=$( "$AQUI/medir_video.py" "$T/$j.avi" "$DURA" 2>"$T/$j.med" )
+		detalle=$( sed 's/^# //' "$T/$j.med" 2>/dev/null | head -1 )
+		if [ -z "$punto" ]; then
+			echo "no pude medirlo"; fallos=$((fallos+1))
+			rm -f "$T/$j.avi" "$T/$j.log" "$T/$j.med"; continue
+		fi
+
+		# El fotograma elegido, para poder mirarlo despues: una eleccion no
+		# esta confirmada hasta que se ha visto, igual que en creditos.dat.
+		if ffmpeg -v error -y -ss "$punto" -i "$T/$j.avi" -vframes 1 \
+			-vf scale=150:-1 "$T/m_$j.png" 2>/dev/null && [ -s "$T/m_$j.png" ]; then
+			MUESTRAS+=( "$T/m_$j.png" ); ETIQUETAS+=( "$j:$punto" )
+		fi
+		rm -f "$T/$j.avi" "$T/$j.log" "$T/$j.med"
+
+		"$AQUI/escribir_ajuste.py" "$AJUSTES" "$j" video "$punto" || {
+			echo "no pude escribir en $AJUSTES"; fallos=$((fallos+1)); continue; }
+		echo "video=$punto   ($detalle)"
+		medidos=$((medidos+1))
+	done
+
+	# Hoja de contactos: 95 juegos en una imagen se revisan de un vistazo.
+	if [ ${#MUESTRAS[@]} -gt 0 ]; then
+		if command -v magick >/dev/null;    then MONTAR=( magick montage )
+		elif command -v montage >/dev/null; then MONTAR=( montage )
+		else MONTAR=(); fi
+		if [ ${#MONTAR[@]} -gt 0 ]; then
+			"${MONTAR[@]}" "${MUESTRAS[@]}" -tile 6x -geometry +3+3 \
+				-background gray20 "$HOJA" 2>/dev/null &&
+				echo "# hoja de contactos: $HOJA"
+			echo -n "# orden (6 por fila):"
+			for i in "${!ETIQUETAS[@]}"; do
+				[ $(( i % 6 )) -eq 0 ] && printf '\n   '
+				printf ' %-14s' "${ETIQUETAS[$i]}"
+			done
+			echo
+		fi
+	fi
+
+	echo "# $medidos medidos, $saltados ya estaban, $fallos fallaron"
+	echo "# escrito en $AJUSTES. Corrige a mano el que no te guste y vuelve a"
+	echo "# grabar con:  FORZAR=1 $0 <juego>"
 	exit 0
 fi
 
