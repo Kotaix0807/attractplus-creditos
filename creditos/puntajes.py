@@ -176,6 +176,11 @@ def leer_puntajes_dat(ruta):
 # Juegos de silabas: el byte no es ASCII sino un indice en una tabla de
 # caracteres propia de la placa. La mas comun con diferencia es esta.
 ALFABETOS = {
+    # Namco (xevious): 0-9 en 0x00, mayusculas en 0x0a, espacio en 0x24,
+    # MINUSCULAS en 0x36 y el punto en 0x50. Se dedujo de "M.Nakamura", que
+    # hi2txt ya traia descifrado en su db_defaults.
+    "namco": ("0123456789" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + " " * 18
+              + "abcdefghijklmnopqrstuvwxyz" + "."),
     # SNK: el byte es el indice de la letra, 0x00 = 'A'. Lo usa fatfury1.
     "snk": "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-  ",
     "capcom": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ .,!?'\"-/",
@@ -716,9 +721,12 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
         desde = sum(b[3] for b in bloques[:idx]) if bloques else 0
         largo = bloques[idx][3] if bloques and idx < len(bloques) else len(datos)
     trozo = datos[desde:desde + largo]
-    if len(trozo) < int(cfg["entradas"]) * int(cfg["bytes"]):
-        return None, origen, (f"el bloque tiene {len(trozo)} bytes y la receta "
-                              f"pide {int(cfg['entradas']) * int(cfg['bytes'])}")
+    # Basta con que quepa UNA entrada: si el bloque es mas corto de lo que dice
+    # la receta se descifra lo que haya, que es mejor que no dar nada. Le pasa a
+    # xevious, cuyo bloque son 77 bytes y sus 5 entradas de 16 piden 80.
+    if len(trozo) < int(cfg["bytes"]):
+        return None, origen, (f"el bloque tiene {len(trozo)} bytes y no cabe "
+                              f"ni una entrada de {int(cfg['bytes'])}")
     try:
         return descifrar(trozo, cfg), origen, None
     except RecetaNoEncaja as e:

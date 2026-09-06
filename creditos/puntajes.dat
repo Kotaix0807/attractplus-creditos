@@ -213,3 +213,20 @@ fatfury1 fuente=saveram swap=2 desde=0x32c entradas=5 bytes=8 puntos=0,2,be mult
 # samsho3 no ensena su ranking en el modo de atraccion, asi que no hay pantalla
 # contra la que comprobarlo. Antes que inventarme la rejilla, se da lo seguro.
 samsho3 fuente=saveram swap=2 desde=0x329 entradas=1 bytes=8 puntos=0,3,bcd nombres=20,3,ascii confirmado=si
+
+# Tekken 2, misma idea que tekken: entradas de 8 bytes, valor de 3 en little
+# endian y el nombre en ASCII con ranura de 4. Los nombres son los PERSONAJES
+# (KAZ, PAU, LAW, JAC, NIN, KIN, YOS, MIC, WAN, HEI, LEE, P.J, ARM, ANN), asi
+# que es un record por personaje.
+#
+# OJO, igual que en tekken: son TIEMPOS, no puntuaciones. Los valores van de
+# 3600 en 3600, que es un minuto a 60 fps, y 359999 es el tope de "sin marca".
+tekken2 entradas=33 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=no
+
+# Xevious. Entradas de 16 bytes: BCD de 3 (x10) y el nombre en 10 caracteres
+# indexados, con minusculas incluidas.
+#
+# CONFIRMADA contra la tabla que hi2txt trae ya descifrada en su db_defaults:
+# 40000 M.Nakamura, 35000 Eirry Mou., 30000 Evezoo End, 25000 S.Okamoto,
+# 20000 S.Kojima. Sale clavada.
+xevious entradas=5 bytes=16 puntos=0,3,bcd multiplica=10 nombre=3,10,idx:namco confirmado=si

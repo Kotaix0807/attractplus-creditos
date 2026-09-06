@@ -2924,7 +2924,7 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 68 juegos descifrables** — 56 por hi2txt y 12 con
+**Cobertura: de 21 recetas a 71 juegos descifrables** — 56 por hi2txt y 15 con
 recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
@@ -3193,6 +3193,35 @@ buscando el ranking, **la demo jugó sola, marcó 50400 y sobreescribió los 469
 de Eloy**. El byte pasó a `050400` con el nombre intacto, lo cual confirma la
 receta con un tercer dato — pero borró una marca real. **Dejar un NeoGeo en
 atracción puede pisar un récord.**
+
+### La técnica que faltaba: saber QUÉ número buscar
+
+Lo que desatascó a Eloy con `samsho3` —jugar y decir el número— se puede
+automatizar, porque hi2txt trae **dos** bases y yo sólo estaba usando una:
+
+| carpeta | qué tiene |
+|---|---|
+| `src/main/db` | la **estructura**: cómo se lee la tabla (3102 juegos) |
+| `src/main/db_defaults` | la **tabla de fábrica ya descifrada** (2697 juegos) |
+
+Con la segunda se le da la vuelta al problema: en vez de adivinar el formato,
+**se sabe qué valores tiene que haber y se buscan en el binario**. Ahí la
+estructura aparece sola.
+
+Así cayó `xevious`, que llevaba semanas resistiéndose. Su `db_defaults` dice
+`40000 M.Nakamura / 35000 Eirry Mou. / 30000 Evezoo End`, y buscando 4000 en
+BCD sale a la primera: entradas de 16 bytes, BCD de 3 con `×10`, y el nombre en
+10 caracteres indexados. El alfabeto se deduce del propio nombre: `M`=0x16 y
+`a`=0x36, o sea mayúsculas en 0x0a, espacio en 0x24 y **minúsculas** en 0x36.
+
+`tekken2` cayó por parentesco con `tekken`: misma placa, entradas de 8 bytes
+con el nombre del personaje en ASCII. Son 33 récords de tiempo, uno por
+personaje.
+
+**Y una limitación del pre-chequeo que había puesto**: exigía que el bloque
+tuviera sitio para TODAS las entradas de la receta, y el de `xevious` son 77
+bytes contra los 80 que piden sus 5×16. Ahora basta con que quepa una: se
+descifra lo que haya.
 
 ### Las otras fuentes que pasó Eloy
 
