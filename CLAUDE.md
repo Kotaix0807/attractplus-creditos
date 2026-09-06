@@ -3177,12 +3177,22 @@ Dos cosas que no se habrían adivinado:
 - **las iniciales son ÍNDICES de letra** (`0x00` = 'A'), no ASCII. Buscar texto
   imprimible ahí no encuentra nada.
 
-**`samsho3` sigue sin cerrar.** Su 5200 está en `0x32a` como BCD y su `ABC` en
-`0x33d`, pero los 19 bytes que los separan no encajan con ninguna rejilla
-regular, y sólo hay dos nombres en la zona. Con un solo dato no se puede elegir
-entre las lecturas posibles. **Se cierra con una partida más de puntuación
-claramente distinta**: comparando los dos ficheros se ve exactamente qué bytes
-se mueven.
+**`samsho3` cerrado a medias, y con una lección.** Con la segunda partida
+(~45000, iniciales ACD) quedó claro qué se mueve: `0x329` pasó de `005200` a
+`046900` —los «~45000» de Eloy son 46900— y `0x33d` de `ABC` a `ACD`. Los dos
+sitios cambiaron **a la vez, las dos veces**, así que son la misma entrada.
+
+Lo que **no** se resolvió es la tabla completa: hay otro nombre (`LOM`) y otro
+número (47400) en esa zona que no encajan en ninguna rejilla regular con los
+anteriores. Y `samsho3` **no enseña su ranking en el modo de atracción**
+—sólo logo, demos y «INSERT COIN»—, así que no hay pantalla contra la que
+comprobarlo. Se exporta sólo la entrada segura.
+
+**Y una advertencia que salió de meter la pata:** al capturar su atracción
+buscando el ranking, **la demo jugó sola, marcó 50400 y sobreescribió los 46900
+de Eloy**. El byte pasó a `050400` con el nombre intacto, lo cual confirma la
+receta con un tercer dato — pero borró una marca real. **Dejar un NeoGeo en
+atracción puede pisar un récord.**
 
 ### Las otras fuentes que pasó Eloy
 

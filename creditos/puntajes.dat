@@ -193,3 +193,23 @@ samsho5 fuente=saveram swap=2 desde=0x422 entradas=28 bytes=8 puntos=4,4,bcd nom
 # CONFIRMADA con una partida de Eloy: jugo y marco 1600, y la primera entrada
 # vale 16. Las siguientes son 8, 6, 4 y 2 -> 800, 600, 400 y 200.
 fatfury1 fuente=saveram swap=2 desde=0x32c entradas=5 bytes=8 puntos=0,2,be multiplica=100 nombre=4,3,idx:snk confirmado=si
+
+# Samurai Shodown III. Sale de DOS partidas de Eloy, que es lo unico que lo
+# localizo: jugo 5200 con iniciales ABC y luego ~45000 con ACD. Las dos veces
+# cambiaron los MISMOS dos sitios, asi que pertenecen a la misma entrada:
+#
+#   0x329  BCD de 3 bytes   005200 -> 046900   (su "~45000" son 46900)
+#   0x33d  3 letras ASCII   ABC    -> ACD
+#
+# Un TERCER dato lo confirmo sin querer: al capturar su modo de atraccion para
+# buscar el ranking, la demo jugo sola, marco 50400 y ese mismo byte cambio a
+# 050400 dejando el nombre intacto. O sea que 0x329 es el RECORD vigente y
+# 0x33d su nombre. (Efecto secundario: eso borro los 46900 de Eloy. Cuidado con
+# dejar un NeoGeo en atraccion si se quiere conservar una marca.)
+#
+# Se exporta SOLO esa entrada, que es el record del jugador. La tabla completa
+# NO esta resuelta: hay otro nombre (LOM) en 0x335 y otro numero (47400) en
+# 0x331, pero no encajan en ninguna rejilla regular con los anteriores, y
+# samsho3 no ensena su ranking en el modo de atraccion, asi que no hay pantalla
+# contra la que comprobarlo. Antes que inventarme la rejilla, se da lo seguro.
+samsho3 fuente=saveram swap=2 desde=0x329 entradas=1 bytes=8 puntos=0,3,bcd nombres=20,3,ascii confirmado=si
