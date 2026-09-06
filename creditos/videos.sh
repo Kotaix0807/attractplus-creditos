@@ -170,6 +170,90 @@ if max(w2 / w, h2 / h) > 1.5:
 print(f"{w2 - w2 % 2}x{h2 - h2 % 2}")
 ' "$1" "$2" "$3" "${rot:-0}"
 }
+# AM+ prefiere el video a la imagen fija, y acepta varias extensiones. Si de
+# una grabacion anterior quedara un .avi o un .mkv, seguiria mandando sobre el
+# .mp4 nuevo y pareceria que regrabar no sirve de nada. Por eso al rehacer un
+# juego se borra TODO lo que sea video suyo, no solo el .mp4.
+#
+# La imagen fija (.png) NO se toca: es el respaldo cuando no hay video.
+EXT_VIDEO="mp4 avi mkv mpg mpeg mov webm m4v wmv flv ogv"
+
+video_existente() {   # $1=juego -> ruta del primero que encuentre, o nada
+	local e
+	for e in $EXT_VIDEO; do
+		[ -s "$DESTINO/$1.$e" ] && { printf '%s' "$DESTINO/$1.$e"; return 0; }
+	done
+	return 1
+}
+
+borrar_videos() {   # $1=juego
+	local e n=0
+	for e in $EXT_VIDEO; do
+		[ -e "$DESTINO/$1.$e" ] && { rm -f "$DESTINO/$1.$e" && n=$((n+1)); }
+	done
+	[ "$n" -gt 0 ] && printf '(borrado el anterior) '
+	return 0
+}
+
+# Convierte un AVI crudo de MAME a un mp4 listo para el frontend, cortando
+# desde 'salto' durante 'dura' segundos. Lo usan los DOS modos -- la grabacion
+# normal y --medir --, para que el pipeline de escalado y calidad sea el mismo
+# en ambos y no se dupliquen las mismas 20 lineas con dos juegos de trampas.
+#   $1=avi de entrada  $2=juego  $3=salto (s)  $4=dura (s)
+# Deja el mp4 en $DESTINO/$2.mp4. Devuelve 0 si lo consiguio.
+convertir_a_mp4() {
+	local avi="$1" j="$2" salto="$3" dura="$4"
+	local crudo destino_px amp entero final
+
+	# -ss antes que -t: se descarta la carga y se toma el modo de atraccion.
+	# -an: sin audio (grabar sonido sin tarjeta no es fiable).
+	crudo=$( ffprobe -v error -select_streams v:0 \
+		-show_entries stream=width,height -of csv=p=0:s=x "$avi" )
+	[ -n "$crudo" ] || return 1
+	destino_px=$( proporcion "$j" "${crudo%x*}" "${crudo#*x}" )
+
+	# --- por que se amplia antes de codificar ---------------------------
+	#
+	# El bitmap crudo es diminuto (Pac-Man 224x288) y AM+ lo estira hasta el
+	# hueco del layout, que en esta cabina son unos 700 px. Ampliar por
+	# interpolacion un video de 224 px deja los pixeles blandos, y encima el
+	# h264 a ese tamano gastaba 33 kbps: bloques por todas partes.
+	#
+	# Se amplia AQUI, y en dos pasos que no son intercambiables:
+	#   1. un multiplo ENTERO con 'neighbor', que duplica pixeles exactos y
+	#      mantiene el filo del arte original;
+	#   2. la correccion de proporcion con 'lanczos', que es la parte no
+	#      entera, ya sobre una imagen grande.
+	# Hacerlo al reves (proporcion primero) reparte mal las filas y se ve
+	# irregular.
+	amp=1
+	if [ "$AMPLIAR" != "0" ]; then
+		amp=$(( 700 / ${crudo#*x} + 1 ))
+		[ "$amp" -lt 1 ] && amp=1
+		[ "$amp" -gt 4 ] && amp=4
+	fi
+	entero="$(( ${crudo%x*} * amp ))x$(( ${crudo#*x} * amp ))"
+	final="$(( ${destino_px%x*} * amp ))x$(( ${destino_px#*x} * amp ))"
+	final="$(( ${final%x*} - ${final%x*} % 2 ))x$(( ${final#*x} - ${final#*x} % 2 ))"
+	printf '(%s -> %s) ' "$crudo" "$final" >&2
+
+	# Se convierte a un temporal y solo entonces se sustituye el que hubiera.
+	# Asi el frontend nunca se encuentra un mp4 a medio escribir, y si la
+	# conversion falla el video viejo sigue en su sitio.
+	if ffmpeg -y -loglevel error -i "$avi" -ss "$salto" -t "$dura" \
+		-vf "scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos" \
+		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p -an \
+		-movflags +faststart "$avi.mp4" 2>/dev/null \
+		&& [ -s "$avi.mp4" ]
+	then
+		borrar_videos "$j"
+		mv -f "$avi.mp4" "$DESTINO/$j.mp4"
+		return 0
+	fi
+	rm -f "$avi.mp4"
+	return 1
+}
+
 echo "# emulador: $MAME_BIN"
 echo "# roms:     $ROMPATH"
 echo "# destino:  $DESTINO"
@@ -260,6 +344,11 @@ if [ "${1:-}" = "--medir" ]; then
 	shift
 	VENTANA="${VENTANA:-60}"     # segundos emulados que se graban para medir
 	HOJA="${HOJA:-$PWD/medidas.png}"
+	# Por defecto, de la MISMA grabacion larga que sirve para medir se saca ya
+	# el mp4: un solo arranque del emulador por juego en vez de dos, que en la
+	# cabina (i3 lento) es la mitad de tiempo. SOLO_MEDIR=1 se queda en medir y
+	# escribir arranque.dat, sin grabar el video.
+	GRABAR=1; [ "${SOLO_MEDIR:-0}" = 1 ] && GRABAR=0
 
 	if [ $# -gt 0 ]; then
 		JUEGOS=( "$@" )
@@ -306,11 +395,29 @@ if [ "${1:-}" = "--medir" ]; then
 			-vf scale=150:-1 "$T/m_$j.png" 2>/dev/null && [ -s "$T/m_$j.png" ]; then
 			MUESTRAS+=( "$T/m_$j.png" ); ETIQUETAS+=( "$j:$punto" )
 		fi
-		rm -f "$T/$j.avi" "$T/$j.log" "$T/$j.med"
+		rm -f "$T/$j.log" "$T/$j.med"
 
 		"$AQUI/escribir_ajuste.py" "$AJUSTES" "$j" video "$punto" || {
-			echo "no pude escribir en $AJUSTES"; fallos=$((fallos+1)); continue; }
-		echo "video=$punto   ($detalle)"
+			echo "no pude escribir en $AJUSTES"; fallos=$((fallos+1))
+			rm -f "$T/$j.avi"; continue; }
+
+		# Paso unico: el mp4 sale del avi que ya tenemos, sin volver a arrancar
+		# el emulador. La duracion sale de arranque.dat si el juego la fija, o
+		# el defecto; si el punto medido + la duracion no cabe en la ventana
+		# grabada, se recorta a lo que haya.
+		if [ "$GRABAR" = 1 ]; then
+			dura=$( clave_de_arranque "$j" videodura ) || dura=$DURA
+			libre=$(( VENTANA - punto ))
+			[ "$dura" -gt "$libre" ] && dura=$libre
+			if [ "$dura" -ge 3 ] && convertir_a_mp4 "$T/$j.avi" "$j" "$punto" "$dura"; then
+				echo "video=$punto  $(du -h "$DESTINO/$j.mp4" | cut -f1)  ($detalle)"
+			else
+				echo "video=$punto  (medido; no se pudo grabar el video; $detalle)"
+			fi
+		else
+			echo "video=$punto   ($detalle)"
+		fi
+		rm -f "$T/$j.avi"
 		medidos=$((medidos+1))
 	done
 
@@ -344,30 +451,6 @@ else
 	mapfile -t JUEGOS < <(cut -d';' -f1 "$ROMLIST" | grep -v '^#')
 fi
 
-# AM+ prefiere el video a la imagen fija, y acepta varias extensiones. Si de
-# una grabacion anterior quedara un .avi o un .mkv, seguiria mandando sobre el
-# .mp4 nuevo y pareceria que regrabar no sirve de nada. Por eso al rehacer un
-# juego se borra TODO lo que sea video suyo, no solo el .mp4.
-#
-# La imagen fija (.png) NO se toca: es el respaldo cuando no hay video.
-EXT_VIDEO="mp4 avi mkv mpg mpeg mov webm m4v wmv flv ogv"
-
-video_existente() {   # $1=juego -> ruta del primero que encuentre, o nada
-	local e
-	for e in $EXT_VIDEO; do
-		[ -s "$DESTINO/$1.$e" ] && { printf '%s' "$DESTINO/$1.$e"; return 0; }
-	done
-	return 1
-}
-
-borrar_videos() {   # $1=juego
-	local e n=0
-	for e in $EXT_VIDEO; do
-		[ -e "$DESTINO/$1.$e" ] && { rm -f "$DESTINO/$1.$e" && n=$((n+1)); }
-	done
-	[ "$n" -gt 0 ] && printf '(borrado el anterior) '
-	return 0
-}
 
 mkdir -p "$DESTINO"
 TMP=$(mktemp -d /tmp/videos-mame.XXXXXX)
@@ -428,57 +511,13 @@ for j in "${JUEGOS[@]}"; do
 	rm -f "$TMP/$j.log"
 
 	echo -n "convirtiendo... "
-
-	# -ss antes que -t: se descarta la carga y se toma el modo de atraccion.
-	# -an: sin audio (grabar sonido sin tarjeta no es fiable).
-	crudo=$( ffprobe -v error -select_streams v:0 \
-		-show_entries stream=width,height -of csv=p=0:s=x "$TMP/$j.avi" )
-	destino_px=$( proporcion "$j" "${crudo%x*}" "${crudo#*x}" )
-
-	# --- por que se amplia antes de codificar ---------------------------
-	#
-	# El bitmap crudo es diminuto (Pac-Man 224x288) y AM+ lo estira hasta el
-	# hueco del layout, que en esta cabina son unos 700 px. Ampliar por
-	# interpolacion un video de 224 px deja los pixeles blandos, y encima el
-	# h264 a ese tamano gastaba 33 kbps: bloques por todas partes.
-	#
-	# Se amplia AQUI, y en dos pasos que no son intercambiables:
-	#   1. un multiplo ENTERO con 'neighbor', que duplica pixeles exactos y
-	#      mantiene el filo del arte original;
-	#   2. la correccion de proporcion con 'lanczos', que es la parte no
-	#      entera, ya sobre una imagen grande.
-	# Hacerlo al reves (proporcion primero) reparte mal las filas y se ve
-	# irregular.
-	amp=1
-	if [ "$AMPLIAR" != "0" ]; then
-		amp=$(( 700 / ${crudo#*x} + 1 ))
-		[ "$amp" -lt 1 ] && amp=1
-		[ "$amp" -gt 4 ] && amp=4
-	fi
-	entero="$(( ${crudo%x*} * amp ))x$(( ${crudo#*x} * amp ))"
-	final="$(( ${destino_px%x*} * amp ))x$(( ${destino_px#*x} * amp ))"
-	final="$(( ${final%x*} - ${final%x*} % 2 ))x$(( ${final#*x} - ${final#*x} % 2 ))"
-	echo -n "($crudo -> $final) "
-
-	# Se convierte a un temporal y solo entonces se sustituye el que hubiera.
-	# Asi el frontend nunca se encuentra un mp4 a medio escribir, y si la
-	# conversion falla el video viejo sigue en su sitio.
-	if ffmpeg -y -loglevel error -i "$TMP/$j.avi" -ss "$salto" -t "$dura" \
-		-vf "scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos" \
-		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p -an \
-		-movflags +faststart "$TMP/$j.mp4" 2>/dev/null \
-		&& [ -s "$TMP/$j.mp4" ]
-	then
-		borrar_videos "$j"
-		mv -f "$TMP/$j.mp4" "$DESTINO/$j.mp4"
+	if convertir_a_mp4 "$TMP/$j.avi" "$j" "$salto" "$dura"; then
 		echo "$(du -h "$DESTINO/$j.mp4" | cut -f1)"
 		hechos=$((hechos+1))
 	else
-		rm -f "$TMP/$j.mp4"
 		echo "fallo la conversion (se deja el video que hubiera)"
 		fallos=$((fallos+1))
 	fi
-
 	rm -f "$TMP/$j.avi"
 done
 
