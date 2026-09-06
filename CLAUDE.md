@@ -3075,9 +3075,22 @@ desigual y no se puede suponer por familia:
 `0x325`, BCD de 3 y tres letras, con `swap=2`. Sale
 **10000 TAC, 9000 KSI, 8000 MAR, 7000 SZU, 6000 OHS**.
 
-**Ojo:** esas puntuaciones las hizo el guion jugando, no un jugador. Si molesta
-tener récords falsos, se borra `~/.mame/nvram/<juego>/saveram` y vuelve de
-fábrica.
+**Y al limpiarlas apareció el dato bueno.** Eloy pidió borrar esos récords por
+ser inventados, y al borrar el `saveram` y arrancar limpio **Double Dragon
+reescribió exactamente la misma tabla**: `10000 TAC, 9000 KSI, 8000 MAR, 7000
+SZU, 6000 OHS` no eran mías, son **su tabla de fábrica**, que el juego escribe
+en el primer arranque. Mi partida sólo había tocado 49 bytes, casi todos
+contadores.
+
+O sea que la receta queda **verificada contra el estado de fábrica**, que es
+mejor prueba que la que buscaba. Y la conclusión sobre los NeoGeo se afina:
+
+> No es que la tabla no exista hasta que alguien juega. Es que **unos juegos
+> traen tabla de fábrica y la escriben al arrancar, y otros no guardan
+> puntuaciones en absoluto**. `doubledr` es de los primeros; `samsho`, de los
+> segundos.
+
+Los ficheros de la prueba quedaron en `~/nvram_respaldo/*.saveram.tras_jugar`.
 
 ### Las otras fuentes que pasó Eloy
 

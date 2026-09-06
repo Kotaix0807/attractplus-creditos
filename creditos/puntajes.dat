@@ -141,9 +141,15 @@ zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=s
 # 'TETRISTETRISTETRIS', por eso los nombres empiezan en el 78 y no en el 60)
 atetris entradas=10 bytes=6 puntos=0,6,texto nombres=78,3,ascii confirmado=no
 
-# Double Dragon de NeoGeo. Su saveram arranca VACIO -- solo la cabecera
-# "BACKUP RAM OK" y el nombre del juego -- y la tabla no existe hasta que
-# alguien juega: se descubrio jugando automaticamente. Entradas de 16 bytes
-# desde 0x325, BCD de 3 y tres letras ASCII. swap=2 porque la placa vuelca en
-# palabras de 16 bits.
+# Double Dragon de NeoGeo. Entradas de 16 bytes desde 0x325, BCD de 3 y tres
+# letras ASCII. swap=2 porque la placa vuelca en palabras de 16 bits.
+#
+# VERIFICADA contra el estado de fabrica: borrado el saveram y arrancado
+# limpio, el juego reescribe 10000 TAC / 9000 KSI / 8000 MAR / 7000 SZU /
+# 6000 OHS, que es exactamente lo que da la receta.
+#
+# (Se llego a ella jugando automaticamente, porque el saveram de un NeoGeo
+# arranca sin tabla. Pero resulto que Double Dragon SI trae tabla de fabrica y
+# la escribe al primer arranque; los que no la traen, como samsho, no guardan
+# puntuaciones en absoluto.)
 doubledr fuente=saveram swap=2 desde=0x325 entradas=5 bytes=16 puntos=0,3,bcd nombre=5,3,ascii confirmado=no
