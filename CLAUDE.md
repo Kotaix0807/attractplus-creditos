@@ -2924,8 +2924,8 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 74 juegos descifrables de los 87** que pueden
-guardar puntuaciones — 56 por hi2txt y 18 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
+**Cobertura: de 21 recetas a 75 juegos descifrables de los 91** que pueden
+guardar puntuaciones — 56 por hi2txt y 19 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -3251,23 +3251,33 @@ iniciales en el noveno. Da `10180 HRO / 9540 RYO / 9000 NAT / 8600 MIM`.
 zona de ceros se lee como `AAA` y parece un nombre. Si una propuesta trae
 muchas 'A', casi seguro es un falso positivo — le pasó a `mk3`.
 
-### Cuatro juegos que NO guardan puntuaciones, comprobado jugando
+### «No cambió al jugar» NO significa «no guarda»
 
-Eloy jugó a mano y trajo los números: `gauntlet` 5975, `samsho` 1250, `samsho2`
-«más de 12000», y `btoads` sin poder entrar al ranking. Con eso se pudo separar
-lo que guarda de lo que no, comparando cada fichero contra un arranque limpio:
+Eloy jugó y trajo números: `gauntlet` 5975, `samsho` 1250, `samsho2` «más de
+12000», `btoads` sin entrar al ranking. Comparé cada fichero contra un arranque
+limpio y **concluí mal**: como en tres de ellos sólo cambiaban contadores, los
+di por juegos sin tabla.
 
-| juego | qué cambió al jugar | conclusión |
-|---|---|---|
-| `samsho2` | la escalera BCD `7000/6000/5000` de `0x33a`: la tercera pasó a **5308** | **guarda** |
-| `gauntlet`, `gauntlet2p` | 24 bytes, todos contadores y sumas de control | no guarda |
-| `btoads` | 66 bytes, valores enormes con pinta de estadísticas | no guarda |
-| `samsho` | 25 bytes, ninguno donde estaría la tabla | no guarda |
+**Eloy corrigió:** los tres SÍ tienen ranking, sólo que su partida no llegó al
+mínimo para entrar. Es exactamente la limitación que yo mismo había escrito
+—la prueba concluye en un sentido y no en el otro— y aun así la olvidé al
+interpretar el resultado.
 
-Ni el 5975 de Gauntlet ni el 1250 de Samurai Shodown aparecen en el fichero **en
-ninguna codificación**, lo cual concuerda con lo que Eloy vio: no pudo registrar
-iniciales en ninguno de los dos. Esos cuatro pasan a la lista de excluidos, que
-es lo correcto — el denominador baja de 91 a 87.
+> **Regla:** que el fichero no cambie sólo prueba que ESA partida no entró en
+> la tabla. Para descartar un juego hace falta ver que no hay tabla, no que no
+> se movió.
+
+Buscándolas en serio aparecieron:
+
+- **`samsho2` guarda**: escalera BCD `7000/6000/5000` en `0x33a`, y la partida
+  de Eloy cambió la tercera a **5308**.
+- **`btoads` guarda**, y su tabla se lee entera: entradas de 5 bytes desde
+  `0x503`, tres letras **en minúscula** y un valor de 2 en little endian, de
+  menor a mayor. Sale `kev 3300 / mb. 3600 / mw. 3900 … pm. 6000`, y el patrón
+  se repite seis veces: hay una tabla por fase.
+
+De `gauntlet` y `samsho` sigue sin encontrarse la rejilla, pero ya no se
+descartan: se quedan como pendientes.
 
 **De `samsho2` queda una duda honesta:** su tabla no lleva iniciales y Eloy
 recuerda haber pasado de 12000, pero el byte marca 5308. Puede llevar un `×10`

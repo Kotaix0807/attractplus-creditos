@@ -254,3 +254,13 @@ sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom confirmado=no
 # No hay tabla en pantalla que lo aclare, asi que se da el numero crudo.
 # La tabla no lleva iniciales: solo los tres numeros.
 samsho2 fuente=saveram swap=2 desde=0x33a entradas=3 bytes=2 puntos=0,2,bcd confirmado=no
+
+# Battletoads. Entradas de 5 bytes desde 0x503: tres letras ASCII EN MINUSCULA
+# y un valor de 2 en little endian. Va de MENOR a MAYOR, asi que orden=asc.
+# Sale kev 3300 / mb. 3600 / mw. 3900 / sjf 4200 ... pm. 6000, y el patron se
+# repite seis veces: hay una tabla por fase. Se toma la primera.
+#
+# Sin confirmar la escala: 3300 parece poco para un Battletoads y podria llevar
+# un x100 (330000), pero eso hay que verlo en el marcador y no suponerlo -- con
+# dkong razone justo asi y me equivoque.
+btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,ascii orden=asc confirmado=no
