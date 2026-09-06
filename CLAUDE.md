@@ -2924,7 +2924,7 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 67 juegos descifrables** — 56 por hi2txt y 11 con
+**Cobertura: de 21 recetas a 68 juegos descifrables** — 56 por hi2txt y 12 con
 recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
@@ -3153,6 +3153,36 @@ récord **por personaje**.
 un juego de lucha no puntúa casi nada. Que la zona no cambie **no demuestra** que
 el juego no guarde puntuaciones; sólo que mi partida no dio para batir la marca.
 La prueba es concluyente en un sentido (si cambia, guarda) y no en el otro.
+
+### Jugar una partida y decir el número: la mejor pista de todas
+
+Eloy jugó a mano y dio los valores: `samsho3` 5200 con iniciales ABC, y
+`fatfury1` 1600 sin poder registrar iniciales. **Con un número conocido, la
+tabla se localiza buscándolo**, y eso es mucho más rápido que cualquier
+heurística.
+
+**`fatfury1` quedó resuelto y confirmado.** Buscando 1600 no aparecía, pero al
+mirar la zona salió una escalera limpia de entradas de 8 bytes desde `0x32c`:
+
+```
+00 10 00 00 | 0f 0e 0d 00     16 -> 1600, "PON"
+00 08 00 00 | 13 12 14 00      8 ->  800, "TSU"
+00 06 00 00 | 03 04 11 00      6 ->  600, "DER"
+```
+
+Dos cosas que no se habrían adivinado:
+
+- **la puntuación va dividida por 100** — se guarda 16 y el juego enseña 1600,
+  que es justo lo que Eloy vio;
+- **las iniciales son ÍNDICES de letra** (`0x00` = 'A'), no ASCII. Buscar texto
+  imprimible ahí no encuentra nada.
+
+**`samsho3` sigue sin cerrar.** Su 5200 está en `0x32a` como BCD y su `ABC` en
+`0x33d`, pero los 19 bytes que los separan no encajan con ninguna rejilla
+regular, y sólo hay dos nombres en la zona. Con un solo dato no se puede elegir
+entre las lecturas posibles. **Se cierra con una partida más de puntuación
+claramente distinta**: comparando los dos ficheros se ve exactamente qué bytes
+se mueven.
 
 ### Las otras fuentes que pasó Eloy
 

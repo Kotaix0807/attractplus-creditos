@@ -185,3 +185,11 @@ tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado
 # son todos iguales, asi que no hay orden que ayude a validarlo.
 samsho4 fuente=saveram swap=2 desde=0x422 entradas=13 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
 samsho5 fuente=saveram swap=2 desde=0x422 entradas=28 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
+
+# Fatal Fury. Entradas de 8 bytes desde 0x32c: la puntuacion son 2 bytes en
+# binario y hay que multiplicar por 100, y las iniciales son INDICES de letra
+# (0x00 = 'A'), no ASCII.
+#
+# CONFIRMADA con una partida de Eloy: jugo y marco 1600, y la primera entrada
+# vale 16. Las siguientes son 8, 6, 4 y 2 -> 800, 600, 400 y 200.
+fatfury1 fuente=saveram swap=2 desde=0x32c entradas=5 bytes=8 puntos=0,2,be multiplica=100 nombre=4,3,idx:snk confirmado=si

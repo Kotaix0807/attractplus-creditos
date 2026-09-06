@@ -176,6 +176,8 @@ def leer_puntajes_dat(ruta):
 # Juegos de silabas: el byte no es ASCII sino un indice en una tabla de
 # caracteres propia de la placa. La mas comun con diferencia es esta.
 ALFABETOS = {
+    # SNK: el byte es el indice de la letra, 0x00 = 'A'. Lo usa fatfury1.
+    "snk": "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-  ",
     "capcom": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ .,!?'\"-/",
     # Donkey Kong: el 0x10 es el espacio y las letras empiezan en 0x11. Se
     # dedujo de los sufijos ordinales que guarda junto al puesto (ST, ND, RD,
