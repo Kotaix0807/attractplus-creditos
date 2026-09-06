@@ -2924,8 +2924,8 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 71 juegos descifrables** — 56 por hi2txt y 15 con
-recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
+**Cobertura: de 21 recetas a 72 juegos descifrables** de los 91 que pueden
+guardar puntuaciones — 56 por hi2txt y 16 con recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -3222,6 +3222,26 @@ personaje.
 tuviera sitio para TODAS las entradas de la receta, y el de `xevious` son 77
 bytes contra los 80 que piden sus 5×16. Ahora basta con que quepa una: se
 descifra lo que haya.
+
+### `sfiii3`: la escalera se ve a simple vista
+
+Street Fighter III 3rd Strike cayó sin herramientas: en su volcado aparecen
+`00 01 86 a0`, `00 01 5f 90` y `00 01 38 80`, que son **100000, 90000 y 80000**
+en binario de 4 bytes. Con eso sale el resto: entradas de 20 bytes, iniciales
+indexadas al principio y la puntuación en el octavo. Da `100000 SDM / 90000 MOO
+/ 80000 NEO`.
+
+**La lección que se repite:** los números redondos de una tabla de fábrica son
+un ancla. `0x000186a0` = 100000 es reconocible de un vistazo, y a partir de ahí
+la estructura se deduce sola.
+
+### `polepos`: identificado pero NO añadido
+
+Su NVRAM tiene una escalera perfecta de 1200, 1197, 1194… bajando de tres en
+tres, con paso de 6 bytes. Pero **dura exactamente 100 entradas y no hay ningún
+nombre**: es una tabla inicializada con valores de relleno, no puntuaciones de
+nadie. Se deja fuera por el mismo criterio de siempre — una receta inventada es
+peor que ninguna.
 
 ### Las otras fuentes que pasó Eloy
 

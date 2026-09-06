@@ -230,3 +230,9 @@ tekken2 entradas=33 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=no
 # 40000 M.Nakamura, 35000 Eirry Mou., 30000 Evezoo End, 25000 S.Okamoto,
 # 20000 S.Kojima. Sale clavada.
 xevious entradas=5 bytes=16 puntos=0,3,bcd multiplica=10 nombre=3,10,idx:namco confirmado=si
+
+# Street Fighter III 3rd Strike. Entradas de 20 bytes: las iniciales van
+# primero, indexadas (0x0a = 'A'), y la puntuacion son 4 bytes en binario a
+# partir del octavo. Sale la escalera 100000 / 90000 / 80000, que es lo que
+# delato la estructura -- 0x000186a0 es 100000 clavado.
+sfiii3 entradas=19 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
