@@ -3318,7 +3318,8 @@ Quedaron 6, y no todos son fallos míos:
 
 | juego | qué pasa |
 |---|---|
-| `centiped`, `galaga` | su fuente está a `0xFF` o con basura: es un problema de DATOS, no de receta |
+| `galaga` | su captura de fábrica trae basura: es un problema de DATOS, no de receta |
+| `centiped` | ver abajo: era mío, y ahora lee valores reales |
 | `joust`, `punchout` | mi lectura es una escalera coherente pero distinta de la referencia: probablemente su fichero ya tiene partidas, o la referencia describe otra revisión |
 | `mk`, `mk2` | el primer valor coincide exacto con la referencia; falla una entrada intermedia |
 
@@ -3327,6 +3328,20 @@ de estar ordenada arreglaba `mk` si se quitaba… pero **hacía caer la cobertur
 75 juegos a 70**, porque sin él otras tablas se llenan de basura y no pasan el
 filtro. Con la referencia delante se puede comparar de verdad: se queda el
 recorte.
+
+### Una fuente vacía no es una fuente
+
+Tercer fallo de la misma pasada, y del mismo tipo mudo. Cuando un XML declara
+varias fuentes yo cogía **la primera**, sin mirar si tenía algo dentro.
+Centipede declara `earom` y `.hi`, y su `earom` son **64 bytes todos a `0xFF`**
+— memoria que la placa no ha escrito nunca. El resultado no fallaba: descifraba
+una tabla de `16777215` repetido, que es `0xFFFFFF`.
+
+Ahora se descarta cualquier fuente que esté entera a `0x00` o a `0xFF` y se pasa
+a la siguiente. Centipede pasó a dar `13210, 13010, 12805…`, que son valores de
+verdad — de hecho los dos primeros son las posiciones 4 y 5 de la referencia,
+así que la lectura es correcta pero **empieza tres entradas tarde**. Queda por
+cerrar.
 
 ### Las otras fuentes que pasó Eloy
 

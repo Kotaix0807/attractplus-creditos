@@ -616,9 +616,17 @@ def datos_de(juego, cfg, dir_hi, fabrica=None):
     carpeta = os.path.expanduser(f"~/.mame/nvram/{juego}")
 
     def leer(ruta):
-        if os.path.exists(ruta) and os.path.getsize(ruta):
-            return open(ruta, "rb").read()
-        return None
+        if not (os.path.exists(ruta) and os.path.getsize(ruta)):
+            return None
+        d = open(ruta, "rb").read()
+        # Un fichero entero a 0x00 o a 0xFF es memoria que la placa nunca ha
+        # escrito. Devolverlo no da error: descifra una tabla de ceros o de
+        # 16777215. Centipede declara dos fuentes y su earom son 64 bytes a
+        # 0xFF, asi que cogiendo la primera se perdia la tabla buena que estaba
+        # al lado.
+        if all(b == 0 for b in d) or all(b == 0xFF for b in d):
+            return None
+        return d
 
     quiere = []
     if DB_HI2TXT:
