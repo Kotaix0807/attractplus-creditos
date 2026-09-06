@@ -2924,8 +2924,8 @@ exacto.** Eso es lo que permite fiarse de los otros 30.
 **No se copia al repo** (es GPL-2 y se actualiza sola): se baja aparte, igual
 que la colección de cheats, y se le indica con `--hi2txt <carpeta db>`.
 
-**Cobertura: de 21 recetas a 62 juegos descifrables** — 56 por hi2txt y 6 con
-recetas propias. **De ellos, 16 comparados con el marcador del propio juego**;
+**Cobertura: de 21 recetas a 65 juegos descifrables** — 56 por hi2txt y 9 con
+recetas propias. **De ellos, 19 comparados con el marcador del propio juego**;
 del resto sabemos que se leen, no que el número sea el que el jugador vio. De los 94 instalados, sólo **3 no pueden guardar puntuaciones
 en absoluto** (`dlair`, `kinst`, `mt_srage`), así que el denominador real es 91.
 Las dos fuentes se complementan.
@@ -3091,6 +3091,43 @@ mejor prueba que la que buscaba. Y la conclusión sobre los NeoGeo se afina:
 > segundos.
 
 Los ficheros de la prueba quedaron en `~/nvram_respaldo/*.saveram.tras_jugar`.
+
+### `buscar_tabla.py`: encontrar la tabla por las INICIALES
+
+Los juegos que nadie ha descrito se resisten a todo lo anterior, y buscar
+«números que bajan» en un binario de kilobytes da falsos positivos por todas
+partes — ya pasó con la NVRAM. Lo que sí funciona es **buscar grupos de letras
+a intervalos regulares**: una tabla de records es de las poquísimas cosas que
+tienen esa forma. Localizada la rejilla de nombres, la puntuación se busca sólo
+dentro de esa misma entrada, que son un puñado de bytes, y ahí sí se puede
+probar todo.
+
+Dos correctivos que hicieron falta:
+
+- **El nombre del juego también parece una rejilla.** ` DOUBLE DRAGON ` leído
+  de tres en tres pasa el filtro. Se descarta exigiendo **hueco** entre inicial
+  e inicial: en una tabla, entre un nombre y el siguiente hay ceros o la
+  puntuación, no más letras.
+- No rendirse con la primera rejilla que aparezca: se puntúan todas y gana la
+  mejor.
+
+Con eso salieron tres juegos que estaban atascados:
+
+| juego | qué se encontró |
+|---|---|
+| `doubledr` | 5×16 desde `0x323`, `TAC KSI MAR SZU OHS` |
+| `tmnt` | 10 puntuaciones BCD al principio y los nombres en un bloque a `0xc8` |
+| `tekken` | 15×12 desde `0xc0`, iniciales de Namco (`AGR KAZ TEN ONO`) |
+
+**`tmnt` confirmado en pantalla**, y por poco no la lío: su tabla da 312, 257,
+206… y estuve a punto de ponerle un `×1000` porque parecía poco para un TMNT.
+Su modo de atracción muestra `BEST 10 PLAYERS / 1ST HID 312 PTS`, o sea que el
+número crudo era el bueno. Es el mismo error que ya cometí con `dkong`, evitado
+por mirar la pantalla en vez de razonar.
+
+**`tekken` no son puntuaciones sino tiempos**: los valores SUBEN de 3600 en
+3600, que es un minuto a 60 fps. Es su tabla de récords de tiempo. Se exporta
+igual, pero conviene saberlo.
 
 ### Las otras fuentes que pasó Eloy
 

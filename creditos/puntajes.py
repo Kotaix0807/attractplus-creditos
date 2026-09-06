@@ -529,7 +529,8 @@ def detectar_en_ventana(datos, tope=2048):
 # lee bien hasta donde se sabe, pero nadie lo ha mirado en pantalla.
 VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                "dkong", "dkong3", "gradius", "kungfum", "mappy", "mspacman",
-               "pacman", "robocop", "sf2", "zaxxon"}
+               "pacman", "robocop", "sf2", "zaxxon", "tmnt", "tmnt2po",
+               "doubledr"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 FABRICA = {}              # tablas leidas de la RAM con --fabrica
@@ -703,6 +704,11 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
         # En la NVRAM no hay bloques de hiscore.dat: la receta dice el
         # desplazamiento a pelo con 'desde='.
         desde = int(cfg.get("desde", "0"), 0)
+        largo = len(datos) - desde
+    elif "desde" in cfg:
+        # Tambien vale para un .hi: hay tablas que no empiezan al principio del
+        # bloque que declara hiscore.dat (tekken arranca en 0xc0).
+        desde = int(cfg["desde"], 0)
         largo = len(datos) - desde
     else:
         desde = sum(b[3] for b in bloques[:idx]) if bloques else 0

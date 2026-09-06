@@ -153,3 +153,22 @@ atetris entradas=10 bytes=6 puntos=0,6,texto nombres=78,3,ascii confirmado=no
 # la escribe al primer arranque; los que no la traen, como samsho, no guardan
 # puntuaciones en absoluto.)
 doubledr fuente=saveram swap=2 desde=0x325 entradas=5 bytes=16 puntos=0,3,bcd nombre=5,3,ascii confirmado=no
+
+# TMNT de Konami. Las diez puntuaciones van seguidas al principio del bloque,
+# BCD de 2 bytes, y los diez nombres en un bloque aparte a 0xc8 con ranuras de
+# 4 (HID, TAC, GEN, MRI, HAT, ASA, YAM, INO, IZU, MIK: iniciales del equipo).
+# Detras de las diez sigue una rampa suave (98, 96, 94...) que ya no es la
+# tabla, por eso entradas=10 y no mas.
+#
+# SIN multiplicador, y CONFIRMADO en pantalla: su modo de atraccion muestra
+# "BEST 10 PLAYERS" con 1ST HID 312 PTS, 2ND TAC 257 PTS, 3RD GEN 206 PTS...
+# exactamente lo que da la receta. Estuve a punto de ponerle un x1000 porque
+# 312 parecia poco para un TMNT; mirar la pantalla lo desmintio, como ya paso
+# con dkong.
+tmnt entradas=10 bytes=2 puntos=0,2,bcd nombres=200,4,ascii confirmado=si   # pantalla: BEST 10 PLAYERS, 1ST HID 312 PTS
+tmnt2po entradas=10 bytes=2 puntos=0,2,bcd nombres=200,4,ascii confirmado=si   # misma placa que tmnt
+# Tekken. Entradas de 12 bytes desde 0xc0: valor de 4 en little endian y el
+# nombre en ASCII con ranura de 4 (AGR, KAZ, TEN, ONO, FUN... el equipo de
+# Namco). OJO: los valores SUBEN de 3600 en 3600, asi que casi seguro son
+# TIEMPOS y no puntuaciones -- es la tabla de records de tiempo del juego.
+tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado=no
