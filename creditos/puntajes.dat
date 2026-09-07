@@ -270,3 +270,12 @@ btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,asc
 # BCD little-endian. De fabrica vale 0, y eso coincide con la referencia de
 # hi2txt (1 fila, SCORE 0).
 galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=no
+
+# samsho y strhoop: las dos salieron del mismo sitio que doubledr, fatfury1 y
+# samsho2 -- en un NeoGeo la tabla vive entre 0x320 y 0x340 del saveram, con
+# los bytes intercambiados por parejas. En samsho las iniciales son 12 0d 0a,
+# que con 0x00='A' son SNK: el relleno de fabrica de la casa. En strhoop no hay
+# iniciales, solo un identificador de equipo delante y 60/50/40/30/20 detras,
+# que para un juego de baloncesto es la magnitud correcta.
+samsho fuente=saveram swap=2 desde=0x32e entradas=4 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=no
+strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd confirmado=no

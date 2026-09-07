@@ -3550,7 +3550,7 @@ fallo**, porque 5.4 lo permite.
 ## Segunda pasada de puntajes: cuatro fallos mudos y la distincion que faltaba
 
 2026-09-07, trabajando en el portatil sobre un volcado de la cabina (estaba
-grabando videos). De 75 juegos descifrables se paso a **79 de 89**, y casi todo
+grabando videos). De 75 juegos descifrables se paso a **81 de 89**, y casi todo
 el avance vino de dejar de contar mal, no de recetas nuevas.
 
 **Lo primero que hubo que arreglar es que el listado no listaba.** `disponibles`
@@ -3634,10 +3634,9 @@ cabina desde otra maquina, que es justo lo que hubo que hacer.
 
 ### Lo que queda, y donde esta el limite
 
-De los 89 que pueden guardar: **76 con tabla leida, 3 con receta buena y tabla
-vacia, 7 sin estructura** (`gaunt2`, `gaunt22p`, `mk3`, `mvsc`, `ncv2`,
-`samsho`, `strhoop`), **1 que no encaja** (`nrallyx`) y **2 sin datos**
-(`gauntlet`, `gauntlet2p`).
+De los 89 que pueden guardar: **78 con tabla leida, 3 con receta buena y tabla
+vacia, 5 sin estructura** (`gaunt2`, `gaunt22p`, `mk3`, `mvsc`, `ncv2`),
+**1 que no encaja** (`nrallyx`) y **2 sin datos** (`gauntlet`, `gauntlet2p`).
 
 De la auditoria contra la referencia de la comunidad quedan cinco a mirar, y no
 todos son fallos nuestros: `galaga` tiene la captura de fabrica corrupta y **hay
@@ -3645,11 +3644,40 @@ que rehacerla en la cabina** (su rom no esta en el portatil), `joust` da una
 escalera coherente pero distinta, `punchout` tambien (probablemente otra
 revision de la placa) y `centiped` ya esta explicado.
 
-`strhoop` tiene candidata a medio confirmar: 5 entradas de 8 bytes desde `0x327`
-con el `saveram` intercambiado por parejas, escalera 60/50/40/30/20, que para un
-juego de baloncesto es plausible. **No se ha metido en `puntajes.dat`** porque
-no se ha podido ver en pantalla: el `neogeo.zip` del portatil no vale para ese
-set. Es lo primero que hay que probar en la cabina.
+### La regla de los NeoGeo: la tabla vive entre 0x320 y 0x340
+
+Salio de mirar juntos los que ya estaban resueltos. En **todos** los NeoGeo la
+tabla cae en ese tramo del `saveram`, con los bytes intercambiados por parejas:
+`doubledr` en `0x325`, `strhoop` en `0x322`, `fatfury1` en `0x32c`, `samsho3` en
+`0x329`, `samsho` en `0x32e`, `samsho2` en `0x33a`. Con esa pista, en vez de
+buscar «numeros que bajan» por un fichero de 64 KB se mira un tramo de 32 bytes,
+y ahi la estructura se ve a simple vista.
+
+Asi cayeron los dos que faltaban:
+
+- **`samsho`**: entradas de 16 bytes desde `0x32e`, BCD de 4 y tres letras
+  indexadas con `0x00` = 'A'. Da **SNK 50000 / SNK 30000 / SNK 10000**, y esas
+  iniciales son la firma: SNK es el relleno de fabrica de la casa.
+- **`strhoop`**: 5 entradas de 8 bytes desde `0x322`, BCD de 4 al final y sin
+  iniciales, con un identificador de equipo delante. Da 60/50/40/30/20, que para
+  un juego de baloncesto es la magnitud correcta -- y por eso mismo el buscador
+  automatico las tiraba, porque exige que la primera pase de 1000.
+
+Las dos van con `confirmado=no` hasta verlas en pantalla: el `neogeo.zip` del
+portatil no sirve para esos sets y hay que probarlas en la cabina.
+
+### Y probar el corpus entero contra un juego no descrito sigue sin servir
+
+Ya estaba escrito para los NeoGeo y se volvio a medir, ahora con filtro de
+tamano y de plausibilidad: **437 «candidatas» para `mvsc`, 434 para `ncv2`, 342
+para `gaunt2`**, y todas basura. No se metio ninguna. La unica via que funciona
+es anclar un numero conocido -- de `db_defaults`, del marcador en pantalla, o de
+que Eloy juegue y lo diga.
+
+`gaunt2` y `gaunt22p` se quedan fuera por una razon de fondo, no por falta de
+intentos: su EEPROM de 512 bytes no tiene ni una cadena imprimible ni escaleras
+en nibbles, y **`hiscore.dat` no trae entrada para esa familia**, asi que
+tampoco hay bloque de RAM que volcar.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
