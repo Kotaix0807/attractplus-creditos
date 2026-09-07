@@ -3976,6 +3976,70 @@ Tres detalles mas de `hypseus.cfg`:
 Y `dlair.zip` sale del rompath de MAME (a `retirados/`), o los dos emuladores se
 pelearian por el mismo juego.
 
+## Los vídeos, del salto ciego al gameplay elegido a mano (2026-09-07)
+
+Eloy: *«la idea del script de video era que acelerara el juego de la misma
+forma que un gameplay normal, y aún así se ven las pantallas de carga»*. Dos
+cosas, y las dos había que rehacerlas.
+
+**1. Grabar arrancando con `creditos.lua`, como la cabina.** Antes `videos.sh`
+lanzaba el juego pelado. Ahora toda grabación pasa por `grabar_avi()`, que
+lanza MAME con `-autoboot_script creditos.lua -autoboot_delay 0` y el monedero
+aislado a un temporal. Así el vídeo se graba del juego arrancado con los
+ajustes de `arranque.dat` (`velocidad=`, `segundos=`), igual que en la cabina.
+El negro del arranque tapado SÍ entra en el AVI (se pinta en `ui_container` y
+`-aviwrite` lo captura), pero el clip lo descarta porque empieza en `video=`,
+que cae después.
+
+**2. El punto del juego NO se puede detectar por imagen; lo elige un humano.**
+El detector automático anterior (`--medir`, borrado) elegía por movimiento y
+brillo, y fallaba: **el título de Mario PARPADEA más que su demo**, así que
+elegía el título. No hay heurística de imagen fiable — en Contra la demo es lo
+que más se mueve, en Mario lo que menos. Lo que sí es trivial y 100% fiable es
+mirar una hoja de contactos y apuntar el segundo. El flujo:
+
+```
+./videos.sh --hojas            graba cada juego y deja hojas/<juego>.png
+                               + hojas/tiempos.txt para rellenar
+(miras las hojas, escribes juego=segundo)
+./videos.sh --desde hojas/tiempos.txt   graba cada vídeo en su punto
+```
+
+`--tira <juego>` es la versión de un solo juego. Todas comparten
+`grabar_avi`/`hacer_tira`/`convertir_a_mp4`.
+
+**La ventana se ajusta con `VENTANA=`, y sus instantes escalan.** Muchos juegos
+de lucha (kof97/98, ssf2t, los samsho, kinst) y algunos más (wboy, robotron)
+NO enseñan gameplay en 62 s: primero va logos, historia y presentación de
+personajes, y la demo de combate llega a los 80-100 s. Con `VENTANA=120` sí
+aparece. Un fallo que costó una pasada: los doce instantes de la hoja estaban
+CLAVADOS a 60 s, así que una hoja de 120 s salía idéntica a una de 62 y no
+mostraba la segunda mitad. Ahora `instantes_tira()` los reparte por la ventana
+(120 → 9,18,…,108).
+
+**Cobertura final, medida mirando las hojas una a una:** de los ~93 juegos de
+MAME, **52 con vídeo de gameplay** y unos pocos a imagen fija. Los de imagen
+fija son juegos cuyo modo atracción no tiene demo jugable aunque se espere a
+120 s: `mk3` (todo intro de Raider + tabla), `ffight` (intro narrativa y
+perfiles), `mt_srage` (Mega-Tech: menú del sistema tapando media pantalla),
+`tron` (menú de selección estático), `starwars` (vectorial: no se graba bien
+bajo Xvfb) y `galaxian` (la grabación falla repetidamente). Se quedan con su
+`.png`; el frontend lo usa cuando no hay `.mp4`.
+
+**Trampas que conviene recordar:**
+
+- **Las variantes NO comparten el timing de su base.** Inferí gaunt2/gaunt22p
+  como Gauntlet (video=12) y salieron en el título: Gauntlet II tarda más, su
+  laberinto empieza a los 26. Y megaman2 ≠ megaman, ssf2t ≠ sf, kof98 ≠ kof99,
+  samsho4/5 ≠ samsho. Hay que mirar la hoja de cada uno, no copiar el valor del
+  hermano.
+- **Grabar y elegir a ojo es lo caro pero lo único fiable.** El detector por
+  métricas quedó descartado por Eloy con razón.
+- El arranque tapado de cada juego dura su `segundos=` de `arranque.dat` (5 s
+  por defecto), no `GA_ARRANQUE_SIN`; el gameplay elegido con la hoja siempre
+  cae después, así que el negro nunca entra en el clip.
+
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de

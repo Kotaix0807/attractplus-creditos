@@ -271,9 +271,18 @@ montador() {
 # etiquetados con su segundo, para VER de un vistazo en que momento empieza el
 # juego. $1=avi  $2=png de salida  $3=juego (solo para el mensaje).
 # Devuelve por stdout los segundos de cada fotograma, en orden.
-INSTANTES_TIRA="4 8 12 16 20 26 32 38 44 50 56 60"
+# Los doce instantes de la hoja se reparten por la VENTANA grabada, no fijos:
+# con una ventana de 120s hay que mirar tambien la segunda mitad, que es justo
+# donde asoma el gameplay de los juegos con intro larga. Antes estaban clavados
+# a 60s y una hoja de 120s salia identica a una de 62s (no servia de nada).
+instantes_tira() {   # -> 12 segundos repartidos en la ventana
+	local vent="${VENTANA:-62}" i paso
+	paso=$(( vent / 13 )); [ "$paso" -lt 1 ] && paso=1
+	for i in $(seq 1 12); do echo -n "$(( paso * i )) "; done
+}
 hacer_tira() {
 	local avi="$1" salida="$2" T archivos=() t
+	local INSTANTES_TIRA; INSTANTES_TIRA="$( instantes_tira )"
 	local -a MONTAR; read -ra MONTAR < <( montador ) || {
 		echo "hace falta imagemagick" >&2; return 1; }
 	T=$(mktemp -d /tmp/tira-mame.XXXXXX)
@@ -343,7 +352,7 @@ if [ "${1:-}" = "--tira" ]; then
 	hacer_tira "$T/v.avi" "$SALIDA" "$j" || exit 1
 	echo "tira en $SALIDA"
 	echo -n "orden de los fotogramas (4 por fila), en segundos:"
-	i=0; for t in $INSTANTES_TIRA; do
+	i=0; for t in $( instantes_tira ); do
 		[ $(( i % 4 )) -eq 0 ] && printf '\n   '; printf '%4s' "$t"; i=$((i+1)); done
 	echo
 	echo "Apunta el segundo del gameplay en $AJUSTES, en la linea de $j, como"
