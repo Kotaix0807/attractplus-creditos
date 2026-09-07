@@ -3711,6 +3711,59 @@ intentos: su EEPROM de 512 bytes no tiene ni una cadena imprimible ni escaleras
 en nibbles, y **`hiscore.dat` no trae entrada para esa familia**, asi que
 tampoco hay bloque de RAM que volcar.
 
+## La pasada de verificacion del rescate: el `hi_path` es de otro plugin
+
+Pedida por Eloy el 2026-09-07: repasar juego a juego que el rescate de puntajes
+funcione. Salieron dos cosas, y la primera es un error mio de diagnostico.
+
+### `hiscore.ini` no lo lee nadie
+
+El plugin moderno escribe en **`<homepath>/hiscore/<juego>.hi`** y punto
+(`init.lua`, `get_data_path`). De `hiscore.ini` **no lee nada**: su unico ajuste
+es `only_save_at_exit`, y lo saca de un `plugin.cfg` en JSON dentro de esa misma
+carpeta. El `hi_path` del `.ini` es de la version VIEJA.
+
+En la cabina eso significa que `hiscore.ini` apunta a
+`~/shared/configs/mame/hi`, **un directorio que no existe**, mientras los .hi de
+verdad estan en `~/shared/configs/mame/hiscore`. Y hay **ocho**, uno de ellos
+escrito el mismo dia.
+
+**Yo di por hecho que no habia ninguno** porque mire el `hi_path` en vez de
+dejar que `ruta_hi()` eligiera, y me traje un volcado sin ellos. De ahi salio la
+frase «en la cabina no hay ni un .hi», que estaba mal, y con ella la conclusion
+de que el rescate no habia rescatado nunca nada. Si habia rescatado: lo que
+pasaba es que yo miraba en el sitio equivocado.
+
+La funcion ya probaba `~/.mame/hiscore` como respaldo y en la cabina habria
+acertado, porque `~/.mame` es un enlace a `shared/configs/mame`. Aun asi se
+reforzo: ahora el primer candidato se le **pregunta a MAME** (`homepath` de
+`-showconfig`, primera entrada, mas `/hiscore`), que es lo unico que no depende
+de que ese enlace exista.
+
+Efecto inmediato: ocho juegos (`1942`, `1943`, `asteroid`, `bublbobl`,
+`ddragon`, `dkong`, `mspacman`, `pacman`) pasan de leer su tabla **de fabrica** a
+leer la **rescatada de verdad**.
+
+### La prueba de extremo a extremo, que faltaba
+
+Que un `.hi` se descifre bien no prueba que el rescate funcione: falta la parte
+de que el plugin lo escriba. Se probo entera, con `rescate.lua` + `rescate.sh`:
+se cambia **un byte** del bloque que declara `hiscore.dat` -- que es justo el
+disparador real, porque el plugin solo escribe si la tabla difiere de como
+estaba al arrancar -- se sale limpiamente y se comprueba que el fichero
+resultante coincide **byte a byte** con lo que quedo en la RAM.
+
+**13 juegos de nueve fabricantes, 13 en verde**: `kungfum`, `centiped`,
+`frogger`, `popeye`, `zaxxon`, `missile`, `joust`, `robotron`, `mario`,
+`timeplt`, `snowbros`, `gng`, `btime`. Entre ellos los dos casos raros que mas
+podian fallar: **`missile`, cuyo bloque es un SHARE de memoria** y no un espacio
+de CPU, y los **Williams** (`joust`, `robotron`), que guardan por nibbles.
+
+Detalle del guion: se toca el **ultimo** byte del bloque, no el primero. En
+muchas placas el primero es el digito mas significativo y cambiarlo da una
+puntuacion absurda que el filtro de plausibilidad tirararia, con lo que la
+prueba diria «falla» por un motivo que no es el que se esta probando.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

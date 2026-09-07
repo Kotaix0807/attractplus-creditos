@@ -79,18 +79,28 @@ def mame_opcion(clave, mame=None):
 def ruta_hi():
     """Donde deja el plugin hiscore sus .hi.
 
-    Ojo: hiscore.ini declara un hi_path, pero el plugin no siempre lo respeta
-    y acaba escribiendo junto a si mismo. Se prueban los dos sitios y gana el
-    que tenga ficheros de verdad.
+    El sitio bueno se le pregunta a MAME: el plugin moderno escribe en
+    **`<homepath>/hiscore`** y nada mas (`init.lua`, get_data_path). El
+    `hi_path` de `hiscore.ini` es de la version VIEJA del plugin y hoy no lo
+    lee nadie -- en la cabina apunta a un directorio que ni existe, mientras
+    los .hi de verdad estan en `<homepath>/hiscore`. Se deja como candidato
+    por si alguna instalacion sigue con el plugin antiguo, pero detras.
+
+    Suponer `~/.mame` no vale: es un enlace en GroovyArcade y en otra maquina
+    puede no serlo. Por eso se saca de `-showconfig`, igual que el rompath.
     """
     candidatos = []
+    casa = mame_opcion("homepath")
+    if casa:
+        candidatos.append(os.path.join(
+            os.path.expandvars(casa.split(";")[0]), "hiscore"))
+    candidatos.append(os.path.expanduser("~/.mame/hiscore"))
     ini = os.path.expanduser("~/.mame/hiscore.ini")
     if os.path.exists(ini):
         for linea in open(ini):
             if linea.startswith("hi_path"):
                 candidatos.append(os.path.expandvars(linea.split(None, 1)[1].strip()))
-    candidatos += [os.path.expanduser("~/.mame/hiscore"),
-                   os.path.expanduser("~/.mame/hi")]
+    candidatos.append(os.path.expanduser("~/.mame/hi"))
     for c in candidatos:
         if os.path.isdir(c) and any(f.endswith(".hi") for f in os.listdir(c)):
             return c
