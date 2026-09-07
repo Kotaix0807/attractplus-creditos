@@ -3684,8 +3684,19 @@ Asi cayeron los dos que faltaban:
   un juego de baloncesto es la magnitud correcta -- y por eso mismo el buscador
   automatico las tiraba, porque exige que la primera pase de 1000.
 
-Las dos van con `confirmado=no` hasta verlas en pantalla: el `neogeo.zip` del
-portatil no sirve para esos sets y hay que probarlas en la cabina.
+Las dos se quedan en **`confirmado=no`, y ahi se quedan**: capturados 170
+segundos de atraccion de cada una en la cabina, **ninguna de las dos enseña su
+tabla**. Street Hoop alterna logo de Data East, titulo, demo de partido y
+pantallas de instrucciones; Samurai Shodown, texto de intro, un combate de
+demostracion y el logo de NeoGeo. Es lo mismo que ya pasaba con `samsho3`.
+
+O sea que en estos juegos **la via de la pantalla esta cerrada** y hay que
+apoyarse en otra cosa. Para `samsho` la hay y es fuerte: las iniciales
+descifran **SNK**, que es el relleno de fabrica de la casa, sobre una escalera
+redonda de 50000/30000/10000. Para `strhoop` es mas debil -- no lleva iniciales
+-- y se queda como lectura plausible, nada mas. La forma de cerrarlas seria que
+alguien juegue y diga su puntuacion, que es lo que desatasco `fatfury1` y
+`samsho3`.
 
 ### Y probar el corpus entero contra un juego no descrito sigue sin servir
 
