@@ -24,7 +24,7 @@ los 58 que tienen decodificador):
     <loop count="N"> ... </loop>   una tabla
 
   type="int"   base=10|16, endianness, decoding-profile=bcd|bcd-le|base-40,
-               nibble-skip=odd|even, byte-skip=0xNN
+               nibble-skip=odd|even, byte-skip=0xNN, byte-trim=0xNN
   type="text"  charset + ascii-offset
   type="raw"   se salta
 
@@ -85,6 +85,14 @@ def _leer_int(trozo, elt):
     base = _entero(elt.get("base"), 10)
     little = elt.get("endianness", "") == "little_endian"
 
+    if elt.get("byte-trim"):
+        # byte-trim dice cual es el byte de RELLENO del campo, y hay que
+        # quitarlo antes de leer. Sin esto se cuela como si fuera una cifra
+        # mas: en Galaga el relleno es 0x24 (el espacio de su juego de
+        # caracteres) y su tabla de fabrica daba 240200000000 en vez de 20000.
+        # Y el fallo es mudo: sale un numero perfectamente formado.
+        relleno = _entero(elt.get("byte-trim"))
+        trozo = bytes(b for b in trozo if b != relleno)
     if elt.get("byte-skip"):
         trozo = _quitar_bytes(trozo, _entero(elt.get("byte-skip")))
     if elt.get("nibble-skip"):

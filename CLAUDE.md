@@ -3550,7 +3550,7 @@ fallo**, porque 5.4 lo permite.
 ## Segunda pasada de puntajes: cuatro fallos mudos y la distincion que faltaba
 
 2026-09-07, trabajando en el portatil sobre un volcado de la cabina (estaba
-grabando videos). De 75 juegos descifrables se paso a **81 de 89**, y casi todo
+grabando videos). De 75 juegos descifrables se paso a **82 de 89**, y casi todo
 el avance vino de dejar de contar mal, no de recetas nuevas.
 
 **Lo primero que hubo que arreglar es que el listado no listaba.** `disponibles`
@@ -3638,11 +3638,32 @@ De los 89 que pueden guardar: **78 con tabla leida, 3 con receta buena y tabla
 vacia, 5 sin estructura** (`gaunt2`, `gaunt22p`, `mk3`, `mvsc`, `ncv2`),
 **1 que no encaja** (`nrallyx`) y **2 sin datos** (`gauntlet`, `gauntlet2p`).
 
-De la auditoria contra la referencia de la comunidad quedan cinco a mirar, y no
-todos son fallos nuestros: `galaga` tiene la captura de fabrica corrupta y **hay
-que rehacerla en la cabina** (su rom no esta en el portatil), `joust` da una
-escalera coherente pero distinta, `punchout` tambien (probablemente otra
-revision de la placa) y `centiped` ya esta explicado.
+### `byte-trim`: el relleno se colaba como una cifra mas
+
+`galaga` daba **240200000000** donde su tabla marca 20000, y yo lo habia dado
+por «captura de fabrica corrupta». No lo era: rehecha en la cabina sale **byte
+por byte identica**. Lo que faltaba era `byte-trim="0x24"`, un atributo que dice
+cual es el byte de RELLENO del campo. En Galaga el relleno es `0x24` -- el
+espacio de su propio juego de caracteres -- y sin quitarlo se lee como si fuera
+un digito mas. Implementado, da **20000 en las cinco posiciones**, exacto.
+
+Lo usan cuatro XML del corpus (`galaga`, `digdug2`, `machomou`, `suprmous`).
+
+> **Regla:** antes de culpar a los datos, agotar el formato. «La captura esta
+> corrupta» es una hipotesis comoda y aqui era falsa; el volcado nuevo era
+> identico al viejo.
+
+### Las tres discrepancias que quedan, y por que no son fallos
+
+- **`centiped`**: leemos las posiciones 4 a 8 porque las tres primeras viven en
+  su `earom`, que aqui esta sin escribir. Ya explicado arriba.
+- **`joust`**: sus bytes codifican `23310, 22917, 22552, 20522, 17635` sin
+  ninguna ambiguedad (nibbles bajos, un digito por nibble). Esos numeros **no
+  redondos son la firma de las tablas de fabrica de Williams**; la referencia
+  trae `4000` cinco veces, que tiene toda la pinta de una tabla BORRADA. Aqui
+  la referencia es la que describe otro estado, no nosotros.
+- **`punchout`**: escalera coherente de 48000 a 47200 contra 88700-84700 de la
+  referencia. Probablemente otra revision de la placa.
 
 ### La regla de los NeoGeo: la tabla vive entre 0x320 y 0x340
 
