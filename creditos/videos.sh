@@ -3,8 +3,9 @@
 #
 #   ./videos.sh pacman dkong       # esos juegos
 #   ./videos.sh                    # todos los de la romlist
-#   ./videos.sh --tira simpsons    # tira de fotogramas para MEDIR el salto a ojo
-#   ./videos.sh --medir            # mide el salto SOLO y lo escribe en arranque.dat
+#   ./videos.sh --tira simpsons    # hoja de contactos de un juego, para ver el salto
+#   ./videos.sh --hojas            # hoja de contactos de todos + fichero de tiempos
+#   ./videos.sh --desde hojas/tiempos.txt   # graba cada juego en el segundo apuntado
 #
 #   FORZAR=1 ./videos.sh simpsons  # rehacer uno (borra el video anterior)
 #
@@ -197,7 +198,7 @@ borrar_videos() {   # $1=juego
 
 # Convierte un AVI crudo de MAME a un mp4 listo para el frontend, cortando
 # desde 'salto' durante 'dura' segundos. Lo usan los DOS modos -- la grabacion
-# normal y --medir --, para que el pipeline de escalado y calidad sea el mismo
+# normal y --desde --, para que el pipeline de escalado y calidad sea el mismo
 # en ambos y no se dupliquen las mismas 20 lineas con dos juegos de trampas.
 #   $1=avi de entrada  $2=juego  $3=salto (s)  $4=dura (s)
 # Deja el mp4 en $DESTINO/$2.mp4. Devuelve 0 si lo consiguio.
@@ -258,192 +259,181 @@ echo "# emulador: $MAME_BIN"
 echo "# roms:     $ROMPATH"
 echo "# destino:  $DESTINO"
 
+# El binario de ImageMagick: 'magick' en la 7, 'montage'/'convert' sueltos en
+# la 6. Se resuelve una vez.
+montador() {
+	if command -v magick >/dev/null;    then echo "magick montage"
+	elif command -v montage >/dev/null; then echo "montage"
+	else return 1; fi
+}
+
+# Hoja de contactos de un AVI: doce fotogramas repartidos por la grabacion,
+# etiquetados con su segundo, para VER de un vistazo en que momento empieza el
+# juego. $1=avi  $2=png de salida  $3=juego (solo para el mensaje).
+# Devuelve por stdout los segundos de cada fotograma, en orden.
+INSTANTES_TIRA="4 8 12 16 20 26 32 38 44 50 56 60"
+hacer_tira() {
+	local avi="$1" salida="$2" T archivos=() t
+	local -a MONTAR; read -ra MONTAR < <( montador ) || {
+		echo "hace falta imagemagick" >&2; return 1; }
+	T=$(mktemp -d /tmp/tira-mame.XXXXXX)
+	for t in $INSTANTES_TIRA; do
+		ffmpeg -y -loglevel error -ss "$t" -i "$avi" -vframes 1 \
+			-vf scale=150:-1 "$T/$t.png" 2>/dev/null && archivos+=( "$T/$t.png" )
+	done
+	# montage rotula con -label pero necesita una fuente; en GroovyArcade no hay
+	# ninguna configurada y sale "unable to read font (null)". Se le da una si el
+	# sistema sabe cual, y si no, la tira sale sin numeros (el orden se sabe por
+	# INSTANTES_TIRA de todas formas).
+	local fuente; fuente="$( fc-match -f '%{file}' sans 2>/dev/null )"
+	if [ -n "$fuente" ] && [ -f "$fuente" ]; then
+		"${MONTAR[@]}" "${archivos[@]}" -tile 4x3 -geometry +4+4 -background gray \
+			-font "$fuente" -pointsize 14 -label '%t s' "$salida" 2>/dev/null
+	fi
+	[ -s "$salida" ] || "${MONTAR[@]}" "${archivos[@]}" -tile 4x3 -geometry +4+4 \
+		-background gray "$salida" 2>/dev/null
+	rm -rf "$T"
+	[ -s "$salida" ]
+}
+
+# creditos.lua, el mismo autoboot que la cabina: arranca cada juego con los
+# ajustes de arranque.dat (velocidad=, segundos=) y tapa la carga. Asi el video
+# se graba del juego arrancado EXACTAMENTE como en la cabina. La carga tapada
+# (negro) se descarta al cortar el clip desde video=.
+CREDITOS_LUA="${CREDITOS_LUA:-$AQUI/creditos.lua}"
+
+# Graba con MAME a un AVI crudo, arrancando el juego con creditos.lua.
+#   $1=juego  $2=segundos a grabar  $3=avi de salida  $4=log
+grabar_avi() {
+	local j="$1" segs="$2" avi="$3" log="$4" ga
+	ga=$(mktemp)   # monedero aislado: no tocar el de verdad al grabar
+	( cd "$MAME_DIR" && env GA_ARCHIVO="$ga" ${GA_VERBOSO:+GA_VERBOSO=1} \
+		xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
+		-video soft -sound none -noswitchres -window -resolution 640x480 \
+		-seconds_to_run "$segs" -nothrottle -aviwrite "$avi" \
+		-autoboot_script "$CREDITOS_LUA" -autoboot_delay 0 > "$log" 2>&1 )
+	rm -f "$ga"
+	[ -s "$avi" ]
+}
+
 case "${1:-}" in
 	-h|--help|--ayuda)
 		sed -n '2,16p' "$0" | sed 's/^# \?//'
 		exit 0 ;;
 	--*)
 		case "$1" in
-			--tira|--medir) ;;
+			--tira|--hojas|--desde) ;;
 			*) echo "opcion desconocida: $1 (prueba --ayuda)" >&2; exit 1 ;;
 		esac ;;
 esac
 
 # --tira <juego>: graba un minuto y saca una tira de fotogramas, para VER en
 # que segundo empieza lo que quieres grabar en vez de adivinarlo.
+# --tira <juego>: hoja de contactos de UN juego, para VER en que segundo empieza
+# lo que quieres grabar en vez de adivinarlo.
 if [ "${1:-}" = "--tira" ]; then
 	[ $# -eq 2 ] || { echo "uso: $0 --tira <juego>" >&2; exit 1; }
 	j="$2"
-	# ImageMagick 7 no instala 'montage' ni 'convert' sueltos: trae un solo
-	# 'magick' que hace de todos. En Ubuntu 24.04 aun es la 6.
-	if command -v magick >/dev/null;   then MONTAR=( magick montage )
-	elif command -v montage >/dev/null; then MONTAR=( montage )
-	else echo "hace falta imagemagick" >&2; exit 1; fi
-
-	T=$(mktemp -d /tmp/tira-mame.XXXXXX)
-	echo "grabando un minuto de $j..."
-	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
-		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run 62 -nothrottle -aviwrite "$T/v.avi" > "$T/mame.log" 2>&1 )
-	[ -s "$T/v.avi" ] || {
+	T=$(mktemp -d /tmp/tira-mame.XXXXXX); trap 'rm -rf "$T"' EXIT
+	echo "grabando ${VENTANA:-62}s de $j (arrancando con creditos.lua)..."
+	grabar_avi "$j" "${VENTANA:-62}" "$T/v.avi" "$T/mame.log" || {
 		echo "no se pudo grabar $j:" >&2
-		grep -iE "not found|missing|fatal|error" "$T/mame.log" | head -3 >&2
-		exit 1
-	}
-
-	ARCHIVOS=(); SEGUNDOS=()
-	for t in 4 8 12 16 20 26 32 38 44 50 56 60; do
-		ffmpeg -y -loglevel error -ss $t -i "$T/v.avi" -vframes 1 \
-			-vf scale=150:-1 "$T/$t.png" 2>/dev/null &&
-			{ ARCHIVOS+=( "$T/$t.png" ); SEGUNDOS+=( "$t" ); }
-	done
-
+		grep -iE "not found|missing|fatal|error" "$T/mame.log" | head -3 >&2; exit 1; }
 	SALIDA="${SALIDA:-$PWD/tira-$j.png}"
-	# montage rotula con -label, pero necesita una fuente y en GroovyArcade no
-	# hay ninguna configurada: suelta "unable to read font (null)" y la tira
-	# sale SIN los segundos, que es justo para lo que sirve. Se le da el
-	# fichero de una fuente si el sistema sabe cual, y pase lo que pase la
-	# correspondencia se imprime tambien por pantalla.
-	FUENTE="$( fc-match -f '%{file}' sans 2>/dev/null )"
-	if [ -n "$FUENTE" ] && [ -f "$FUENTE" ]; then
-		"${MONTAR[@]}" "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 -background gray \
-			-font "$FUENTE" -pointsize 14 -label '%t s' "$SALIDA" 2>/dev/null
-	fi
-	[ -s "$SALIDA" ] || "${MONTAR[@]}" "${ARCHIVOS[@]}" -tile 4x3 -geometry +4+4 \
-		-background gray "$SALIDA"
-	rm -rf "$T"
-
+	hacer_tira "$T/v.avi" "$SALIDA" "$j" || exit 1
 	echo "tira en $SALIDA"
 	echo -n "orden de los fotogramas (4 por fila), en segundos:"
-	for i in "${!SEGUNDOS[@]}"; do
-		[ $(( i % 4 )) -eq 0 ] && printf '\n   '
-		printf '%4s' "${SEGUNDOS[$i]}"
-	done
+	i=0; for t in $INSTANTES_TIRA; do
+		[ $(( i % 4 )) -eq 0 ] && printf '\n   '; printf '%4s' "$t"; i=$((i+1)); done
 	echo
-	echo "Mira en que segundo empieza lo que quieres y apuntalo en $AJUSTES,"
-	echo "en la linea de $j, como  video=<segundos>  (creditos.lua la ignora)."
-	echo "Para probarlo sin tocar el fichero:  SALTO=<segundos> FORZAR=1 $0 $j"
+	echo "Apunta el segundo del gameplay en $AJUSTES, en la linea de $j, como"
+	echo "  video=<segundos>   (o pruebalo sin tocar nada:  SALTO=<n> FORZAR=1 $0 $j)"
 	exit 0
 fi
 
-# --medir [juegos...]: mide SOLO el salto y lo escribe en arranque.dat.
+# --hojas [juegos...]: la hoja de contactos de MUCHOS juegos de una tacada, mas
+# un fichero de tiempos para que apuntes el segundo bueno de cada uno. Es la
+# FASE 1 del flujo semiautomatico:
 #
-# Por que hace falta: de los juegos instalados, la gran mayoria no tiene linea
-# propia en arranque.dat, asi que caian en el salto ciego de 8 s y sus videos
-# empezaban EN LA PANTALLA DE TEST de la placa. Ese era el fallo.
+#   1. ./videos.sh --hojas            -> graba y deja hojas/<juego>.png + hojas/tiempos.txt
+#   2. miras cada hoja y escribes el segundo del GAMEPLAY en tiempos.txt
+#   3. ./videos.sh --desde hojas/tiempos.txt   -> graba cada video en su punto
 #
-# Y no se arregla tirando de 'segundos=', aunque lo parezca: esa clave dice
-# cuando la placa acepta monedas, no cuando empieza algo que merezca la pena
-# grabar. Contra esta lista a los 7 y su demo empieza a los 16. La linea
-# 'defecto' es peor todavia: son 5 s, menos que los 8 de ahora.
-#
-# Lo que se hace es medirlo de verdad, con medir_video.py, y DEJARLO ESCRITO en
-# arranque.dat como 'video=N'. Asi la proxima grabacion ya no mide nada: sale
-# de arranque.dat, que es donde tiene que estar el ajuste de cada juego.
-if [ "${1:-}" = "--medir" ]; then
+# Distinguir "juego jugandose" de "titulo/tabla" a ojo es trivial y 100% fiable;
+# hacerlo con analisis de imagen no lo es (el titulo de Mario parpadea mas que
+# su demo). Por eso la eleccion la haces tu, una vez, mirando las hojas.
+if [ "${1:-}" = "--hojas" ]; then
 	shift
-	VENTANA="${VENTANA:-60}"     # segundos emulados que se graban para medir
-	HOJA="${HOJA:-$PWD/medidas.png}"
-	# Por defecto, de la MISMA grabacion larga que sirve para medir se saca ya
-	# el mp4: un solo arranque del emulador por juego en vez de dos, que en la
-	# cabina (i3 lento) es la mitad de tiempo. SOLO_MEDIR=1 se queda en medir y
-	# escribir arranque.dat, sin grabar el video.
-	GRABAR=1; [ "${SOLO_MEDIR:-0}" = 1 ] && GRABAR=0
+	HOJAS="${HOJAS:-$PWD/hojas}"; mkdir -p "$HOJAS"
+	TIEMPOS="$HOJAS/tiempos.txt"
+	if [ $# -gt 0 ]; then JUEGOS=( "$@" )
+	else mapfile -t JUEGOS < <(cut -d';' -f1 "$ROMLIST" | grep -v '^#'); fi
 
-	if [ $# -gt 0 ]; then
-		JUEGOS=( "$@" )
-	else
-		mapfile -t JUEGOS < <(cut -d';' -f1 "$ROMLIST" | grep -v '^#')
-	fi
+	# El fichero de tiempos se crea si no existe, y NO se pisa si ya esta: asi
+	# puedes parar y seguir sin perder lo que ya apuntaste.
+	[ -f "$TIEMPOS" ] || {
+		echo "# Apunta el segundo donde empieza el GAMEPLAY de cada juego, mirando"  >  "$TIEMPOS"
+		echo "# su hoja en $HOJAS/<juego>.png. Deja en blanco para saltarlo."        >> "$TIEMPOS"
+		echo "# Formato:  juego=segundos     Ejemplo:  galaga=20"                     >> "$TIEMPOS"
+	}
 
-	T=$(mktemp -d /tmp/medir-mame.XXXXXX)
-	trap 'rm -rf "$T"' EXIT
-	medidos=0; saltados=0; fallos=0
-	MUESTRAS=(); ETIQUETAS=()
-
-	echo "# midiendo ${#JUEGOS[@]} juego(s), ventana de ${VENTANA}s emulados"
+	hechas=0; saltadas=0; fallos=0
 	for j in "${JUEGOS[@]}"; do
 		[ -n "$j" ] || continue
-		if [ -z "${FORZAR:-}" ] && ya=$( clave_de_arranque "$j" video ); then
-			echo "  $j: ya tenia video=$ya (FORZAR=1 para volver a medirlo)"
-			saltados=$((saltados+1)); continue
+		if [ -z "${FORZAR:-}" ] && [ -s "$HOJAS/$j.png" ]; then
+			echo "  $j: ya tenia hoja (FORZAR=1 para rehacerla)"; saltadas=$((saltadas+1)); continue
 		fi
-
-		echo -n "  $j: grabando... "
-		( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
-			-video soft -sound none -noswitchres -window -resolution 640x480 \
-			-seconds_to_run "$VENTANA" -nothrottle \
-			-aviwrite "$T/$j.avi" > "$T/$j.log" 2>&1 )
-		if [ ! -s "$T/$j.avi" ]; then
+		echo -n "  $j: grabando ${VENTANA:-62}s... "
+		T=$(mktemp -d /tmp/hojas-mame.XXXXXX)
+		if ! grabar_avi "$j" "${VENTANA:-62}" "$T/v.avi" "$T/mame.log"; then
 			echo "no se pudo grabar"
-			grep -iE "not found|missing|fatal|required|unknown system" "$T/$j.log" |
-				head -2 | sed 's/^/      /'
-			fallos=$((fallos+1)); rm -f "$T/$j.avi" "$T/$j.log"; continue
+			grep -iE "not found|missing|fatal|required|unknown system" "$T/mame.log" | head -2 | sed 's/^/      /'
+			fallos=$((fallos+1)); rm -rf "$T"; continue
 		fi
-
-		echo -n "midiendo... "
-		punto=$( "$AQUI/medir_video.py" "$T/$j.avi" "$DURA" 2>"$T/$j.med" )
-		detalle=$( sed 's/^# //' "$T/$j.med" 2>/dev/null | head -1 )
-		if [ -z "$punto" ]; then
-			echo "no pude medirlo"; fallos=$((fallos+1))
-			rm -f "$T/$j.avi" "$T/$j.log" "$T/$j.med"; continue
-		fi
-
-		# El fotograma elegido, para poder mirarlo despues: una eleccion no
-		# esta confirmada hasta que se ha visto, igual que en creditos.dat.
-		if ffmpeg -v error -y -ss "$punto" -i "$T/$j.avi" -vframes 1 \
-			-vf scale=150:-1 "$T/m_$j.png" 2>/dev/null && [ -s "$T/m_$j.png" ]; then
-			MUESTRAS+=( "$T/m_$j.png" ); ETIQUETAS+=( "$j:$punto" )
-		fi
-		rm -f "$T/$j.log" "$T/$j.med"
-
-		"$AQUI/escribir_ajuste.py" "$AJUSTES" "$j" video "$punto" || {
-			echo "no pude escribir en $AJUSTES"; fallos=$((fallos+1))
-			rm -f "$T/$j.avi"; continue; }
-
-		# Paso unico: el mp4 sale del avi que ya tenemos, sin volver a arrancar
-		# el emulador. La duracion sale de arranque.dat si el juego la fija, o
-		# el defecto; si el punto medido + la duracion no cabe en la ventana
-		# grabada, se recorta a lo que haya.
-		if [ "$GRABAR" = 1 ]; then
-			dura=$( clave_de_arranque "$j" videodura ) || dura=$DURA
-			libre=$(( VENTANA - punto ))
-			[ "$dura" -gt "$libre" ] && dura=$libre
-			if [ "$dura" -ge 3 ] && convertir_a_mp4 "$T/$j.avi" "$j" "$punto" "$dura"; then
-				echo "video=$punto  $(du -h "$DESTINO/$j.mp4" | cut -f1)  ($detalle)"
-			else
-				echo "video=$punto  (medido; no se pudo grabar el video; $detalle)"
-			fi
+		if hacer_tira "$T/v.avi" "$HOJAS/$j.png" "$j"; then
+			# sugerencia: si ya habia un video= apuntado, se respeta como valor de partida
+			ya=$( clave_de_arranque "$j" video ) || ya=""
+			grep -q "^$j=" "$TIEMPOS" 2>/dev/null || echo "$j=$ya" >> "$TIEMPOS"
+			echo "hoja lista"; hechas=$((hechas+1))
 		else
-			echo "video=$punto   ($detalle)"
+			echo "no pude hacer la hoja"; fallos=$((fallos+1))
 		fi
-		rm -f "$T/$j.avi"
-		medidos=$((medidos+1))
+		rm -rf "$T"
 	done
-
-	# Hoja de contactos: 95 juegos en una imagen se revisan de un vistazo.
-	if [ ${#MUESTRAS[@]} -gt 0 ]; then
-		if command -v magick >/dev/null;    then MONTAR=( magick montage )
-		elif command -v montage >/dev/null; then MONTAR=( montage )
-		else MONTAR=(); fi
-		if [ ${#MONTAR[@]} -gt 0 ]; then
-			"${MONTAR[@]}" "${MUESTRAS[@]}" -tile 6x -geometry +3+3 \
-				-background gray20 "$HOJA" 2>/dev/null &&
-				echo "# hoja de contactos: $HOJA"
-			echo -n "# orden (6 por fila):"
-			for i in "${!ETIQUETAS[@]}"; do
-				[ $(( i % 6 )) -eq 0 ] && printf '\n   '
-				printf ' %-14s' "${ETIQUETAS[$i]}"
-			done
-			echo
-		fi
-	fi
-
-	echo "# $medidos medidos, $saltados ya estaban, $fallos fallaron"
-	echo "# escrito en $AJUSTES. Corrige a mano el que no te guste y vuelve a"
-	echo "# grabar con:  FORZAR=1 $0 <juego>"
+	echo "# $hechas hojas nuevas, $saltadas ya estaban, $fallos fallaron"
+	echo "# Ahora mira las hojas en $HOJAS/ y rellena $TIEMPOS,"
+	echo "# luego:  ./videos.sh --desde $TIEMPOS"
 	exit 0
 fi
+
+# --desde <tiempos.txt>: FASE 2. Lee 'juego=segundos', escribe cada uno en
+# arranque.dat como video= y graba su mp4 cortando en ese punto. Los que esten
+# en blanco se saltan (aun no los has mirado).
+if [ "${1:-}" = "--desde" ]; then
+	[ $# -eq 2 ] && [ -f "$2" ] || { echo "uso: $0 --desde <tiempos.txt>" >&2; exit 1; }
+	grabados=0; saltados=0; fallos=0
+	# El fichero se lee por el descriptor 3, no por stdin: si fuera stdin, el
+	# MAME (o ffmpeg) que graba cada juego se comeria el resto de las lineas y
+	# solo se procesaria el primero. Paso una pasada averiguarlo.
+	while IFS='=' read -r j t <&3; do
+		j="${j%%[[:space:]]*}"; t="${t//[[:space:]]/}"
+		[ -n "$j" ] || continue
+		case "$j" in \#*) continue ;; esac
+		if [ -z "$t" ]; then saltados=$((saltados+1)); continue; fi
+		case "$t" in *[!0-9]*) echo "  $j: '$t' no es un numero, lo salto"; fallos=$((fallos+1)); continue ;; esac
+		"$AQUI/escribir_ajuste.py" "$AJUSTES" "$j" video "$t" || {
+			echo "  $j: no pude escribir en $AJUSTES"; fallos=$((fallos+1)); continue; }
+		echo "  $j: video=$t, grabando..."
+		if FORZAR=1 SALTO="$t" "$0" "$j" </dev/null >/dev/null 2>&1 && [ -s "$DESTINO/$j.mp4" ]; then
+			echo "     $(du -h "$DESTINO/$j.mp4" | cut -f1)"; grabados=$((grabados+1))
+		else
+			echo "     fallo la grabacion"; fallos=$((fallos+1))
+		fi
+	done 3< "$2"
+	echo "# $grabados grabados, $saltados en blanco (sin apuntar), $fallos fallaron"
+	exit 0
+fi
+
 
 if [ $# -gt 0 ]; then
 	JUEGOS=( "$@" )
@@ -492,10 +482,7 @@ for j in "${JUEGOS[@]}"; do
 
 	# El avi sale sin comprimir (unos 11 MB por segundo), por eso va a un
 	# temporal y se borra en cuanto se convierte.
-	( cd "$MAME_DIR" && xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
-		-video soft -sound none -noswitchres -window -resolution 640x480 \
-		-seconds_to_run $(( salto + dura + 2 )) -nothrottle \
-		-aviwrite "$TMP/$j.avi" > "$TMP/$j.log" 2>&1 )
+	grabar_avi "$j" "$(( salto + dura + 2 ))" "$TMP/$j.avi" "$TMP/$j.log"
 
 	if [ ! -s "$TMP/$j.avi" ]; then
 		# Antes esto decia solo "no se pudo grabar" y habia que adivinar por
