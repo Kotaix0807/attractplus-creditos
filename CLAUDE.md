@@ -677,6 +677,53 @@ salir durante el arranque dejaría la moneda muerta para ese juego.
 La salida buena es quitar el mapeo por juego (`Input (this Machine)` en MAME) y
 dejar el general, que es el que la cabina usa de todas formas.
 
+## Ms. Pac-Man se pasaba los niveles sola: el Rack Test
+
+Traido por Eloy el 2026-09-06: *«a penas entras, pasa al ready y el nivel se
+pasa»*. No era nuestro codigo ni la emulacion: era un **interruptor de la placa
+guardado en el `.cfg` del juego**.
+
+La placa de Pac-Man lleva un `Rack Test (Cheat)` que avanza de nivel solo, para
+que el tecnico pruebe las pantallas sin jugarlas. En `pacman.cpp:1575` esta en
+**`:IN0`, mascara `0x10`** -- pegado a COIN1 (`0x20`) -- y se declara
+`PORT_DIPNAME`, asi que **MAME lo guarda en el `.cfg`**:
+
+```xml
+<port tag=":IN0" type="DIPSWITCH" mask="16" defvalue="16" value="0" />
+```
+
+`0x10` es Off y `0x00` es On, o sea que ese `value="0"` lo tenia **encendido**.
+
+**Medido en la cabina**, metiendo moneda y START desde Lua y sin tocar el mando,
+trazando el byte del nivel (`4e13`):
+
+| | frame 720 | 840 | 1680 | 1920 | 2160 |
+|---|---|---|---|---|---|
+| con el `.cfg` viejo | 0 | **1** | **2** | **3** | **4** |
+| corregido | 0 | 0 | 0 | 0 | 0 |
+
+Corregido, las vidas (`4e14`) bajan 3-2-1-0 como debe: Ms. Pac-Man se muere sola
+por no moverse, que es lo correcto.
+
+**Arreglarlo es poner el valor de fabrica**, no borrar la linea: al salir limpio
+MAME reescribe el `.cfg` y **la quita el solo**, porque ya no difiere del
+defecto. El fichero paso de 951 a 835 bytes sin tocarlo mas.
+
+Dos cosas que conviene saber:
+
+- **Se enciende con F1 y se queda.** El campo lleva `PORT_CODE(KEYCODE_F1)` y
+  `PORT_TOGGLE`, asi que un F1 despistado con un teclado enchufado lo deja
+  puesto para siempre. En una cabina es un fallo mudo y dificil de atribuir.
+- **Lo tienen mas juegos**: `pengo`, `jrpacman` y `schick`, en mascaras
+  distintas (`0x20`, `0x40`, `0x80`). De los `.cfg` de la cabina solo `mspacman`
+  estaba tocado; los otros tres `DIPSWITCH` guardados (`missile`, `wboy`,
+  `dlair`) son tarifa y ajustes legitimos.
+
+Al buscarlo se descarto lo nuestro leyendo el codigo, y merece la pena por que:
+`tarifa.lua` y `poner_1c1c.lua` solo escriben el DIP cuyos textos parsean como
+tarifa, y `Off`/`On` no parsea; y el barrido de `creditos.lua` solo escribe en
+`4e6e`.
+
 ## El cerrojo del botón de moneda
 
 `cerrojo.lua`, pedido por Eloy el 2026-08-28: *«una vez ingresado en el juego se
@@ -3499,6 +3546,110 @@ avisando, en vez de romper la tanda. Los 9 ficheros compilan.
 
 Ojo: eso también significa que **probar contra nuestro binario no detecta este
 fallo**, porque 5.4 lo permite.
+
+## Segunda pasada de puntajes: cuatro fallos mudos y la distincion que faltaba
+
+2026-09-07, trabajando en el portatil sobre un volcado de la cabina (estaba
+grabando videos). De 75 juegos descifrables se paso a **79 de 89**, y casi todo
+el avance vino de dejar de contar mal, no de recetas nuevas.
+
+**Lo primero que hubo que arreglar es que el listado no listaba.** `disponibles`
+salia solo de los ficheros `.hi`, y hoy en la cabina **no hay ni uno**: el
+plugin `hiscore` solo escribe cuando la tabla CAMBIA, asi que un juego que nadie
+ha superado no deja fichero. Con eso la orden por defecto no exportaba nada
+teniendo 59 juegos con su tabla en la memoria persistente. El universo son los
+tres sitios a la vez: `.hi`, tabla de fabrica capturada y NVRAM.
+
+### «Descifra pero esta vacia» no es «no se descifra»
+
+Tres juegos (`berzerk`, `tapper`, `rbtapper`) figuraban como fracasos y estaban
+resueltos: su tabla sale entera a cero porque **nadie ha jugado**. La referencia
+de hi2txt lo confirma -- berzerk trae 5 posiciones a 0 de fabrica y tapper no
+trae tabla ninguna -- asi que lo que leiamos era exacto.
+
+Cuidado con donde se comprueba: la poda de posiciones vacias del final deja la
+lista a cero, asi que mirarlo despues no ve nada. Hay que mirarlo **antes de
+podar**.
+
+### La primera fuente con bytes no es la fuente buena
+
+`datos_de` se quedaba con el primer fichero que no estuviera vacio. Que un
+fichero tenga bytes no significa que lleve la tabla: **la NVRAM de Golden Axe
+solo guarda la fuerza de los tres personajes** -- su XML lo dice con todas las
+letras -- y las puntuaciones irian en el `.hi`. Cogiendo la NVRAM por ir primera
+en el XML, ese juego no daba nada teniendo el otro candidato al lado. Ahora se
+prueban todas las fuentes y vale la que **descifre**, no la que pese.
+
+### `<loop start="N">`: publicabamos la cuarta posicion como si fuera el record
+
+Centipede reparte su tabla en dos sitios: las **tres mejores en la `earom`** y de
+la cuarta a la octava en el `.hi` (`<loop count="5" start="3">`). Su `earom`
+aqui esta sin escribir, asi que leiamos las cinco de abajo... y las numerabamos
+desde 1. El fallo es del tipo peor: no da error y el numero es real, solo que no
+es el record. Ahora se respeta `start` y ese juego publica las posiciones 4 a 8.
+
+### Truncar por orden tiraba trece posiciones buenas para librarse de dos
+
+Mortal Kombat descifra 15 posiciones y **13 coinciden exactas con la referencia**;
+solo la 2 y la 6 salen mal. Como el corte se hacia en la primera fila
+desordenada, quedaban dos. Ahora se busca la **subsecuencia ordenada mas larga**
+y se tiran las sueltas, con un tope de un cuarto; con mas fallos que eso se
+vuelve al corte seco, que es lo que mantiene limpias las tablas cuyo XML declara
+mas posiciones de las que hay.
+
+Ojo con la version codiciosa, que fue mi primer intento: `12700` tambien «baja»
+respecto a la anterior, asi que se quedaba con la fila mala y tiraba las buenas
+de detras. Y el sentido de la tabla lo decide la **mayoria** de los pares, no el
+primero: si justo la posicion 2 es la que falla, mirar solo las dos primeras da
+el sentido al reves.
+
+Medido antes de quedarselo: mk y mk2 pasan de 2 posiciones a 13 y la cobertura
+no baja ni un juego.
+
+### Lo que se ha dado por NO GUARDAR, y por que
+
+Es la otra mitad del encargo, y conviene que quede el motivo:
+
+| juego | por que se excluye |
+|---|---|
+| `goldnaxe` | su bloque son las FUERZAS de los tres personajes (`01f4` = 500, que la referencia enseña como «50.0»), no una tabla |
+| `polepos` | 100 valores de relleno bajando de tres en tres y ningun nombre |
+| `neogeo` | es la BIOS, no un juego |
+| `kinst`, `lair`, `mt_srage` | sin ranking |
+
+Y `mk3` se queda sin receta con motivo medido: **150 s de atraccion capturados y
+no enseña ninguna tabla** (logo, historia, biografias y demo), y su NVRAM no da
+una lectura coherente.
+
+**Trampa al capturar:** MK3 arrancado con una NVRAM vacia se queda en
+«CMOS INVALID -- ANY BUTTON TO CONTINUE» y no llega nunca a la atraccion. Hay
+que darle su NVRAM y aporrear un boton los primeros segundos.
+
+### Las tres herramientas ya no suponen donde viven los datos
+
+`puntajes.py` acepta `--nvram`, y `buscar_tabla.py` y `auditar_puntajes.py`
+sacan las rutas del sitio del script y del entorno en vez de tenerlas clavadas
+a una copia concreta del repo. Sin eso no se puede descifrar un volcado de la
+cabina desde otra maquina, que es justo lo que hubo que hacer.
+
+### Lo que queda, y donde esta el limite
+
+De los 89 que pueden guardar: **76 con tabla leida, 3 con receta buena y tabla
+vacia, 7 sin estructura** (`gaunt2`, `gaunt22p`, `mk3`, `mvsc`, `ncv2`,
+`samsho`, `strhoop`), **1 que no encaja** (`nrallyx`) y **2 sin datos**
+(`gauntlet`, `gauntlet2p`).
+
+De la auditoria contra la referencia de la comunidad quedan cinco a mirar, y no
+todos son fallos nuestros: `galaga` tiene la captura de fabrica corrupta y **hay
+que rehacerla en la cabina** (su rom no esta en el portatil), `joust` da una
+escalera coherente pero distinta, `punchout` tambien (probablemente otra
+revision de la placa) y `centiped` ya esta explicado.
+
+`strhoop` tiene candidata a medio confirmar: 5 entradas de 8 bytes desde `0x327`
+con el `saveram` intercambiado por parejas, escalera 60/50/40/30/20, que para un
+juego de baloncesto es plausible. **No se ha metido en `puntajes.dat`** porque
+no se ha podido ver en pantalla: el `neogeo.zip` del portatil no vale para ese
+set. Es lo primero que hay que probar en la cabina.
 
 ## Compilar GroovyMAME parcheado en GroovyArcade
 

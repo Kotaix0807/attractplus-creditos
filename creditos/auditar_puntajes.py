@@ -4,20 +4,39 @@ trae ya descifrada. Es una referencia INDEPENDIENTE: si coinciden, la receta
 es correcta; si no, hay algo que mirar."""
 import json, os, sys, re
 import xml.etree.ElementTree as ET
-sys.path.insert(0, os.path.expanduser("~/attractplus-creditos/creditos"))
-os.chdir(os.path.expanduser("~/attractplus-creditos/creditos"))
+# Las rutas salen de donde esta el script y del entorno, no de una copia
+# concreta del repo: asi la auditoria corre igual en la cabina y sobre un
+# volcado suyo traido a otra maquina.
+#   HI2TXT_DB / --hi2txt   la base de estructuras (su hermana db_defaults es
+#                          la referencia contra la que se compara)
+#   NVRAM_PATH             carpeta con la memoria persistente
+#   HI_PATH                carpeta de los .hi
+AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, AQUI)
+os.chdir(AQUI)
 import importlib.util
-spec = importlib.util.spec_from_file_location("pj", "puntajes.py")
+spec = importlib.util.spec_from_file_location("pj", os.path.join(AQUI, "puntajes.py"))
 pj = importlib.util.module_from_spec(spec); spec.loader.exec_module(pj)
 import hi2txt
-pj.DB_HI2TXT = hi2txt.buscar_db()
-DEF = "/tmp/h2t/src/main/db_defaults"
-bloques = pj.leer_hiscore_dat("/usr/lib/mame/plugins/hiscore/hiscore.dat")
+_db = None
+if "--hi2txt" in sys.argv:
+    _db = sys.argv[sys.argv.index("--hi2txt") + 1]
+_db = _db or os.environ.get("HI2TXT_DB") or hi2txt.buscar_db()
+pj.DB_HI2TXT = _db
+DEF = os.path.join(os.path.dirname(_db), "db_defaults") if _db else ""
+if os.environ.get("NVRAM_PATH"):
+    pj.DIR_NVRAM = os.path.expanduser(os.environ["NVRAM_PATH"])
+bloques = pj.leer_hiscore_dat(pj.ruta_hiscore_dat())
 recetas = pj.leer_puntajes_dat("puntajes.dat")
 fabrica = json.load(open("puntajes_fabrica.json")); pj.FABRICA = fabrica
-dir_hi = pj.ruta_hi()
-juegos = [l.split(";")[0] for l in
-          open(os.path.expanduser("~/.attract/romlists/groovymame.txt"))][1:]
+dir_hi = os.environ.get("HI_PATH") or pj.ruta_hi()
+# El universo son los juegos con datos en cualquiera de los tres sitios, la
+# misma regla que usa puntajes.py --listar.
+juegos = sorted({f[:-3] for f in os.listdir(dir_hi) if f.endswith(".hi")}
+                | set(fabrica)
+                | ({d for d in os.listdir(pj.DIR_NVRAM)
+                    if os.path.isdir(os.path.join(pj.DIR_NVRAM, d))}
+                   if os.path.isdir(pj.DIR_NVRAM) else set()))
 # Jugados por Eloy o por mis pruebas: su tabla YA NO es la de fabrica.
 TOCADOS = {"pacman","mspacman","asteroid","samsho3","fatfury1","samsho2",
            "btoads","gauntlet","gauntlet2p","samsho","strhoop","doubledr","1943"}

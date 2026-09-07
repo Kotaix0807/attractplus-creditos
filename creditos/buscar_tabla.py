@@ -139,13 +139,18 @@ def analiza(nombre, datos):
 
 if __name__ == "__main__":
     import glob
-    aqui = os.path.expanduser("~/attractplus-creditos/creditos/puntajes_fabrica.json")
+    # Las rutas salen de donde esta el script y de NVRAM_PATH, no de una copia
+    # concreta del repo: asi el mismo fichero sirve en la cabina y al descifrar
+    # un volcado suyo desde otra maquina.
+    aqui = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "puntajes_fabrica.json")
     fab = json.load(open(aqui)) if os.path.exists(aqui) else {}
+    dir_nvram = os.path.expanduser(os.environ.get("NVRAM_PATH", "~/.mame/nvram"))
     for j in sys.argv[1:]:
         vistos = False
         fuentes = []
         if j in fab: fuentes.append(bytes.fromhex(fab[j]))
-        for f in sorted(glob.glob(os.path.expanduser(f"~/.mame/nvram/{j}/*"))):
+        for f in sorted(glob.glob(os.path.join(dir_nvram, j, "*"))):
             if 0 < os.path.getsize(f) < 200000:
                 fuentes.append(open(f, "rb").read())
         for d in fuentes:

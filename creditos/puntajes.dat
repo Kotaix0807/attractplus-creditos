@@ -264,3 +264,9 @@ samsho2 fuente=saveram swap=2 desde=0x33a entradas=3 bytes=2 puntos=0,2,bcd conf
 # un x100 (330000), pero eso hay que verlo en el marcador y no suponerlo -- con
 # dkong razone justo asi y me equivoque.
 btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,ascii orden=asc confirmado=no
+
+# galaxian: su bloque de hiscore.dat son 3 bytes y el XML de hi2txt declara un
+# campo de 4, asi que ahi no encaja y no descifraba. Es una sola puntuacion en
+# BCD little-endian. De fabrica vale 0, y eso coincide con la referencia de
+# hi2txt (1 fila, SCORE 0).
+galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=no

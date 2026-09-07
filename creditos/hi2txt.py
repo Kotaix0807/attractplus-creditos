@@ -156,8 +156,15 @@ def _recorrer(nodo, datos, pos, charsets, filas, sueltos, dentro_bucle=None):
     for hijo in nodo:
         if hijo.tag == "loop":
             n = _entero(hijo.get("count"), 0)
+            # 'start' dice en que posicion de la tabla empieza este bucle, y
+            # sin el las posiciones se numeran mal EN SILENCIO. Centipede es
+            # el caso: sus tres mejores viven en la earom y el .hi guarda de
+            # la 4a a la 8a (<loop count="5" start="3">), asi que numerando
+            # desde 1 su cuarta puntuacion se publicaba como si fuera el
+            # record de la maquina.
+            desde = _entero(hijo.get("start"), 0)
             for i in range(n):
-                fila = {}
+                fila = {"__puesto": desde + i + 1}
                 try:
                     pos = _recorrer(hijo, datos, pos, charsets, filas,
                                     sueltos, fila)
@@ -168,7 +175,7 @@ def _recorrer(nodo, datos, pos, charsets, filas, sueltos, dentro_bucle=None):
                     # quedarse con las posiciones completas que rendirse y no
                     # dar ninguna.
                     break
-                if fila:
+                if len(fila) > 1:          # algo mas que el numero de puesto
                     filas.append(fila)
         elif hijo.tag == "elt":
             tam = _entero(hijo.get("size"), 0)
@@ -404,7 +411,7 @@ def puntuaciones(ruta_xml, datos, fuente=None):
             nom = next((v for k, v in f.items()
                         if ("NAME" in k.upper() or "INITIAL" in k.upper())
                         and isinstance(v, str)), None)
-        fila = {"puesto": i, "puntos": punt}
+        fila = {"puesto": f.get("__puesto", i), "puntos": punt}
         if nom is not None:
             fila["nombre"] = nom
         salida.append(fila)

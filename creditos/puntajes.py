@@ -540,6 +540,10 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                "doubledr"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
+# Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro
+# sitio con --nvram: asi se descifra un volcado de la cabina desde otra maquina,
+# sin tener que trabajar sobre la que esta jugando alguien.
+DIR_NVRAM = os.path.expanduser("~/.mame/nvram")
 FABRICA = {}              # tablas leidas de la RAM con --fabrica
 
 
@@ -561,11 +565,48 @@ def _cortar_donde_deja_de_ordenar(filas):
     if len(filas) < 3:
         return filas
     p = [f["puntos"] for f in filas]
-    baja = p[0] >= p[1]
+    # El sentido lo decide la mayoria, no el primer par: si justo la posicion 2
+    # es la que se descifra mal, mirar solo p[0] y p[1] da el sentido al reves
+    # y se corta en la primera.
+    baja = sum(p[i] >= p[i + 1] for i in range(len(p) - 1)) >= len(p) / 2
+
+    def encaja(anterior, v):
+        return (anterior >= v) if baja else (anterior <= v)
+
+    # Primero se intenta SALVAR la tabla tirando las filas sueltas que rompen
+    # el orden, en vez de truncar ahi mismo. Mortal Kombat es el caso: de sus
+    # 15 posiciones, 13 coinciden EXACTAS con la referencia de hi2txt y solo
+    # la 2 y la 6 se descifran mal, pero al truncar se perdian las trece.
+    #
+    # Se busca la subsecuencia ordenada mas larga, no el primer tramo que
+    # encaje: quedarse con lo primero que cuadre elige la fila mala (12700
+    # tambien "baja" respecto a la anterior) y tira las buenas detras.
+    mejor_hasta = [1] * len(p)
+    previo = [-1] * len(p)
+    for i in range(len(p)):
+        for j in range(i):
+            if encaja(p[j], p[i]) and mejor_hasta[j] + 1 > mejor_hasta[i]:
+                mejor_hasta[i], previo[i] = mejor_hasta[j] + 1, j
+    fin_mejor = max(range(len(p)), key=lambda i: mejor_hasta[i])
+    cadena = []
+    while fin_mejor != -1:
+        cadena.append(fin_mejor)
+        fin_mejor = previo[fin_mejor]
+    cadena.reverse()
+    # El tope de un cuarto es lo que separa "una tabla con dos erratas" de
+    # "esto no era una tabla": con mas fallos que eso, se vuelve al corte seco,
+    # que es lo que mantiene limpias las tablas cuyo XML declara de mas.
+    if 0 < len(p) - len(cadena) <= len(p) / 4 and len(cadena) >= 3:
+        return [filas[i] for i in cadena]
+
     fin = 1
-    while fin < len(p) and ((p[fin - 1] >= p[fin]) if baja else (p[fin - 1] <= p[fin])):
+    while fin < len(p) and encaja(p[fin - 1], p[fin]):
         fin += 1
     return filas[:fin]
+
+
+# Marca de "la receta va, pero no hay nada que leer todavia".
+VACIA = "tabla vacia: la receta funciona, nadie ha jugado todavia"
 
 
 def _parece_tabla(filas):
@@ -595,7 +636,7 @@ def _parece_tabla(filas):
     return baja or sube
 
 
-def datos_de(juego, cfg, dir_hi, fabrica=None):
+def candidatos_de(juego, cfg, dir_hi, fabrica=None):
     """De donde salen los bytes de ese juego. Devuelve (datos, origen, aviso).
 
     Hay TRES sitios, y el orden lo decide el XML de hi2txt, no una lista fija:
@@ -613,7 +654,7 @@ def datos_de(juego, cfg, dir_hi, fabrica=None):
     """
     fuente = (cfg or {}).get("fuente", "auto")
     hi = os.path.join(dir_hi, juego + ".hi")
-    carpeta = os.path.expanduser(f"~/.mame/nvram/{juego}")
+    carpeta = os.path.join(DIR_NVRAM, juego)
 
     def leer(ruta):
         if not (os.path.exists(ruta) and os.path.getsize(ruta)):
@@ -648,20 +689,23 @@ def datos_de(juego, cfg, dir_hi, fabrica=None):
     sueltos = (sorted(os.listdir(carpeta))
                if not quiere and os.path.isdir(carpeta) else [])
     orden = quiere or [".hi"]
+    candidatos = []
     for nombre in orden + ([".hi"] if not quiere else []) + sueltos:
         if fuente not in ("auto", "hi", "nvram", nombre):
             continue
         if nombre == ".hi":
             d = leer(hi)
             if d:
-                return d, "hi", None
-            if fabrica and juego in fabrica:
-                return bytes.fromhex(fabrica[juego]), "fabrica", None
+                candidatos.append((d, "hi"))
+            elif fabrica and juego in fabrica:
+                candidatos.append((bytes.fromhex(fabrica[juego]), "fabrica"))
         else:
             d = leer(os.path.join(carpeta, nombre))
             if d:
-                return d, nombre, None
-    return None, None, "sin datos guardados todavia"
+                candidatos.append((d, nombre))
+    if not candidatos:
+        return [], "sin datos guardados todavia"
+    return candidatos, None
 
 
 def puntajes_de(juego, bloques, cfg, dir_hi):
@@ -673,9 +717,29 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
     yo habia comprobado contra el marcador en pantalla, hi2txt acierta los 12
     que tiene descritos, al numero exacto.
     """
-    datos, origen, aviso = datos_de(juego, cfg, dir_hi, FABRICA)
-    if datos is None:
+    candidatos, aviso = candidatos_de(juego, cfg, dir_hi, FABRICA)
+    if not candidatos:
         return None, None, aviso
+
+    # Se prueba CADA fuente hasta que una descifre, en vez de quedarse con la
+    # primera que tenga bytes. Que un fichero no este vacio no significa que
+    # lleve la tabla: la nvram de Golden Axe solo guarda la fuerza de los tres
+    # personajes -- su XML lo dice literalmente -- y las puntuaciones estan en
+    # el .hi. Quedandose con la nvram por ir primera en el XML, ese juego no
+    # daba ninguna tabla teniendo el dato bueno al lado.
+    ultimo = (None, None, aviso)
+    for datos, origen in candidatos:
+        filas, org, av = _descifrar_fuente(juego, bloques, cfg, datos, origen)
+        if filas:
+            return filas, org, av
+        if ultimo[2] is None or ultimo[0] is None:
+            ultimo = (None, org, av)
+    return ultimo
+
+
+def _descifrar_fuente(juego, bloques, cfg, datos, origen):
+    """Intenta descifrar UNA fuente concreta. Misma respuesta que puntajes_de."""
+    aviso = None
 
     if DB_HI2TXT:
         xml = os.path.join(DB_HI2TXT, juego + ".xml")
@@ -684,7 +748,19 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
                 import hi2txt
                 filas, _ = hi2txt.puntuaciones(
                     xml, datos, ".hi" if origen in ("hi", "fabrica") else origen)
+                # Una tabla que descifra pero sale toda a cero NO es un
+                # fallo de la receta: es que nadie ha jugado. Distinguirlo
+                # importa para el informe, porque si no esos juegos figuran
+                # como "no se sabe descifrar" cuando en realidad estan
+                # resueltos. Se mira ANTES de podar, que es justo lo que deja
+                # la lista vacia. La referencia de hi2txt lo confirma en
+                # berzerk (5 posiciones a 0) y en tapper (tabla de fabrica
+                # vacia del todo).
+                vacia = bool(filas) and max(
+                    (f["puntos"] for f in filas), default=0) <= 0
                 filas = _cortar_donde_deja_de_ordenar(_recortar(filas))
+                if vacia:
+                    return None, origen, VACIA
                 if filas and _parece_tabla(filas):
                     for f in filas:
                         f["receta"] = "hi2txt"
@@ -739,6 +815,15 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
         return descifrar(trozo, cfg), origen, None
     except RecetaNoEncaja as e:
         return None, origen, f"la receta no encaja con estos datos ({e})"
+
+
+def datos_de(juego, cfg, dir_hi, fabrica=None):
+    """El primer candidato, para quien solo quiera unos bytes con los que
+    trastear (--detectar, --proponer). Devuelve (datos, origen, aviso)."""
+    cands, aviso = candidatos_de(juego, cfg, dir_hi, fabrica)
+    if not cands:
+        return None, None, aviso
+    return cands[0][0], cands[0][1], None
 
 
 def marcar_defectos(juego, filas, defectos):
@@ -808,6 +893,16 @@ def capturar_fabrica(juegos, bloques, mame, rompath):
     return salida
 
 
+def _fabrica_disponible():
+    """Juegos con tabla de fabrica capturada. Se lee aqui porque la lista de
+    juegos se arma antes de cargar el fichero entero."""
+    f = os.path.join(AQUI, "puntajes_fabrica.json")
+    try:
+        return list(json.load(open(f)))
+    except Exception:
+        return []
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("juegos", nargs="*")
@@ -825,6 +920,9 @@ def main():
     ap.add_argument("--salida", default=os.environ.get(
         "SALIDA", os.path.expanduser("~/.attract/puntajes.json")))
     ap.add_argument("--hi", default=os.environ.get("HI_PATH"))
+    ap.add_argument("--nvram", default=os.environ.get("NVRAM_PATH"),
+                    help="carpeta con la memoria persistente (por defecto "
+                         "~/.mame/nvram); util para descifrar un volcado")
     ap.add_argument("--hi2txt", default=None,
                     help="carpeta db/ de hi2txt-xml (estructuras de ~3100 juegos)")
     ap.add_argument("-h", "--help", action="store_true")
@@ -844,7 +942,9 @@ def main():
               file=sys.stderr)
         return 1
 
-    global DB_HI2TXT
+    global DB_HI2TXT, DIR_NVRAM
+    if a.nvram:
+        DIR_NVRAM = os.path.expanduser(a.nvram)
     try:
         import hi2txt as _h
         DB_HI2TXT = _h.buscar_db([a.hi2txt] if a.hi2txt else [])
@@ -865,7 +965,17 @@ def main():
     print(f"# .hi:         {dir_hi}")
     print(f"# recetas:     {len(recetas)} en puntajes.dat")
 
-    disponibles = sorted(f[:-3] for f in os.listdir(dir_hi) if f.endswith(".hi"))
+    # Un juego "tiene datos" si los tiene en CUALQUIERA de los tres sitios, no
+    # solo en un .hi. Mirar unicamente los .hi dejaba la lista vacia en cuanto
+    # nadie superaba la tabla de fabrica: en la cabina hoy no hay ni un .hi
+    # (el plugin solo lo escribe cuando la tabla CAMBIA), y aun asi 59 juegos
+    # tienen su tabla en la memoria persistente.
+    disponibles = sorted(
+        {f[:-3] for f in os.listdir(dir_hi) if f.endswith(".hi")}
+        | set(_fabrica_disponible())
+        | ({d for d in os.listdir(DIR_NVRAM)
+            if os.path.isdir(os.path.join(DIR_NVRAM, d))}
+           if os.path.isdir(DIR_NVRAM) else set()))
     juegos = a.juegos or disponibles
 
     f_fab = os.path.join(AQUI, "puntajes_fabrica.json")
@@ -965,14 +1075,37 @@ def main():
         return 0
 
     if a.listar:
-        print(f"\n{'juego':<14} {'receta':<8} datos")
+        # Se DESCIFRA de verdad para listar, en vez de mirar el tamano del
+        # fichero: lo que interesa saber es si de ese juego sale una tabla, y
+        # eso solo lo dice el mismo camino que produce el resultado. Medir por
+        # una ruta y publicar por otra ya dio una cifra inflada una vez.
+        ok, sin, vacios, sin_jugar = [], [], [], []
+        print(f"\n{'juego':<14} {'receta':<8} {'fuente':<10} {'pos':<5} nota")
         for j in disponibles:
-            print(f"  {j:<12} {'SI' if j in recetas else '--':<8} "
-                  f"{os.path.getsize(os.path.join(dir_hi, j + '.hi'))} bytes")
-        faltan = [j for j in disponibles if j not in recetas]
-        if faltan:
-            print(f"\nSin receta ({len(faltan)}): {' '.join(faltan)}")
-            print("Anade una linea a puntajes.dat para cada uno.")
+            filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
+                                               recetas.get(j), dir_hi)
+            receta = (filas[0].get("receta", "propia") if filas
+                      else ("SI" if j in recetas else "--"))
+            n = len(filas) if filas else 0
+            print(f"  {j:<12} {receta:<8} {str(origen or '-'):<10} "
+                  f"{n:<5} {aviso or ''}")
+            if filas:
+                ok.append(j)
+            elif aviso == VACIA:
+                sin_jugar.append(j)
+            elif origen:
+                sin.append(j)
+            else:
+                vacios.append(j)
+
+        print(f"\nDescifran con datos ({len(ok)}): {' '.join(ok)}")
+        if sin_jugar:
+            print(f"\nDescifran, tabla VACIA -- nadie ha jugado "
+                  f"({len(sin_jugar)}): {' '.join(sin_jugar)}")
+        if sin:
+            print(f"\nTienen datos y NO descifran ({len(sin)}): {' '.join(sin)}")
+        if vacios:
+            print(f"\nSin datos guardados ({len(vacios)}): {' '.join(vacios)}")
         return 0
 
     resultado, sin_receta = {}, []
