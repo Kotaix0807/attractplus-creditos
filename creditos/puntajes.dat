@@ -277,5 +277,18 @@ galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=no
 # que con 0x00='A' son SNK: el relleno de fabrica de la casa. En strhoop no hay
 # iniciales, solo un identificador de equipo delante y 60/50/40/30/20 detras,
 # que para un juego de baloncesto es la magnitud correcta.
-samsho fuente=saveram swap=2 desde=0x32e entradas=4 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=no
+samsho fuente=saveram swap=2 desde=0x32e entradas=5 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=no
 strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd confirmado=no
+
+# nrallyx: bloque de 8 bytes con el digito mas significativo al FINAL, asi que
+# se rota uno. Anclado en dos medidas: la tabla de fabrica da 20000 (lo que dice
+# la referencia de hi2txt para rallyx) y la partida de Eloy del 2026-09-08 da
+# 96550, que es lo que marco en pantalla.
+nrallyx rotar=1 entradas=1 bytes=8 puntos=0,4,digitos multiplica=10 confirmado=si
+
+# mvsc: entradas de 10 bytes tras un byte de cabecera. La partida de Eloy
+# (iniciales ABC) entro la primera y descubrio la estructura: los tres bytes de
+# las iniciales son indices con 0x00='A' (00 01 02 = ABC) y la puntuacion son
+# los cuatro primeros bytes en BCD. La tabla de fabrica que empuja hacia abajo
+# es una escalera limpia de 50000/40000/30000/20000/10000.
+mvsc desde=1 entradas=10 bytes=10 puntos=0,4,bcd nombre=6,3,idx:snk confirmado=no

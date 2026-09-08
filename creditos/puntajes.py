@@ -715,6 +715,18 @@ def candidatos_de(juego, cfg, dir_hi, fabrica=None):
                 candidatos.append((d, nombre))
     if not candidatos:
         return [], "sin datos guardados todavia"
+    # Un .hi que existe de verdad va SIEMPRE primero. Es el fichero que produce
+    # el rescate y el que describe hiscore.dat, asi que es la fuente
+    # canonica; el orden del XML decide entre las demas.
+    #
+    # Hace falta porque una fuente peor puede descifrar sin fallar y dar un
+    # numero equivocado: la nvram de Berzerk guarda cada byte partido en dos
+    # (09 90, 4a a4) y de ahi salia "J O 990" donde su .hi dice "JO 900" -- que
+    # es exactamente lo que marco el jugador. El XML declara la nvram primero,
+    # asi que sin esta regla gana la mala.
+    hay_hi = [c for c in candidatos if c[1] == "hi"]
+    if hay_hi:
+        candidatos = hay_hi + [c for c in candidatos if c[1] != "hi"]
     return candidatos, None
 
 
@@ -799,6 +811,17 @@ def _descifrar_fuente(juego, bloques, cfg, datos, origen):
         for i in range(0, len(b) - paso + 1, paso):
             b[i:i + paso] = b[i:i + paso][::-1]
         datos = bytes(b)
+
+    # rotar=N: el bloque empieza N bytes mas alla de donde dice hiscore.dat, y
+    # lo que sobra por delante da la vuelta. Le pasa a New Rally-X: su bloque de
+    # 8 bytes trae el digito mas significativo al FINAL
+    #   96550 -> 06 05 05 30 40 40 40 09
+    #   20000 -> 00 00 00 30 40 40 40 02   (la tabla de fabrica)
+    # y rotandolo uno a la derecha quedan los digitos en orden.
+    rot = int(cfg.get("rotar", 0))
+    if rot:
+        rot %= len(datos) or 1
+        datos = datos[-rot:] + datos[:-rot]
 
     idx = int(cfg.get("bloque", 0))
     if origen in ("nvram", "saveram", "eeprom", "earom", "x2212", "at28c16"):

@@ -3764,6 +3764,89 @@ muchas placas el primero es el digito mas significativo y cambiarlo da una
 puntuacion absurda que el filtro de plausibilidad tirararia, con lo que la
 prueba diria «falla» por un motivo que no es el que se esta probando.
 
+## Las partidas de Eloy: cinco juegos mas, y una fuente que descifraba mal
+
+2026-09-08. Eloy jugo a la lista de pendientes y dio los numeros. Con un valor
+conocido la estructura se localiza sola, y eso cerro cinco juegos de golpe:
+**de 78 a 83 tablas leidas de 89**.
+
+Lo primero que confirma la tanda es que **el rescate funciona en juegos que
+nunca habian guardado nada**: aparecieron tres `.hi` nuevos (`berzerk`,
+`nrallyx`, `mvsc`) escritos por el plugin durante sus partidas.
+
+### El `.hi` va primero, aunque el XML diga otra cosa
+
+`berzerk` descifraba **mal y sin fallar**: daba `J O 990` y `C4ETGt 990` donde
+el jugador marco `JO 900` y `CEG 900`. La causa no era la receta sino la fuente:
+su XML declara `nvram` antes que `.hi`, y **la nvram de Berzerk guarda cada byte
+partido en dos** (`09 90`, `4a a4`, `43 34`), asi que de ahi sale un numero
+plausible y equivocado. Su `.hi` da los dos valores exactos.
+
+> **Regla:** un `.hi` que existe de verdad va SIEMPRE primero. Es el fichero que
+> produce el rescate y el que describe `hiscore.dat`; el orden del XML decide
+> entre las demas fuentes.
+
+Encaja con la leccion que ya estaba escrita para `simpsons2p`, donde coger el
+`eeprom` solo porque estaba ahi tambien fallaba.
+
+### `rotar=`: New Rally-X trae el digito de mas peso al final
+
+Su bloque son 8 bytes y con la partida de Eloy (96550) se ve la forma:
+
+```
+96550 -> 06 05 05 30 40 40 40 09
+20000 -> 00 00 00 30 40 40 40 02   <- la tabla de fabrica
+```
+
+El primer digito esta en el ULTIMO byte. Rotando el bloque uno a la derecha
+quedan en orden (`09 06 05 05`), y leidos como un digito por byte con `*10` dan
+96550 y 20000 -- y ese 20000 es justo lo que la referencia de hi2txt trae para
+`rallyx`. Dos medidas independientes, asi que va como **confirmado**.
+
+De ahi la clave `rotar=N` de `puntajes.dat`: el bloque empieza N bytes mas alla
+de donde dice `hiscore.dat` y lo que sobra por delante da la vuelta.
+
+### `mvsc` si guarda tabla, y me equivoque al descartarlo
+
+Lo habia dado por «estadistica de personajes» mirando solo la tabla de fabrica.
+Con la partida de Eloy (iniciales **ABC**) se ve que es una tabla normal: su
+entrada entro la primera y empujo al resto, y los bytes `00 01 02` son
+exactamente A, B, C con `0x00`='A'. Entradas de 10 bytes tras un byte de
+cabecera, puntuacion en BCD de 4 y las iniciales en el desplazamiento 6. Debajo
+queda la escalera de fabrica: 50000 / 40000 / 30000 / 20000 / 10000.
+
+> Lo que me hizo fallar antes fue mirar **solo** la tabla de fabrica de un juego
+> de lucha y concluir por la magnitud de los numeros. Una partida de verdad lo
+> resolvio en un minuto.
+
+### `samsho` tiene cinco entradas, no cuatro
+
+Buscando las iniciales de Eloy (`CEG` = `02 04 06` con `0x00`='A') aparecen en
+`0x372`, que es la **quinta** entrada; mi receta declaraba cuatro y se quedaba
+corta. La tabla completa queda:
+
+```
+SNK 50000 / SNK 30000 / SNK 10000 / SNK 5000 / CEG 2050
+```
+
+### Lo que la tanda dejo sin cerrar
+
+- **`strhoop`**: su zona de tabla esta **byte por byte igual** que antes de
+  jugar, asi que esa partida no entro. Sigue sin confirmar.
+- **`mk3`**: jugado, pero sin numero que buscar. Su atraccion solo enseña
+  «LONGEST WINNING STREAKS».
+- **`ncv2`**: descartado a peticion de Eloy -- son seis juegos en uno y habria
+  que jugarlos todos.
+- Los cuatro **Gauntlet** siguen sin datos: no se jugaron.
+
+### Un cruce que conviene comprobar
+
+Eloy apunto «RbTapper 50125, Tapper 40975» y los ficheros dicen lo contrario:
+`tapper` 50125 y `rbtapper` 40975. Cada juego escribe en su propia carpeta, asi
+que no hay forma de que se crucen por nuestro lado; lo mas probable es que se
+intercambiaran al anotarlos, que son dos juegos casi identicos. Los dos numeros
+son exactos, solo esta en duda a cual pertenece cada uno.
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no
