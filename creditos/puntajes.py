@@ -555,6 +555,8 @@ DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # sin tener que trabajar sobre la que esta jugando alguien.
 DIR_NVRAM = os.path.expanduser("~/.mame/nvram")
 FABRICA = {}              # tablas leidas de la RAM con --fabrica
+_BLOQUES = {}             # hiscore.dat, para deducir la tabla de fabrica
+_RECETAS = {}             # puntajes.dat, idem
 
 
 def _recortar(filas):
@@ -870,13 +872,62 @@ def marcar_defectos(juego, filas, defectos):
     linea de fabrica se marcara tambien, pero es preferible a colar cinco
     puntuaciones fantasma en cada juego que nadie ha tocado.
     """
-    base = defectos.get(juego)
+    # La base se DEDUCE: se descifra con las recetas de hoy el volcado de
+    # fabrica que leimos de la RAM, y se compara con la tabla actual. Manda
+    # sobre el fichero capturado a mano por dos motivos:
+    #
+    #   - el capturado envejece. Su entrada de mvsc decia [['05', 80003], ...],
+    #     de cuando ese juego no tenia receta, y con eso la tabla de fabrica de
+    #     verdad (JON 50000...) figuraba como puntuacion de un jugador.
+    #   - depende de que alguien se acordara de capturarla ANTES de que nadie
+    #     jugase, que es justo lo que fallo con Pac-Man: se capturo cuando ya
+    #     marcaba 48800 y esa partida quedo dada por "de fabrica".
+    #
+    # El fichero capturado se sigue usando donde no hay volcado de fabrica.
+    base = _defecto_de_fabrica(juego)
+    if base is None:
+        base = defectos.get(juego)
     for f in filas:
         if base is None:
-            f["defecto"] = None          # no se sabe: nadie ha capturado la base
+            f["defecto"] = None          # no se sabe: no hay con que comparar
         else:
             f["defecto"] = [f.get("nombre", ""), f["puntos"]] in base
     return filas
+
+
+_CACHE_FABRICA = {}
+
+
+def _defecto_de_fabrica(juego):
+    """La tabla de fabrica del juego, descifrada, como lista [nombre, puntos].
+
+    Devuelve None si no hay volcado de fabrica o si no se deja descifrar.
+    """
+    if juego in _CACHE_FABRICA:
+        return _CACHE_FABRICA[juego]
+    salida = None
+    # Un juego con memoria persistente propia carga sus puntuaciones al
+    # arrancar, asi que su volcado NO es la tabla de fabrica por mucho que se
+    # apaguen los plugins: Berzerk sale con los 900 de Eloy porque estan en su
+    # nvram. Ahi no hay base fiable y vale mas decir "no se sabe" que marcar
+    # como de fabrica una puntuacion real, que el programa que lea el JSON
+    # tirararia.
+    if os.path.isdir(os.path.join(DIR_NVRAM, juego)):
+        _CACHE_FABRICA[juego] = None
+        return None
+    crudo = FABRICA.get(juego)
+    if crudo:
+        try:
+            datos = bytes.fromhex(crudo)
+            filas, _, _ = _descifrar_fuente(
+                juego, _BLOQUES.get(juego, []), _RECETAS.get(juego),
+                datos, "fabrica")
+            if filas:
+                salida = [[f.get("nombre", ""), f["puntos"]] for f in filas]
+        except Exception:
+            salida = None
+    _CACHE_FABRICA[juego] = salida
+    return salida
 
 
 def capturar_fabrica(juegos, bloques, mame, rompath):
@@ -906,7 +957,13 @@ def capturar_fabrica(juegos, bloques, mame, rompath):
         entorno = dict(os.environ, GA_D_BLOQUES=espec, GA_D_FRAME="1800")
         try:
             r = subprocess.run(
-                [mame, j, "-rompath", rompath, "-video", "none",
+                # -noplugins es IMPRESCINDIBLE: el plugin hiscore reinyecta
+                # en la RAM la puntuacion guardada nada mas arrancar, asi que
+                # con el activo esto no captura la tabla de fabrica sino el
+                # record restaurado. Se noto en Pac-Man, cuya tabla de fabrica
+                # es 0 y salia con los 48800 de una partida real -- que luego
+                # quedaban marcados como "de fabrica" y se habrian descartado.
+                [mame, j, "-rompath", rompath, "-noplugins", "-video", "none",
                  "-sound", "none", "-noswitchres", "-str", "45", "-nothrottle",
                  "-skip_gameinfo", "-autoboot_script", lua, "-autoboot_delay", "0"],
                 capture_output=True, text=True, timeout=180, env=entorno,
@@ -986,6 +1043,8 @@ def main():
 
     bloques = leer_hiscore_dat(hd)
     recetas = leer_puntajes_dat(os.path.join(AQUI, "puntajes.dat"))
+    global _BLOQUES, _RECETAS
+    _BLOQUES, _RECETAS = bloques, recetas
     f_def = os.path.join(AQUI, "puntajes_defecto.json")
     defectos = json.load(open(f_def)) if os.path.exists(f_def) else {}
 

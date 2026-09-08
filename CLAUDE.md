@@ -3847,6 +3847,50 @@ que no hay forma de que se crucen por nuestro lado; lo mas probable es que se
 intercambiaran al anotarlos, que son dos juegos casi identicos. Los dos numeros
 son exactos, solo esta en duda a cual pertenece cada uno.
 
+## Repaso de valores: lo que marcaba "de fabrica" estaba mal calculado
+
+2026-09-08, segunda tanda. Eloy pidio repasar los valores de todos los juegos.
+De 83 tablas descifradas, la revision automatica (orden, magnitudes, nombres
+imprimibles) solo levanto la mano en 12, y **diez eran falsos avisos**: las
+tablas de fabrica en las que todas las posiciones valen lo mismo son normales
+(Bubble Bobble sale con 30000 en las cinco, Galaga con 20000), y estan
+verificadas contra la referencia.
+
+Los dos de verdad:
+
+- **`sfiii3` no tiene una tabla de 19 sino CUATRO de cinco**, repetidas
+  (100000/90000/80000/70000/60000 con nombres distintos). Street Fighter III
+  guarda varias categorias de ranking y yo las pegaba en una sola lista.
+- **`tekken2` declaraba 33 entradas y las ultimas nueve son basura**
+  (327698, 262149, 196609... patrones de bits). Su tabla util son 24, y el
+  valor 359999 que aparece repetido es el marcador de "sin record".
+
+### El plugin hiscore contamina las capturas de fabrica
+
+Este es el hallazgo gordo del repaso. La marca `defecto` -- la que permite
+descartar los nombres ficticios, que era el encargo original -- estaba mal:
+Pac-Man marcaba sus 48800 reales como "de fabrica".
+
+La causa: **`--fabrica` capturaba con el plugin hiscore activo, y ese plugin
+reinyecta en la RAM la puntuacion guardada nada mas arrancar.** O sea que lo
+que volcabamos no era la tabla de fabrica sino el record restaurado. Se corrige
+con `-noplugins`, y entonces Pac-Man y Ms. Pac-Man dan **0**, que es su tabla de
+fabrica de verdad.
+
+Y una segunda causa que `-noplugins` NO arregla: **un juego con memoria
+persistente propia carga sus puntuaciones al arrancar**, plugins o no. Berzerk
+sigue volcando los 900 de Eloy porque estan en su nvram. Ahi no hay base fiable,
+asi que se marca "no se sabe" en vez de arriesgarse a dar por ficticia una
+puntuacion real -- el error caro, porque el programa que lea el JSON la
+descartaria.
+
+Ademas, la base deducida manda ahora sobre `puntajes_defecto.json`, que
+envejece: su entrada de `mvsc` decia `[['05', 80003], ...]`, de cuando ese juego
+no tenia receta.
+
+Resultado: de 722 posiciones, **270 quedan marcadas como de fabrica, 50 como de
+jugador y 402 sin saber** (las de juegos con NVRAM propia).
+
 ## Compilar GroovyMAME parcheado en GroovyArcade
 
 `parches/compilar-en-arch.sh`. El release con el binario ya compilado **no

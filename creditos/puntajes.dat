@@ -221,7 +221,7 @@ samsho3 fuente=saveram swap=2 desde=0x329 entradas=1 bytes=8 puntos=0,3,bcd nomb
 #
 # OJO, igual que en tekken: son TIEMPOS, no puntuaciones. Los valores van de
 # 3600 en 3600, que es un minuto a 60 fps, y 359999 es el tope de "sin marca".
-tekken2 entradas=33 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=no
+tekken2 entradas=24 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=no
 
 # Xevious. Entradas de 16 bytes: BCD de 3 (x10) y el nombre en 10 caracteres
 # indexados, con minusculas incluidas.
@@ -235,7 +235,7 @@ xevious entradas=5 bytes=16 puntos=0,3,bcd multiplica=10 nombre=3,10,idx:namco c
 # primero, indexadas (0x0a = 'A'), y la puntuacion son 4 bytes en binario a
 # partir del octavo. Sale la escalera 100000 / 90000 / 80000, que es lo que
 # delato la estructura -- 0x000186a0 es 100000 clavado.
-sfiii3 entradas=19 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
+sfiii3 entradas=5 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
 
 # Street Fighter. Entradas de 16 bytes: la puntuacion son 8 bytes con un digito
 # decimal en cada uno, y las iniciales van en el 9 indexadas al estilo Capcom
