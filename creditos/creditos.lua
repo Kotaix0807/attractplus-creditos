@@ -557,8 +557,78 @@ local function ya_arranco(e)
 	return false
 end
 
+-- ── modo grabacion de video (SOLO cuando GA_GRABAR esta puesto) ────────────
+--
+-- Lo usa videos.sh para grabar el clip de gameplay sin malgastar tiempo. En la
+-- cabina y en las pruebas GA_GRABAR no existe, asi que NADA de esto corre y el
+-- arranque es el de siempre.
+--
+-- La idea la trajo Eloy: acelerar toda la carga a maxima velocidad (frameskip)
+-- y grabar el AVI SOLO de la ventana del video, en vez de renderizar y escribir
+-- los ~90 s entre el arranque y el segundo del gameplay para que ffmpeg los
+-- tire. Se apoya en begin_recording de MAME (verificado en luaengine.cpp:2165),
+-- que empieza a escribir el AVI a mitad de partida.
+--
+--   GA_GRABAR         segundo donde empieza el clip (= el 'video=' del juego)
+--   GA_GRABAR_DURA    cuanto dura el clip (por defecto 12)
+--   GA_GRABAR_MARGEN  segundos de estabilizacion antes de grabar (por defecto 2)
+--   GA_GRABAR_ARCHIVO ruta ABSOLUTA del AVI de salida
+--   GA_GRABAR_SKIP    frameskip durante la aceleracion (por defecto 11)
+--
+-- El tiempo se mide con emu.time() (segundos EMULADOS), no contando frames a 60:
+-- Tapper corre a 30 Hz y Contra a 60,6, asi que contar frames se desviaria.
+local GRABAR
+do
+	local s = os.getenv('GA_GRABAR')
+	if s and tonumber(s) then
+		GRABAR = {
+			inicio  = tonumber(s),
+			dura    = tonumber(os.getenv('GA_GRABAR_DURA')   or '') or 12,
+			margen  = tonumber(os.getenv('GA_GRABAR_MARGEN') or '') or 2,
+			skip    = tonumber(os.getenv('GA_GRABAR_SKIP')   or '') or 11,
+			archivo = os.getenv('GA_GRABAR_ARCHIVO'),
+			fase    = 'acelera',
+		}
+	end
+end
+
+local function paso_grabacion()
+	local g = GRABAR
+	local ok, t = pcall(emu.time)
+	if not ok then return end
+	local v = manager.machine.video
+
+	if g.fase == 'acelera' then
+		-- frameskip al maximo hasta un pelin antes del clip. Nada se graba aqui,
+		-- asi que saltar el render no estropea el video, solo acelera la carga.
+		pcall(function() v.frameskip = g.skip end)
+		if t >= g.inicio - g.margen then
+			pcall(function() v.frameskip = 0 end)   -- renderiza cada frame ya
+			g.fase = 'estabiliza'
+			log('grabacion: estabilizando en %.1fs (clip a los %ss)', t, g.inicio)
+		end
+
+	elseif g.fase == 'estabiliza' then
+		if t >= g.inicio then
+			pcall(function() v:begin_recording(g.archivo, 'avi') end)
+			g.fase = 'graba'
+			log('grabacion: EMPEZANDO clip en %.1fs -> %s', t, tostring(g.archivo))
+		end
+
+	elseif g.fase == 'graba' then
+		if t >= g.inicio + g.dura then
+			pcall(function() v:end_recording() end)
+			g.fase = 'fin'
+			log('grabacion: clip cerrado en %.1fs (%ss grabados)', t, g.dura)
+			pcall(function() manager.machine:exit() end)
+		end
+	end
+end
+
 local function por_frame()
 	local e = GA_ESTADO
+
+	if GRABAR then paso_grabacion() end
 
 	if e.arranque then
 		e.arranque_frames = e.arranque_frames + 1

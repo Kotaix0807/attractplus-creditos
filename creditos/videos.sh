@@ -325,6 +325,27 @@ grabar_avi() {
 	[ -s "$avi" ]
 }
 
+# Graba SOLO la ventana del clip, acelerando toda la carga con frameskip. En vez
+# de renderizar y escribir al AVI los ~90 s entre el arranque y el gameplay para
+# que ffmpeg los tire, creditos.lua (modo GA_GRABAR) corre la carga a maxima
+# velocidad y arranca el AVI de MAME (begin_recording) justo en el segundo del
+# video. El AVI resultante ES el clip: empieza en 0, dura 'dura' segundos.
+#   $1=juego  $2=inicio(salto)  $3=dura  $4=avi (ABSOLUTO)  $5=log
+grabar_clip() {
+	local j="$1" inicio="$2" dura="$3" avi="$4" log="$5" ga margen=2 tope
+	ga=$(mktemp)
+	tope=$(( inicio + dura + margen + 4 ))   # red de seguridad; Lua sale antes
+	( cd "$MAME_DIR" && env GA_ARCHIVO="$ga" ${GA_VERBOSO:+GA_VERBOSO=1} \
+		GA_GRABAR="$inicio" GA_GRABAR_DURA="$dura" GA_GRABAR_MARGEN="$margen" \
+		GA_GRABAR_ARCHIVO="$avi" \
+		xvfb-run -a "$MAME_BIN" "$j" -rompath "$ROMPATH" \
+		-video soft -sound none -noswitchres -window -resolution 640x480 \
+		-seconds_to_run "$tope" -nothrottle \
+		-autoboot_script "$CREDITOS_LUA" -autoboot_delay 0 > "$log" 2>&1 )
+	rm -f "$ga"
+	[ -s "$avi" ]
+}
+
 case "${1:-}" in
 	-h|--help|--ayuda)
 		sed -n '2,16p' "$0" | sed 's/^# \?//'
@@ -489,9 +510,10 @@ for j in "${JUEGOS[@]}"; do
 
 	echo -n "  $j: grabando (salto ${salto}s, ${dura}s, $origen)... "
 
-	# El avi sale sin comprimir (unos 11 MB por segundo), por eso va a un
-	# temporal y se borra en cuanto se convierte.
-	grabar_avi "$j" "$(( salto + dura + 2 ))" "$TMP/$j.avi" "$TMP/$j.log"
+	# Se acelera la carga y se graba SOLO la ventana: el AVI ya es el clip. Antes
+	# se grababa desde el frame 0 (11 MB/s de AVI crudo) y ffmpeg tiraba la carga;
+	# para un gameplay a los 90 s eran gigas escritos para nada.
+	grabar_clip "$j" "$salto" "$dura" "$TMP/$j.avi" "$TMP/$j.log"
 
 	if [ ! -s "$TMP/$j.avi" ]; then
 		# Antes esto decia solo "no se pudo grabar" y habia que adivinar por
@@ -507,7 +529,7 @@ for j in "${JUEGOS[@]}"; do
 	rm -f "$TMP/$j.log"
 
 	echo -n "convirtiendo... "
-	if convertir_a_mp4 "$TMP/$j.avi" "$j" "$salto" "$dura"; then
+	if convertir_a_mp4 "$TMP/$j.avi" "$j" 0 "$dura"; then
 		echo "$(du -h "$DESTINO/$j.mp4" | cut -f1)"
 		hechos=$((hechos+1))
 	else

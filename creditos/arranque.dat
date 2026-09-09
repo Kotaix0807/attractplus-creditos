@@ -90,6 +90,7 @@ tapper velocidad=0 segundos=3
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
 rbtapper velocidad=0 segundos=3
+pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=1 velocidad=0
 nrallyx segundos=13 velocidad=0 indicador=0 video=28
 mappy segundos=13 video=38

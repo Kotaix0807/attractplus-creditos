@@ -4167,6 +4167,62 @@ bajo Xvfb) y `galaxian` (la grabación falla repetidamente). Se quedan con su
   cae después, así que el negro nunca entra en el clip.
 
 
+## Grabar sólo la ventana: acelerar la carga con begin_recording (2026-09-09)
+
+Idea de Eloy: la generación masiva de vídeos es lenta porque se graba desde el
+frame 0 hasta el segundo del gameplay a velocidad de render, y ffmpeg tira toda
+esa carga. Para un gameplay a los 90 s se renderizaban y escribían al AVI **~90 s
+que se descartan** — en la cabina lenta eso son minutos por juego y gigas de AVI
+crudo (11 MB/s) escritos para nada.
+
+El arreglo se apoya en una API de MAME que faltaba usar: **`video:begin_recording()`
+/ `end_recording()`** (verificado en `luaengine.cpp:2165`), que arranca el AVI a
+mitad de partida. Así se puede **acelerar toda la carga con frameskip y grabar el
+AVI SÓLO de la ventana del clip**.
+
+Vive en `creditos.lua`, en un **modo grabación aislado por `GA_GRABAR`**: sin esa
+variable no corre nada (la cabina y las 344 pruebas de `correr.sh` van por el
+camino de siempre, verificado). En modo grabación, `paso_grabacion()` en el
+bucle por-frame:
+
+1. **acelera** — `frameskip` al máximo (11) desde el frame 0 hasta `video - margen`.
+   El frameskip sólo salta el RENDER, no la emulación, así que la partida avanza
+   igual de rápida y el estado del juego es idéntico.
+2. **estabiliza** — a `video - margen` (2 s antes) pone `frameskip 0` para que el
+   render se ponga al día.
+3. **graba** — a `video` llama `begin_recording`; a `video + dura`, `end_recording`
+   y `machine:exit()`.
+
+El tiempo se mide con **`emu.time()` (segundos EMULADOS)**, no contando frames a
+60: Tapper corre a 30 Hz y Contra a 60,6.
+
+`videos.sh` usa `grabar_clip()` en vez de `grabar_avi()` para el vídeo final (que
+pasa `GA_GRABAR/_DURA/_MARGEN/_ARCHIVO` y no `-aviwrite`); el AVI resultante YA es
+el clip, así que se convierte desde el segundo 0. `--tira` y `--hojas` siguen con
+`grabar_avi` (necesitan el AVI entero para la hoja de contactos).
+
+**Verificado en hp-envy**, no supuesto:
+
+- Un juego de gameplay tardío (`robotron`, video=81) pasa de grabar 95 s de AVI a
+  ~7 s totales, y el AVI intermedio de 655 MB a 48 MB.
+- **Fidelidad probada al pixel:** grabando `robotron` con NVRAM limpia por el
+  método viejo (AVI entero, cortar a 81 s) y por el acelerado, el frame es
+  **idéntico en md5**. El frameskip NO rompe el determinismo de la emulación.
+
+**Trampa que apareció midiendo:** al comparar tomas sin NVRAM limpia, el segundo
+81 de `robotron` salía distinto (una vez «FACTORY SETTINGS RESTORED», otra la
+demo). No es del método acelerado — es **deriva de la NVRAM entre grabaciones**,
+que afecta igual al método viejo: los Williams guardan estado de atracción, así
+que dos grabaciones seguidas pueden caer en fases distintas del bucle. Si algún
+día importa para el vídeo final, la salida es grabar con `-nvram_directory` a un
+temporal limpio.
+
+**Pendiente de comprobar en la cabina** (estaba desconectada al hacer esto): que
+`creditos.lua` con el modo nuevo compile con el `luac` de **Lua 5.5** de allí. El
+código no reasigna variables de control de `for` (no hay ningún `for` nuevo), así
+que debería pasar, pero conviene el `luac -p` de 5.5 antes de fiarse.
+
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
