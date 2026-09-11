@@ -101,6 +101,13 @@ local VIGILAR = os.getenv('GA_VIGILAR') ~= '0'
 local AVISAR  = os.getenv('GA_AVISO') ~= '0'
 local ESPERA_AVISO = math.max(30, num('GA_AVISO_ESPERA', 300))
 local MENSAJE_FRAMES = math.max(30, num('GA_MENSAJE', 150))   -- ~2,5 s a 60 Hz
+-- Contador de creditos permanente en pantalla. Hace falta porque hay placas que
+-- NO lo enseñan: Missile Command (1980) no tiene ningun numero -- avisa haciendo
+-- parpadear la luz del boton START, y en un mueble sin esas lamparas conectadas
+-- el jugador mete la moneda y no recibe ninguna señal de que haya entrado.
+-- Solo se pinta cuando sabemos el numero DE VERDAD (direccion de creditos.dat
+-- ya comprobada); estimarlo y enseñarlo seria peor que no enseñar nada.
+local CONTADOR = os.getenv('GA_CONTADOR') ~= '0'
 -- Quien paga el credito, y cuando. Es la decision de fondo del sistema:
 --   'meter': el monedero se descuenta AL METER la moneda. Es el diseno con
 --            contador fisico: el jugador ve bajar el numero, asi que gastar al
@@ -979,8 +986,27 @@ if MEM then
 	if not entrada then
 		log('%s no esta en creditos.dat: estimare por las pulsaciones de START', juego)
 	else
-		local dev = manager.machine.devices[entrada.cpu]
-		local esp = dev and dev.spaces[entrada.espacio]
+		-- El "espacio" de creditos.dat no siempre es un espacio de la CPU:
+		-- puede ser un SHARE de memoria, escrito "<nombre>/share" igual que en
+		-- hiscore.dat. Es lo mismo que ya hacia volcar.lua.
+		--
+		-- Missile Command lo necesita por partida doble: TODO su mapa es un
+		-- trampolin (0000-ffff) y no declara ni un tramo de RAM, asi que ningun
+		-- buscador le encontraba la direccion; y ademas leer por el espacio de
+		-- la CPU pasa por trampoline_r, que llama a load_madsel() -- un efecto
+		-- secundario que puede corromper su video, porque esa placa usa la
+		-- MISMA memoria para las variables y para el bitmap. Por el share se
+		-- lee y se escribe la misma memoria sin disparar nada.
+		local esp
+		do
+			local nombre, clase = entrada.espacio:match('([^/]*)/?([^/]*)')
+			if clase == 'share' then
+				esp = manager.machine.memory.shares[nombre]
+			else
+				local dev = manager.machine.devices[entrada.cpu]
+				esp = dev and dev.spaces[entrada.espacio]
+			end
+		end
 
 		if not esp then
 			log('creditos.dat apunta a %s/%s y no existe en esta maquina',
@@ -1260,6 +1286,24 @@ GA_ESTADO.pintor = function()
 		end
 
 		if NEGRO then return end
+	end
+
+	-- Contador de creditos, arriba a la derecha. Solo si sabemos el numero de
+	-- verdad: hace falta que la direccion de creditos.dat este comprobada
+	-- (e.memoria sobrevive) y que ya no este a prueba (e.a_prueba == nil, que
+	-- es una importada sin comprobar). Con el contador asentado, dentro()
+	-- devuelve nil hasta que la RAM es de fiar, asi que tampoco se pinta basura
+	-- durante el arranque de la placa.
+	--
+	-- Durante el arranque tapado no se pinta: ahi la moneda esta cerrada y
+	-- ademas el sitio lo ocupa el indicador de carga.
+	if CONTADOR and not e.arranque and e.memoria and not e.a_prueba then
+		local n = e.memoria.dentro()
+		if n and n > 0 then
+			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
+			contenedor:draw_text('right', 0.03,
+				string.format('CREDITOS %d ', n), COLOR_INDICADOR)
+		end
 	end
 
 	-- Mensaje corto al meter una moneda. Es la pieza que de verdad evita el

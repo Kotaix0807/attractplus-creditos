@@ -4309,6 +4309,104 @@ esto levanté X con `startx` a secas y no aparecía ningún proceso de
 Para el frontend hay que pasar la variable — `FE=attractplus startx` — que es lo
 que hace `startfe.sh` leyendo `frontend=` de `ga.conf`.
 
+## Missile Command: por qué no sabías si tu moneda entró
+
+Traído por Eloy el 2026-09-11: *«ingreso un crédito y no sé si se ingresó; tampoco
+hay un contador de créditos»*. La respuesta es que **sí hay contador, pero es muy
+fácil no verlo**, y de paso salieron dos fallos nuestros.
+
+### Lo que la placa hace de verdad
+
+Missile Command avisa de DOS maneras, y ninguna es un número fijo:
+
+- **Las luces de los botones START parpadean.** Medido leyendo las salidas
+  `led0`/`led1` del driver: 0 créditos → apagadas; 1 crédito → parpadea la de
+  1 jugador; 2 o más → parpadean las dos. Al pulsar START se consume uno y la
+  segunda se apaga. **En un mueble sin esas lámparas conectadas, esta señal
+  simplemente no existe.**
+- **El rótulo de abajo cambia.** Con 0 créditos va pasando
+  `GAME OVER / INSERT COINS / 1 COIN 1 PLAY / ATARI © 1980`; con créditos pasa a
+  `PRESS START / CREDITS: N / ATARI ©`. O sea que el número SÍ está, pero
+  **dentro de un texto que se desplaza**, así que si miras en el momento
+  equivocado ves «ATARI ©» y te quedas igual.
+
+> **Corrección:** yo afirmé primero que este juego «no tiene contador de
+> créditos». **Es falso** y lo desmintió una captura: pone `CREDITS: 2`. Lo dije
+> porque en mis primeras pruebas la moneda nunca llegaba a entrar, por el fallo
+> de la sección siguiente, así que nunca vi ese estado.
+
+### Y el DIP de fábrica pide DOS monedas
+
+El valor por defecto de MAME para `missile` es **2 Coins / 1 Credit**
+(`PORT_DIPNAME(0x03, 0x01, ...)`). Con una sola moneda no pasa absolutamente
+nada. En la cabina nuestra pasada de `poner_1c1c.sh` lo dejó en 1C/1C
+(`missile.cfg`, `mask="3" value="0"`), pero conviene comprobarlo si el síntoma
+reaparece.
+
+### El fallo de mi banco de pruebas: `set_value` es PEGAJOSO
+
+Mis tres primeras mediciones decían que la moneda no entraba nunca. Era mentira,
+y la culpa era del guion de prueba: **`campo:set_value(1)` se queda puesto**
+hasta que alguien escribe `set_value(0)`. O sea que yo dejaba el interruptor de
+la moneda *pulsado para siempre*, y una placa de Atari eso lo lee como monedero
+atascado y lo ignora.
+
+Lo destapó una **prueba de control con Pac-Man**, cuyo contador conocemos: allí
+entraba la primera moneda y no la segunda. `creditos.lua` ya lo hacía bien, con
+un comentario que dice literalmente «garantiza soltar la moneda»; el que se lo
+había saltado era yo.
+
+> **Regla:** una moneda simulada son DOS órdenes, pulsar y soltar. Si sólo
+> pulsas, el primer crédito entra y ninguno más, y el síntoma parece de la placa.
+
+### La dirección que teníamos era imposible
+
+`creditos.dat` traía `missile @:maincpu,program,800c3364 # (cheat)`. Un 6502
+direcciona 64 KB: esa dirección **no puede existir**. Venía de la colección de
+cheats y por eso nunca se pudo leer nada.
+
+La de verdad es **`0x66`**, y hubo que buscarla midiendo porque Missile Command
+es un caso raro por partida doble:
+
+- **Todo su mapa de memoria es un trampolín** (`0000-ffff` a `trampoline_r/w`),
+  sin un solo tramo declarado como RAM. Por eso `buscar_creditos.lua` nunca
+  encontró nada: barre las entradas de tipo `ram` y aquí no hay ninguna.
+- **Usa la misma memoria para las variables y para el bitmap**, y leer por el
+  espacio de la CPU pasa por `trampoline_r`, que llama a `load_madsel()` — un
+  efecto secundario que puede corromper su vídeo. Hay que leer por el **share**
+  `:videoram`, que es la misma memoria sin disparar nada.
+
+Cómo se aisló, barriendo 0, 1, 2 y 3 monedas: tres bytes (`0x29`, `0x66`,
+`0x68`) seguían la cuenta exacta. La prueba funcional los separó — al pulsar
+START, `0x29` se queda en 3, `0x68` se va a 0 y **sólo `0x66` baja a 2**.
+Y escribiendo *sólo* en `0x66`: con 3 las luces parpadean (233 frames de 300
+encendida) y con 0 se apagan (1 de 300), así que el barrido también funciona.
+
+### Lo que se añadió
+
+- **`creditos.lua` entiende los shares.** El «espacio» de `creditos.dat` puede
+  ser `<nombre>/share`, igual que en `hiscore.dat` y que en `volcar.lua`.
+- **Contador de créditos en pantalla**, arriba a la derecha: `CREDITOS N`.
+  Se apaga con `GA_CONTADOR=0`.
+
+Dos cuidados deliberados en el contador:
+
+- **Sólo se pinta cuando el número es de verdad**: hace falta que la dirección
+  esté comprobada (`e.memoria` sobrevive) y que no siga a prueba
+  (`e.a_prueba == nil`, que es una importada sin verificar). Enseñar un número
+  estimado sería peor que no enseñar ninguno.
+- **No se pinta durante el arranque tapado**: ahí la moneda está cerrada y el
+  sitio lo ocupa el indicador de carga.
+
+**Trampa al verificarlo:** `screen:snapshot()` **no incluye la capa de
+interfaz**, así que el contador no sale en esas capturas — ya estaba escrito
+para el cuadro de aviso y volvió a morder. Hay que capturar la ventana: MAME
+bajo Xvfb **sin `-nothrottle`**, `xwd -root` y convertir con ffmpeg.
+
+Verificado así: con dos monedas se ve `CREDITOS 2` arriba a la derecha y, en el
+mismo fotograma, el propio juego diciendo `CREDITS: 2` abajo. Las 339
+comprobaciones de `correr.sh` y las de `aviso_mame.sh` siguen en verde.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de

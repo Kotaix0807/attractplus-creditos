@@ -2697,7 +2697,7 @@ mimonscra @:maincpu,program,44a0   # (cheat)
 minivadr @:maincpu,program,a1db   # (cheat)
 misncrfta @:maincpu,program,7d3d7   # (cheat)
 missb2 @:maincpu,program,e366   # (cheat)
-missile @:maincpu,program,800c3364   # (cheat)
+missile @:maincpu,:videoram/share,66
 missmw96 @:maincpu,program,c00f82   # (cheat)
 missw02 @:maincpu,program,f80f82   # (cheat)
 missw02d @:maincpu,program,f80f82   # (cheat)
