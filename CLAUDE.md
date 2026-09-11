@@ -4223,6 +4223,74 @@ código no reasigna variables de control de `for` (no hay ningún `for` nuevo), 
 que debería pasar, pero conviene el `luac -p` de 5.5 antes de fiarse.
 
 
+## Conmutar el vídeo solo: CRT si lo hay, panel si no (`pantalla-auto.sh`)
+
+Pedido por Eloy el 2026-09-10: un servicio que detecte si hay un CRT en el VGA y
+mande el vídeo allí, y al panel interno si no lo hay. Temporal y desactivable en
+cualquier momento.
+
+**Lo que parecía el bloqueo, y no lo era.** La cabina arranca con
+`video=VGA-1:e video=LVDS-1:d`, y ese `:d` deshabilita el panel **en el kernel**:
+aparece `disconnected` en `/sys/class/drm` y **X no lo ve en absoluto**. No está
+apagado y encendible con xrandr — no está. Así que media función parecía exigir
+tocar GRUB y reiniciar, que es justo lo que no se quería.
+
+**Se deshace en caliente.** Escribiendo `on` en el `status` del conector vuelve a
+la vida sin tocar GRUB ni reiniciar. Medido: pasa a `connected` y ofrece su modo
+nativo `1366x768`. Por eso el guion actúa **primero sobre el conector** y sólo
+después sobre xrandr.
+
+Y al revés, apagar el conector que no se usa es **mejor** que `xrandr --off`: una
+salida `connected` sin CRTC hace que AM+ pida `XRRGetCrtcInfo(0)` y reviente con
+`BadRRCrtc` (`fe_present.cpp:391`). Dejándola `disconnected` a nivel de kernel,
+X ni la considera.
+
+### Que la detección del VGA sea REAL hay que comprobarlo
+
+El `video=VGA-1:e` **fuerza** el conector a «conectado», así que `status` podría
+estar mintiendo y el demonio mandaría el vídeo al panel dejando el CRT negro.
+Se midió quitando el forzado (`echo detect > status`): sigue `connected` y
+entrega un **EDID válido de 128 bytes** (AOC), con `1280x1024` entre sus modos.
+La detección es de verdad y se puede construir encima.
+
+Por eso el demonio escribe `detect` antes de leer, en cada vuelta: **el VGA no
+tiene una línea de «me han enchufado» fiable**, así que esperar un evento de
+udev no vale — hay que pedirle al kernel que compruebe.
+
+### La resolución NO se toca
+
+Primer intento: fijar `1280x1024`, que es lo que dice este documento. **Estaba
+mal**: la cabina está a `1024x768`, así que habría cambiado la resolución en cada
+conmutación sin que nadie lo pidiera. La regla es la de menor sorpresa — si la
+salida ya está encendida con un modo, no se le toca; sólo se elige modo cuando
+hay que encenderla, y entonces `--auto`.
+
+### Cómo se desactiva, en tres niveles
+
+| | qué hace |
+|---|---|
+| `sudo pantalla-auto.sh pausar` | el servicio sigue vivo pero no toca nada (fichero de freno) |
+| `systemctl disable --now pantalla-auto` | lo para y no vuelve a arrancar |
+| `sudo pantalla-auto.sh desinstalar` | lo quita todo y devuelve los conectores al estado de arranque |
+
+Y `crt` / `panel` fuerzan una salida a mano.
+
+### Verificado ejecutándolo en la cabina
+
+- Con CRT: `VGA-1 primary 1024x768`, panel `disconnected`, resolución intacta.
+- Sin CRT (probado apuntando a un conector vacío de verdad y con la orden
+  `panel`): `LVDS-1 primary 1366x768` y VGA apagado. **El vídeo se mueve.**
+- Con el freno puesto **respeta un cambio manual** 12 s sin deshacerlo; al
+  quitarlo **recupera el CRT solo** en 4 s.
+- Desinstalación limpia: unidad, binario y conectores como al arrancar.
+- Sobrevive a que X se cierre, y **reaplica cuando X aparece**: el servicio
+  arranca antes que Xorg, así que sin eso la parte de xrandr no correría nunca.
+
+**Pendiente:** no se ha probado un arranque completo. Y ojo, al hacerlo: ahora
+mismo el frontend **no llega a arrancar** desde `~/.xinitrc` (X sube, openbox
+sube, `startfe-X.sh` no deja proceso), que es trabajo en curso de otra sesión y
+no de esto.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
