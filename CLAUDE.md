@@ -4382,6 +4382,45 @@ START, `0x29` se queda en 3, `0x68` se va a 0 y **sólo `0x66` baja a 2**.
 Y escribiendo *sólo* en `0x66`: con 3 las luces parpadean (233 frames de 300
 encendida) y con 0 se apagan (1 de 300), así que el barrido también funciona.
 
+### «A veces carga 2 créditos»: no es un fallo, es un DIP
+
+Eloy, 2026-09-11, ya con el contador puesto: *«a veces carga 2 créditos… pasó de
+3 a 5, de 8 a 10»*. Sus dos ejemplos son la pista entera: **son la 4ª y la 8ª
+moneda**.
+
+La causa es un DIP de la placa, `"Bonus Credit for 4 Coins"` (`R8:!3`), y **su
+valor de fábrica es `Yes`**: cada cuatro monedas regala un crédito.
+
+Reproducido metiendo ocho monedas de una en una, con la tarifa en 1C/1C:
+
+```
+moneda 1 -> 1     moneda 5 -> 6
+moneda 2 -> 2     moneda 6 -> 7
+moneda 3 -> 3     moneda 7 -> 8
+moneda 4 -> 5  <- +2     moneda 8 -> 10  <- +2
+```
+
+Clavado con lo que vio. Poniendo el DIP en `No`, la progresión es regular.
+
+**No lo toca `tarifa.lua`**, y por un motivo de fondo que conviene entender: ese
+módulo ya prefiere deliberadamente *la tarifa sin premio* cuando elige entre los
+ajustes de `Coinage` (por eso mira los textos con coma, como el
+`1 Coin/1 Credit, 2/3` de mwalk). Pero aquí **el premio no está dentro de
+Coinage, es un DIP aparte**, así que se le escapa por diseño.
+
+De los juegos instalados, sólo cuatro declaran un DIP de crédito extra y **sólo
+Missile Command lo trae encendido**:
+
+| juego | DIP | de fábrica |
+|---|---|---|
+| `missile` | Bonus Credit for 4 Coins | **Yes** |
+| `centiped` | Bonus Coins | None |
+| `starwars` | Bonus Coin Adder | None |
+| `asteroid` | — | no lo expone |
+
+> **Lo interesante:** esto llevaba ahí desde siempre. Lo que cambió es que ahora
+> el contador en pantalla lo hace **visible**, que es justo para lo que se puso.
+
 ### Lo que se añadió
 
 - **`creditos.lua` entiende los shares.** El «espacio» de `creditos.dat` puede
