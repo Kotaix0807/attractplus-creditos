@@ -2581,6 +2581,20 @@ fisica, no un ajuste mal puesto — media pantalla apagada da menos luz.
 
 ### 1280x1024 a 60 Hz, y por que el aspecto no se rompe
 
+> **Corregido el 2026-09-10: la cabina NO está a 1280x1024, está a 1024x768.**
+> Medido con X vivo (`VGA-1 connected primary 1024x768+0+0`). Y no hay nada que
+> aplique lo de abajo: `~/.xinitrc` ya no tiene línea de xrandr — la tienen sus
+> respaldos, no el fichero en uso — y `mame.ini` tiene `resolution auto`, así
+> que MAME se limita a seguir a X. O el cambio se revirtió al reemplazar el
+> `.xinitrc`, o nunca llegó a ser persistente.
+>
+> El razonamiento de abajo sigue siendo bueno y por eso no se borra. Si se
+> quiere recuperar, hoy la forma limpia es una línea en
+> `/etc/pantalla-auto.conf`: `MODO_EXTERNA=1280x1024`, y el servicio lo aplica
+> en cada conmutación. Lo que sí sigue vigente tal cual es el `aspect 4:3` de
+> `mame.ini`: a 1024x768, que ya es 4:3, simplemente no hace nada.
+
+
 El tubo ofrece `1024x768@85`, `1152x864@75` y `1280x1024@60`. Se eligio el
 ultimo: **4 pixeles de salida por linea de juego en vez de 3**, y ademas su
 refresco casi cuadra con el de las placas.
@@ -4286,10 +4300,14 @@ Y `crt` / `panel` fuerzan una salida a mano.
 - Sobrevive a que X se cierre, y **reaplica cuando X aparece**: el servicio
   arranca antes que Xorg, así que sin eso la parte de xrandr no correría nunca.
 
-**Pendiente:** no se ha probado un arranque completo. Y ojo, al hacerlo: ahora
-mismo el frontend **no llega a arrancar** desde `~/.xinitrc` (X sube, openbox
-sube, `startfe-X.sh` no deja proceso), que es trabajo en curso de otra sesión y
-no de esto.
+**Pendiente:** no se ha probado un arranque completo de la cabina.
+
+Y una falsa alarma que conviene dejar escrita, porque cuesta media hora: probando
+esto levanté X con `startx` a secas y no aparecía ningún proceso de
+`attractplus`. **No es un fallo, es el diseño.** `startfe-X.sh:14` hace
+`[[ -z $FE ]] && FE=lxde`, o sea que un `startx` pelado arranca el ESCRITORIO.
+Para el frontend hay que pasar la variable — `FE=attractplus startx` — que es lo
+que hace `startfe.sh` leyendo `frontend=` de `ga.conf`.
 
 ## Próximos pasos
 
