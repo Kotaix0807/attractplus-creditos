@@ -44,6 +44,13 @@ function M.nuevo(op)
 		metido    = 0,   -- lo que ha metido el jugador, aparte del lanzamiento
 		consumido = 0,
 		espera    = math.max(1, math.floor(op.espera or 300)),   -- ~5 s a 60 Hz
+		-- Antirrebote de la tecla de salir. El boton de moneda ya lo tenia
+		-- (monedero.lua, M.pulsador) y este no: un microinterruptor abre y
+		-- cierra varias veces en unos milisegundos al pulsarlo, asi que la
+		-- misma pulsacion daba DOS flancos -- el primero pintaba el cuadro y
+		-- el segundo lo confirmaba tres frames despues. El jugador veia que no
+		-- avisaba, cuando lo que pasaba es que aviso y se contesto solo.
+		guarda    = math.max(0, math.floor(op.guarda or 15)),    -- ~250 ms
 		estado    = 'jugando',
 		reloj     = 0,
 		salir_antes = false,
@@ -147,11 +154,18 @@ function M.nuevo(op)
 		-- avisando
 		a.reloj = a.reloj + 1
 
-		-- Segunda pulsacion de salir: adelante, es su decision
+		-- Segunda pulsacion de salir: adelante, es su decision. Pero no en los
+		-- primeros frames: ahi no es una segunda pulsacion, es el rebote de la
+		-- primera. Una persona que lee el cuadro tarda mucho mas que esto.
 		if flanco_salir then
-			a.estado = 'jugando'
-			a.log('salida confirmada')
-			return 'salir'
+			if a.reloj <= a.guarda then
+				a.log('rebote de la tecla de salir (%d frames), no lo tomo por confirmacion',
+					a.reloj)
+			else
+				a.estado = 'jugando'
+				a.log('salida confirmada')
+				return 'salir'
+			end
 		end
 
 		-- Sigue jugando: lo pide, o ya no queda nada que perder, o se cansa

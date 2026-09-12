@@ -89,6 +89,9 @@ do
 	igual('sigue el cuadro', a.visible(), true)
 
 	a.frame(false, false)                  -- suelta
+	-- Hay que dejar pasar la guarda del antirrebote: un flanco a los tres
+	-- frames no es una segunda pulsacion, es el rebote de la primera (7c).
+	for _ = 1, 20 do a.frame(false, false) end
 	igual('segunda pulsacion: sale', a.frame(true, false), 'salir')
 	igual('y el cuadro se va', a.visible(), false)
 end
@@ -154,6 +157,24 @@ do
 	local c = A.nuevo{ entrado = 0, dentro = function() return 0 end }
 	c.entra(1)
 	igual('con lectura exacta y cero, no molesta', pulsar(c, 'salir'), nil)
+end
+
+print('\n7c. el rebote de la tecla de salir NO confirma la salida')
+do
+	-- Un microinterruptor da varios flancos en unos milisegundos. Sin guarda,
+	-- la misma pulsacion pintaba el cuadro y lo confirmaba tres frames
+	-- despues: el jugador no llegaba a ver nada. Medido en la cabina.
+	local a = A.nuevo{ entrado = 0, guarda = 15 }
+	a.entra(2)
+	igual('la primera pulsacion frena', a.frame(true, false), 'bloquear')
+	a.frame(false, false)                  -- el contacto se abre
+	igual('el rebote NO saca al jugador', a.frame(true, false), 'bloquear')
+	igual('y el cuadro sigue puesto', a.visible(), true)
+
+	-- pasada la guarda, la segunda pulsacion de verdad si sale
+	a.frame(false, false)
+	for _ = 1, 20 do a.frame(false, false) end
+	igual('luego si se puede confirmar', a.frame(true, false), 'salir')
 end
 
 print('\n8. el texto dice la verdad')

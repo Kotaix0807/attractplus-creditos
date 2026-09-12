@@ -100,6 +100,9 @@ local MONEDERO = os.getenv('GA_MONEDERO') == '1'
 local VIGILAR = os.getenv('GA_VIGILAR') ~= '0'
 local AVISAR  = os.getenv('GA_AVISO') ~= '0'
 local ESPERA_AVISO = math.max(30, num('GA_AVISO_ESPERA', 300))
+-- Frames que se ignora un segundo flanco de la tecla de salir: es el rebote de
+-- contactos de la primera pulsacion, no una confirmacion. Ver aviso.lua.
+local GUARDA_AVISO = math.max(0, num('GA_AVISO_GUARDA', 15))
 local MENSAJE_FRAMES = math.max(30, num('GA_MENSAJE', 150))   -- ~2,5 s a 60 Hz
 -- Contador de creditos permanente en pantalla. Hace falta porque hay placas que
 -- NO lo enseñan: Missile Command (1980) no tiene ningun numero -- avisa haciendo
@@ -1432,6 +1435,7 @@ if AVISAR and AV then
 		se_pierden = (not HAY_MONEDERO) or (COBRO == 'meter'),
 		entrado = GRATIS and 0 or INSERTA,
 		espera = ESPERA_AVISO,
+		guarda = GUARDA_AVISO,
 		-- Si sabemos leer los creditos de la RAM, el cuadro dice el numero
 		-- exacto en vez de una estimacion.
 		-- A prueba = todavia no sabemos si ese byte es el contador, asi que
