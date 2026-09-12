@@ -1286,7 +1286,8 @@ deerhunte @:maincpu,program,209abd   # (cheat)
 deerhuntj @:maincpu,program,209abf   # (cheat)
 defcmnd @:maincpu,program,a037   # (cheat)
 defence @:maincpu,program,a037   # (cheat)
-defender @:maincpu,program,a037   # (cheat)
+defender @:maincpu,program,a037
+robotron @:maincpu,program,9851
 defenderb @:maincpu,program,a037   # (cheat)
 defenderg @:maincpu,program,a037   # (cheat)
 defenderom @:maincpu,program,a037   # (cheat)
