@@ -77,7 +77,7 @@ Compilar (unos 2 minutos):
 cd ~/Dev/arcade/attractplus && PATH=/usr/lib/ccache:$PATH mold -run make -j10
 ```
 
-### ⚠️ Los plugins hay que COPIARLOS
+### ⚠️ Los plugins Y LOS LAYOUTS hay que COPIARLOS
 
 El que corre **no** es el del repo, es el de `~/.attract/plugins/`. Editar el
 repo y no copiar es la forma más rápida de volverse loco:
@@ -93,6 +93,43 @@ for f in Creditos.nut Arranque.nut; do
   diff -q ~/Dev/arcade/attractplus/config/plugins/$f ~/.attract/plugins/$f || echo "  ^ $f desincronizado"
 done
 ```
+
+**Y lo mismo vale para `layouts/`**, que es donde muerde de verdad. Medido en la
+cabina el 2026-09-12: `~/.attract/layouts/Arcade-UMAG/layout.nut` y el del repo
+son **inodos distintos**, o sea dos ficheros, no un enlace. Un arreglo commiteado
+en el layout **no se ve en pantalla** hasta que se copia.
+
+```bash
+diff -rq config/layouts/Arcade-UMAG ~/.attract/layouts/Arcade-UMAG
+```
+
+### Qué se aplica con un `git pull` en la cabina y qué NO
+
+Esto es lo que hay que tener claro después de pullear allí, porque la mitad del
+repo surte efecto y la otra mitad no, y nada lo avisa:
+
+| pieza | de dónde la lee la cabina | ¿basta el pull? |
+|---|---|---|
+| `creditos.lua`, `ajustes.lua`, `arranque.dat`, `creditos.dat` | **del repo**, por ruta absoluta | **sí** |
+| `videos.sh`, `grabar.sh`, `video_comun.sh` | del repo, se lanzan a mano | **sí** |
+| `config/layouts/*`, `config/plugins/*`, `config/cabina/*` | de la copia en `~/.attract/` | **NO**, hay que copiar |
+
+La primera fila se apoya en el `.cfg` del emulador, y conviene saber por qué
+funciona: sus `args` apuntan al fichero del repo con ruta absoluta.
+
+```
+args  "[romfilename]" -autoboot_script /home/arcade/attractplus-creditos/creditos/creditos.lua -autoboot_delay 0
+```
+
+Si algún día eso pasara a apuntar a una copia, el pull dejaría de aplicar
+también a `creditos.lua` y el síntoma sería justo el de los layouts: arreglas
+algo, lo subes, lo pulleas y la cabina sigue igual.
+
+**Cuidado al sincronizar a mano.** El arreglo del ancho del layout (2026-09-12)
+se aplicó con un `sed` sobre la copia viva en vez de copiar el fichero del repo:
+el valor quedó bien, pero el comentario que explicaba *por qué* 456 y no 436 se
+quedó sólo en el repo, y los dos ficheros divergieron. Copiar entero es más
+seguro que parchear — y si hay que parchear, mejor volver a copiar después.
 
 ---
 
@@ -273,7 +310,9 @@ automáticas (Cloudflare).
 ## Cinco trampas que ya nos costaron caro
 
 1. **Editas el repo y no la copia instalada.** Los plugins corren desde
-   `~/.attract/plugins/`.
+   `~/.attract/plugins/` y los layouts desde `~/.attract/layouts/`. **Un
+   `git pull` en la cabina NO los actualiza**: son copias, no enlaces. Ver
+   «Qué se aplica con un `git pull` en la cabina y qué NO».
 2. **AM+ reescribe su configuración al salir.** Tócala con AM+ cerrado.
 3. **Un valor guardado en `plugins.cfg` manda sobre el defecto del `.nut`.**
    Cambiar el defecto en el código no cambia nada si ya hay un valor guardado.
