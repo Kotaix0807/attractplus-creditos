@@ -4231,10 +4231,11 @@ que dos grabaciones seguidas pueden caer en fases distintas del bucle. Si algún
 día importa para el vídeo final, la salida es grabar con `-nvram_directory` a un
 temporal limpio.
 
-**Pendiente de comprobar en la cabina** (estaba desconectada al hacer esto): que
-`creditos.lua` con el modo nuevo compile con el `luac` de **Lua 5.5** de allí. El
-código no reasigna variables de control de `for` (no hay ningún `for` nuevo), así
-que debería pasar, pero conviene el `luac -p` de 5.5 antes de fiarse.
+**Comprobado en la cabina el 2026-09-12** (estaba desconectada al escribir esto):
+`luac -p` con su **Lua 5.5.1** pasa sobre los 11 `.lua` de `creditos/`,
+`creditos.lua` con los dos modos de grabación incluido. Importa porque el `lua`
+de la cabina es 5.5 y el nuestro 5.4, y 5.5 rechaza cosas que 5.4 acepta — un
+fallo que probando aquí no se ve.
 
 
 ## Conmutar el vídeo solo: CRT si lo hay, panel si no (`pantalla-auto.sh`)
@@ -4622,3 +4623,45 @@ dentro de MAME: que `KEYCODE_PAUSE` resuelve (y que un token inventado da
 `INVALID`), y que el ciclo entero —dos tomas, con sus nombres, duraciones y
 audio— funciona sustituyendo la lectura de la tecla por un horario. **Falta
 pulsarla con los dedos en la cabina.**
+
+### La calibración de `arranque.dat` vivía SÓLO en la cabina
+
+Salió al hacer el `git pull` allí el 2026-09-12, y era el aviso que este
+documento arrastraba desde hacía días, hecho realidad:
+
+| | juegos con línea propia |
+|---|---|
+| `arranque.dat` del repo | 63, casi ninguno con `segundos=` |
+| `arranque.dat` de la cabina | **82, casi todos con `segundos=` cronometrado** |
+
+Eloy había medido placa a placa —`mappy 13.2`, `qbert 0.1`, `sf2 14.5`,
+`simpsons2p 10.6`, `nrallyx 12.8`, `mwalk 11.8`— **y nada de eso estaba
+versionado**. Un `git pull` a secas allí lo habría borrado entero.
+
+**Cómo se recuperó sin perder nada**, que es lo reutilizable:
+
+1. Traerse el fichero por ssh **comprobando md5 en los dos extremos**. El primer
+   intento con `base64 -w0` a pelo llegó corrupto: el pty mete saltos de línea en
+   una línea larguísima. Con `gzip | base64` entre marcadores, y limpiando
+   espacios al reensamblar, cuadra el md5.
+2. Fundir **clave a clave**, no fichero contra fichero. Ninguna de las dos copias
+   era superconjunto de la otra: la cabina tenía 20 juegos que el repo no, pero
+   había perdido la línea entera de `pacman`, el `video=44` de `nemesis` y el
+   `indicador=0` de `nrallyx`.
+3. **Comprobar la fusión contra las DOS copias** antes de escribir nada, y otra
+   vez sobre la cabina después del pull: `0 perdidas` en los dos sentidos, y de
+   195 ajustes a 200.
+
+También hace falta un `md5sum` justo antes del `checkout`: el fichero se estaba
+editando por sftp en ese momento, y si hubiera cambiado entre la copia y el
+pull, la fusión habría sido sobre datos viejos.
+
+> **Regla:** antes de un `git pull` en la cabina, mirar `git status` allí. Lo que
+> salga como `M` puede ser trabajo medido que no está en ningún otro sitio.
+
+**Y una trampa de `escribir_ajuste.py`**: ese guion reescribe `arranque.dat`
+entero para volcar los `video=` en masa, y por el camino **aplasta la sangría de
+todos los comentarios de cabecera** (los deja pegados al margen). No rompe nada
+—el parser ignora los comentarios— pero deshace la tabla de ayuda del fichero,
+que es lo único que explica qué hace cada clave. El commit la devuelve; volver a
+ejecutar el guion la pierde otra vez.
