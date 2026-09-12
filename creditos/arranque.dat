@@ -95,25 +95,25 @@
 #
 # Para saber cuanto necesita un juego: lanzalo con GA_VERBOSO=1 y prueba a meter
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
-defecto velocidad=0 segundos=5
-simpsons velocidad=0 segundos=11 video=16
-tapper velocidad=0 segundos=3
+defecto segundos=5 velocidad=0
+simpsons segundos=11 velocidad=0 video=16
+tapper segundos=3 velocidad=0
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
-rbtapper velocidad=0 segundos=3
+rbtapper segundos=3 velocidad=0
 pacman segundos=5 velocidad=0 indicador=0
-qbert segundos=1 velocidad=0
-nrallyx segundos=13 velocidad=0 indicador=0 video=28
-mappy segundos=13 video=38
+qbert segundos=0.1 velocidad=0
+nrallyx segundos=12.8 velocidad=0 indicador=0 video=28
+mappy segundos=13.2 velocidad=0 video=38
 digdug segundos=8
 ncv2 segundos=6 velocidad=0
-sf2 segundos=5 velocidad=0
+sf2 segundos=14.5 velocidad=0
 # sfiii3n es el set SIN CD (30 ficheros SIMM, ~80 MB) y aqui no esta; el que
 # hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
 sfiii3 segundos=25 velocidad=0
-simpsons2p segundos=11 velocidad=0 video=16
-mwalk segundos=0 nvram=0
+simpsons2p segundos=10.6 velocidad=0 video=16
+mwalk segundos=11.8 velocidad=0 nvram=0 videodura=16
 # Dragon's Lair es un LASERDISC: el "juego" es video que se reproduce a su
 # velocidad. Acelerar el emulador NO adelanta una carga, adelanta la PELICULA:
 # se ve a camara rapida y, con el frameskip del arranque, a saltos.
@@ -125,50 +125,73 @@ mwalk segundos=0 nvram=0
 # juego de laserdisc, y de paso se ve su intro, que es la gracia del juego.
 dlair segundos=0
 contra segundos=7 velocidad=0 video=16
-defender velocidad=0
-atetris video=20
-galaga video=44
+defender segundos=12 velocidad=0
+atetris segundos=0.1 velocidad=0 video=20
+galaga segundos=14.8 velocidad=0 video=44
 gaunt2 video=26
 gaunt22p video=26
 gauntlet video=12
 gauntlet2p video=12
-gng video=32
-goldnaxe video=99
+gng segundos=8.3 velocidad=0 video=32
+goldnaxe segundos=6.2 velocidad=0 video=99
 gradius video=44
-joust video=50
-kinst video=81
-kof97 video=99
-kof98 video=81
-kof99 video=44
-mario video=32
-megaman video=50
-megaman2 video=81
-missile video=8
-mk video=44
+joust segundos=10.8 velocidad=0 video=50
+kinst segundos=15 velocidad=0 video=81
+kof97 segundos=11.8 velocidad=0 video=99
+kof98 segundos=11.6 velocidad=0 video=81
+kof99 segundos=4 velocidad=0 video=44
+mario segundos=0.4 velocidad=0 video=32
+megaman segundos=14 velocidad=0 video=50
+megaman2 segundos=26 velocidad=0 video=81
+missile segundos=0 velocidad=100 video=8
+mk segundos=2.8 velocidad=0 video=44
 mk2 video=45
-mslug2 video=26
-mslug3 video=12
-mvsc video=38
-nemesis video=44
-outrun video=8
-polepos video=12
+mslug2 segundos=11.8 velocidad=0 video=26
+mslug3 segundos=4 velocidad=0 video=12
+mvsc segundos=22.1 velocidad=0 video=38
+nemesis segundos=9 velocidad=0 video=44
+outrun segundos=0.1 velocidad=0 video=8
+polepos segundos=8 velocidad=0 video=12
 punchout video=44
-rampage video=20
-robocop video=44
-robotron video=81
-samsho video=50
-samsho2 video=72
-samsho3 video=44
-samsho4 video=90
-samsho5 video=90
-sf video=44
-snowbros video=50
-ssf2t video=81
-ssriders video=81
-strhoop video=32
-timeplt video=20
+rampage segundos=2 velocidad=0 video=20
+robocop segundos=0.01 velocidad=0 video=44
+robotron segundos=10.5 velocidad=0 video=81
+samsho segundos=11.8 velocidad=0 video=50
+samsho2 segundos=11.8 velocidad=0 video=72
+samsho3 segundos=11.8 velocidad=0 video=44
+samsho4 segundos=11.8 velocidad=0 video=90
+samsho5 segundos=4 velocidad=0 video=90
+sf segundos=14 velocidad=0 video=44
+snowbros segundos=4.4 velocidad=0 video=50
+ssf2t segundos=17 velocidad=0 video=81
+ssriders segundos=5 velocidad=0 video=81
+strhoop segundos=11.8 velocidad=0 video=32
+timeplt velocidad=0 video=20
 tmnt video=32
 tmnt2po video=32
-wboy video=54
-xevious video=50
-zaxxon video=44
+wboy segundos=0.1 velocidad=0 video=54
+xevious segundos=12.5 velocidad=0 video=50
+zaxxon segundos=0.1 velocidad=0 video=44
+
+# Medidos en la cabina juego a juego (pasada de ajuste de Eloy): el
+# "segundos=" de cada placa, cronometrado en vez de estimado.
+19xxu segundos=7.6 velocidad=0
+arkanoid segundos=10 velocidad=0
+avsp segundos=15 velocidad=0
+berzerk segundos=10 velocidad=0
+btoads segundos=15 velocidad=0
+commando segundos=11 velocidad=0
+doubledr segundos=12 velocidad=0
+elevator segundos=2.2 velocidad=0
+fatfury1 segundos=12 velocidad=0
+ffight segundos=12.3 velocidad=0
+galaxian segundos=3.6 velocidad=0
+kof2000 segundos=4 velocidad=0
+kungfum segundos=1 velocidad=0
+mk3 segundos=10 velocidad=0
+mslug segundos=11.8 velocidad=0
+popeye segundos=0.5 velocidad=0
+starwars segundos=0.1 velocidad=0
+tekken segundos=10 velocidad=0
+tekken2 segundos=10.2 velocidad=0
+tron segundos=1 velocidad=0
