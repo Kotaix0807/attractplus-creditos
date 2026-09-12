@@ -74,7 +74,9 @@ echo "# 1. el jugador mete monedas y luego sale: se le avisa"
 correr frena GA_PRUEBA_MONEDA=460,500 GA_PRUEBA_SALIR=610
 comprobar "cada moneda sale del monedero" "$(tiene frena 'quedan 3 en el monedero')" "ver log"
 comprobar "frena la salida" "$(tiene frena 'salida frenada')" "ver log"
-comprobar "y cuenta lo que hay dentro" "$(tiene frena 'pueden quedar 2 creditos')" "ver log"
+# Pacman esta en creditos.dat, asi que el numero sale de su RAM y el aviso lo
+# AFIRMA ("quedan"). Sin direccion diria "no se puede saber cuantos quedan".
+comprobar "y cuenta lo que hay dentro" "$(tiene frena 'quedan 2 creditos')" "ver log"
 comprobar "la partida no se corta" "$(sigue frena)" "MAME salio"
 
 echo "# 2. segunda pulsacion: sale de verdad"

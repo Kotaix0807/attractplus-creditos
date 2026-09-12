@@ -57,16 +57,49 @@ function M.nuevo(op)
 		a.metido = a.metido + n
 	end
 
-	function a.dentro()
+	-- Lo que dice la RAM del juego, o nil si aqui hay que estimar. Devuelve nil
+	-- tambien mientras la placa se asienta o la direccion esta a prueba: quien
+	-- pregunta prefiere estimar antes que anunciar un numero inventado.
+	local function leido()
 		if a.exacto then
 			local ok, n = pcall(a.exacto)
 			if ok and (type(n) == 'number') then
 				return (n > 0) and math.floor(n) or 0
 			end
 		end
+		return nil
+	end
+
+	function a.dentro()
+		local n = leido()
+		if n then return n end
 
 		local d = a.entrado - a.consumido
 		return (d > 0) and d or 0
+	end
+
+	-- true cuando el numero de dentro() sale de la RAM y no de una estimacion
+	function a.seguro()
+		return leido() ~= nil
+	end
+
+	-- Hay algo de que avisar?
+	--
+	-- Con lectura exacta es un si o un no. SIN ella se avisa siempre que el
+	-- jugador haya metido monedas en esta partida, aunque la estimacion diga
+	-- cero -- decision de Eloy (2026-09-12), y el motivo es que los dos errores
+	-- posibles no cuestan lo mismo:
+	--
+	--   callarse de mas   -> el jugador se deja creditos pagados y no se entera.
+	--   molestar de mas   -> sale un cuadro que se quita pulsando salir otra vez.
+	--
+	-- La estimacion no puede distinguir un START que empieza partida de otro que
+	-- el juego tira por tener una ya en marcha, asi que con la partida larga se
+	-- iba a cero sola y se callaba. Aqui se elige el error barato.
+	function a.puede_quedar()
+		local n = leido()
+		if n then return n > 0 end
+		return a.metido > 0
 	end
 
 	-- Creditos que el juego se ha llevado. Quien detecta las pulsaciones de
@@ -95,12 +128,17 @@ function M.nuevo(op)
 		if a.estado == 'jugando' then
 			-- Solo molesta si el jugador ha metido monedas aqui dentro y le
 			-- quedan sin gastar. Entrar a mirar y salir no dispara nada.
-			if flanco_salir and (a.dentro() > 0) and (a.metido > 0) then
+			if flanco_salir and (a.metido > 0) and a.puede_quedar() then
 				a.estado = 'avisando'
 				a.reloj = 0
 				local n = a.dentro()
-				a.log('salida frenada: %s en la maquina', (n == 1) and 'puede quedar 1 credito'
-					or string.format('pueden quedar %d creditos', n))
+				if a.seguro() then
+					a.log('salida frenada: %s en la maquina', (n == 1) and 'queda 1 credito'
+						or string.format('quedan %d creditos', n))
+				else
+					a.log('salida frenada: el jugador metio %d moneda(s) y no se puede '
+						.. 'saber cuantos creditos quedan', a.metido)
+				end
 				return 'bloquear'
 			end
 			return nil
@@ -124,7 +162,7 @@ function M.nuevo(op)
 			return 'bloquear'
 		end
 
-		if a.dentro() <= 0 then
+		if not a.puede_quedar() then
 			a.estado = 'jugando'
 			a.log('ya no queda nada dentro, quito el cuadro')
 			return 'bloquear'
@@ -158,6 +196,7 @@ function M.nuevo(op)
 	function a.lineas(saldo)
 		local n = a.dentro()
 		local tercera
+		local segunda
 
 		if a.se_pierden then
 			tercera = saldo
@@ -169,10 +208,23 @@ function M.nuevo(op)
 			tercera = 'SI SALES AHORA LOS PIERDES'
 		end
 
+		-- Con el numero leido de la RAM se afirma; estimando, no. El cuadro
+		-- puede salir con la estimacion a cero (ver puede_quedar), asi que
+		-- decir "DEJAS 0 CREDITOS" seria mentira y ademas absurdo.
+		if a.seguro() then
+			segunda = (n == 1) and 'DEJAS 1 CREDITO DENTRO DE ESTA MAQUINA'
+				or string.format('DEJAS %d CREDITOS DENTRO DE ESTA MAQUINA', n)
+		elseif n == 1 then
+			segunda = 'PUEDE QUEDAR 1 CREDITO DENTRO DE ESTA MAQUINA'
+		elseif n > 1 then
+			segunda = string.format('PUEDEN QUEDAR %d CREDITOS DENTRO DE ESTA MAQUINA', n)
+		else
+			segunda = 'PUEDEN QUEDAR CREDITOS DENTRO DE ESTA MAQUINA'
+		end
+
 		return {
 			'OJO',
-			(n == 1) and 'DEJAS 1 CREDITO DENTRO DE ESTA MAQUINA'
-				or string.format('DEJAS %d CREDITOS DENTRO DE ESTA MAQUINA', n),
+			segunda,
 			tercera,
 			'',
 			'SALIR otra vez para salir',

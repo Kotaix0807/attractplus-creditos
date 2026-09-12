@@ -4605,6 +4605,49 @@ Barridos los 30 con direccion importada, metiendo una moneda de verdad:
 Asi que la cabina pasa de **17 a 32** juegos con aviso exacto, y en esos la
 deriva de la estimacion deja de existir por completo.
 
+### La decision de Eloy: estimando, mejor molestar que callarse
+
+Enseñado el arreglo, Eloy volvio con la pregunta de fondo: *«no comprendo la idea
+del aviso, es que cuente cuantas veces se presiono el boton de moneda, y se
+cuente a partir de ahi»*. La cuenta de monedas **si** es exacta -- se lee el boton
+fisico; lo que no se puede saber sin la direccion es la otra mitad, los creditos
+que el juego se lleva. Y con eso planteado eligio, que es lo correcto porque no
+es una decision tecnica sino de su cabina:
+
+> **En los juegos sin direccion conocida, el aviso salta SIEMPRE que el jugador
+> haya metido monedas en esa partida**, diga lo que diga la estimacion.
+
+El razonamiento son los dos errores posibles, que no cuestan lo mismo:
+
+| | |
+|---|---|
+| callarse de mas | el jugador se deja creditos **pagados** y no se entera |
+| molestar de mas | sale un cuadro que se quita pulsando salir otra vez |
+
+Consecuencias, y ninguna es gratis:
+
+- **`a.puede_quedar()`** decide la puerta: con lectura exacta es `dentro() > 0`;
+  sin ella, `metido > 0`. Y el cuadro **ya no se quita solo** por llegar la
+  estimacion a cero, porque ese cero no significa nada (escenario `7b`).
+- **El texto deja de afirmar cuando estima.** Decir «DEJAS 0 CREDITOS» seria
+  absurdo y «DEJAS 2» podria ser mentira, asi que pasa a «PUEDEN QUEDAR CREDITOS
+  DENTRO DE ESTA MAQUINA». Con la direccion conocida se sigue afirmando
+  («DEJAS 2 CREDITOS»), que es justo lo que se gana teniendola. El propio
+  encabezado de `aviso.lua` ya pedia ese «pueden quedar» desde el principio; el
+  texto no lo cumplia.
+- **El que solo entra a mirar sigue sin ser molestado**: la condicion
+  `metido > 0` no se toca, y el credito del lanzamiento no cuenta.
+
+Verificado de extremo a extremo en `gng` (sin direccion), metiendo una moneda de
+verdad y aporreando START:
+
+```
+0 START de mas -> dentro=1 seguro=false cuadro=true   PUEDE QUEDAR 1 CREDITO...
+5 START de mas -> dentro=0 seguro=false cuadro=true   PUEDEN QUEDAR CREDITOS...
+```
+
+La segunda linea es exactamente el caso que Eloy reportaba, y ahora avisa.
+
 **Trampa al montar la prueba, y volvio a morder:** `creditos.lua` cuenta las
 monedas leyendo el **boton fisico** (`entrada:seq_pressed(seq)`,
 `creditos.lua:996`), no el campo, porque `set_value` es un OR con la secuencia

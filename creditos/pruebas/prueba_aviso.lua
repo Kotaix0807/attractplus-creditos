@@ -118,14 +118,42 @@ end
 
 print('\n7. si el credito se gasta con el cuadro puesto, se quita')
 do
-	local a = A.nuevo{ entrado = 0 }
+	-- Solo se puede quitar cuando el numero es de la RAM: ahi sabemos que ya
+	-- no queda nada. Estimando no se sabe, ver el escenario 7b.
+	local real = 1
+	local a = A.nuevo{ entrado = 0, dentro = function() return real end }
 	a.entra(1)
 	a.frame(true, false); a.frame(false, false)
 	igual('cuadro arriba', a.visible(), true)
-	a.consume(1)                           -- el jugador pulsa start
+	real = 0                               -- el juego se lleva el credito
 	a.frame(false, false)
 	igual('ya no queda nada que perder', a.dentro(), 0)
 	igual('cuadro fuera', a.visible(), false)
+end
+
+print('\n7b. sin direccion conocida, el aviso NO se le puede escapar')
+do
+	-- Decision de Eloy (2026-09-12): estimando, el error barato es molestar.
+	-- La estimacion no distingue un START que empieza partida de otro que el
+	-- juego tira, asi que se avisa siempre que el jugador haya metido monedas.
+	local a = A.nuevo{ entrado = 0 }
+	a.entra(1)
+	a.consume(1)                           -- start: el juego se lo lleva...
+	a.consume(5)                           -- ...y cinco pulsaciones que ignora
+	igual('la estimacion dice cero', a.dentro(), 0)
+	igual('pero no es segura', a.seguro(), false)
+	igual('y aun asi avisa', pulsar(a, 'salir'), 'bloquear')
+	igual('sin afirmar un numero', a.lineas(nil)[2],
+		'PUEDEN QUEDAR CREDITOS DENTRO DE ESTA MAQUINA')
+
+	-- El que solo entro a mirar sigue sin ser molestado
+	local b = A.nuevo{ entrado = 1 }
+	igual('sin meter monedas no molesta', pulsar(b, 'salir'), nil)
+
+	-- Y con la direccion conocida se sigue afirmando, que es lo que vale
+	local c = A.nuevo{ entrado = 0, dentro = function() return 0 end }
+	c.entra(1)
+	igual('con lectura exacta y cero, no molesta', pulsar(c, 'salir'), nil)
 end
 
 print('\n8. el texto dice la verdad')
@@ -134,13 +162,13 @@ do
 	a.entra(1)
 	a.frame(true, false)
 	local l = a.lineas(7)
-	igual('singular bien escrito', l[2], 'DEJAS 1 CREDITO DENTRO DE ESTA MAQUINA')
+	igual('singular bien escrito', l[2], 'PUEDE QUEDAR 1 CREDITO DENTRO DE ESTA MAQUINA')
 	ok('tranquiliza sobre el monedero', l[3]:find('NO SE TOCA: 7') ~= nil, l[3])
 
 	local b = A.nuevo{ entrado = 0 }
 	b.entra(4)
 	b.frame(true, false)
-	igual('plural bien escrito', b.lineas(2)[2], 'DEJAS 4 CREDITOS DENTRO DE ESTA MAQUINA')
+	igual('plural bien escrito', b.lineas(2)[2], 'PUEDEN QUEDAR 4 CREDITOS DENTRO DE ESTA MAQUINA')
 	ok('no dice que se pierdan', b.lineas(2)[3]:find('PIERDES') == nil, b.lineas(2)[3])
 
 	-- En modo manual no hay monedero: ahi los creditos SI se pierden y el
@@ -187,15 +215,21 @@ do
 	local m = b.lineas(7)
 	ok('con se_pierden, avisa de la perdida',
 		m[3] == 'SI SALES AHORA LOS PIERDES. MONEDERO: 7')
-	ok('y dice cuantos deja dentro',
-		m[2] == 'DEJAS 2 CREDITOS DENTRO DE ESTA MAQUINA')
+	ok('y dice cuantos pueden quedar dentro',
+		m[2] == 'PUEDEN QUEDAR 2 CREDITOS DENTRO DE ESTA MAQUINA')
+
+	-- Con el contador leido de la RAM el cuadro SI afirma, que es la ventaja
+	-- de tener la direccion: el numero es el del juego.
+	local d = A.nuevo{ se_pierden = true, dentro = function() return 2 end }
+	d.entra(2)
+	ok('con la RAM se afirma', d.lineas(7)[2] == 'DEJAS 2 CREDITOS DENTRO DE ESTA MAQUINA')
 
 	-- modo manual: no hay monedero que ensenar
 	local c = A.nuevo{ se_pierden = true }
 	c.entra(1)
 	ok('sin monedero, el aviso pelado',
 		c.lineas(nil)[3] == 'SI SALES AHORA LOS PIERDES')
-	ok('y en singular', c.lineas(nil)[2] == 'DEJAS 1 CREDITO DENTRO DE ESTA MAQUINA')
+	ok('y en singular', c.lineas(nil)[2] == 'PUEDE QUEDAR 1 CREDITO DENTRO DE ESTA MAQUINA')
 
 	ok('el mismo numero de lineas en los dos casos', #l == #m)
 end
