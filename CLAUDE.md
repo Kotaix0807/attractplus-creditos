@@ -4659,6 +4659,109 @@ Hay que sustituir `GA_ESTADO.pulso_moneda.leer`, igual que hace
 verdad para que el juego conceda el credito. Y la suscripcion del notificador,
 en una global, o el recolector se la lleva a mitad.
 
+## Root Beer Tapper decia PRESINSERT COINAYER: el barrido llegaba tarde
+
+Traido por Eloy el 2026-09-12. **Era nuestro**, y es la version completa de lo
+que este documento ya insinuaba en «Los creditos que la NVRAM guarda entre
+sesiones» sin explicar el mecanismo ni arreglarlo.
+
+### Que pasa
+
+Tapper y Root Beer Tapper guardan los creditos en su NVRAM, asi que arrancan
+pintando el rotulo **largo**:
+
+```
+CREDIT 4 PRESS 1 OR 2 PLAYER
+```
+
+Cuando el barrido escribe 0 en el contador (`e011`), la placa ve el cambio y
+repinta con el **corto**. Y su rutina de dibujo **no borra el hueco antes de
+escribir**:
+
+```
+PRESS 1 OR 2 PLAYER     19 caracteres
+    INSERT COIN         11, centrado -> (19-11)/2 = 4 de margen a cada lado
+
+P R E S S _ 1 _ O R _ 2 _ P L A Y E R      <- lo que habia
+        I N S E R T _ C O I N              <- lo que estampa encima
+P R E S I N S E R T _ C O I N A Y E R      <- lo que queda
+```
+
+`PRES` + `INSERT COIN` + `AYER`. Sobreviven las cuatro letras de cada extremo.
+
+**En una recreativa de verdad no pasa**, y el motivo importa: alli el contador
+nunca cae a 0 en modo atraccion. Baja al pulsar START, y entonces el juego se va
+a la partida y repinta la pantalla entera. «El contador cae a cero estando en
+atraccion» es un estado que **solo existe porque le escribimos la RAM desde
+fuera**: un fallo latente de la placa que nosotros despertamos.
+
+### El arreglo: `barrido=N` en `arranque.dat`
+
+Adelantar la limpieza a **antes de que la placa pinte el rotulo largo**. Si
+nunca lo escribe, no hay resto que tapar. En SEGUNDOS, como el resto de tiempos
+del fichero:
+
+```
+tapper   segundos=3 velocidad=0 barrido=0.5
+rbtapper segundos=3 velocidad=0 barrido=0.5
+```
+
+Va **apagado y por juego a proposito**. Barrer pronto es escribir en la RAM de
+una placa que puede estar autoprobandose, y eso hecho a lo bruto rompe el
+arranque -- ya esta documentado con Pac-Man, cuyo test de RAM entraba en bucle.
+Solo se pone donde se ha comprobado juego a juego. El disparo vive **dentro del
+arranque tapado**: ahi la pantalla esta en negro y el boton de moneda cerrado,
+asi que no hay nada del jugador que respetar todavia.
+
+**Medido en la cabina**, con 4 creditos en una copia aislada de la NVRAM:
+escribiendo 0 en los frames 5, 10, 30, 60 y 120 el valor **se queda puesto**
+hasta el frame 1500 y la pantalla sale limpia (`CREDIT 0 / INSERT COIN`), con el
+record `CEG 40975` intacto. Verificado en los dos Tappers.
+
+### Dos trampas del banco de pruebas, las dos mias
+
+- **MAME reescribe la NVRAM al salir**, asi que la pasada con la que reproduje
+  el fallo dejo el fichero de prueba **a cero creditos**, y las cinco medidas
+  siguientes barrieron un contador que ya valia 0. No median nada y lo parecian.
+  El patron tiene que vivir en un directorio aparte y con `chmod a-w`, y cada
+  pasada trabaja sobre una copia.
+- **`-showconfig` devuelve el `rompath` con `$HOME` SIN expandir**. Pasandolo
+  entrecomillado, MAME recibe la ruta literal y no encuentra ninguna rom; el
+  sintoma es que el guion no imprime nada, no un error.
+
+## La pasada de `buscar_creditos.sh`: de 17 a 33 juegos con lectura exacta
+
+Hecha el 2026-09-12 sobre los 89 juegos que no tenian direccion verificada. Es
+el punto 4 de «Proximos pasos», que llevaba sin hacerse desde el principio.
+
+**Salen 17 direcciones**, y de regalo una comprobacion cruzada de las importadas
+de la coleccion de cheats: de las 10 en que ambos metodos opinaban, **9
+coinciden** (tres de ellas encontrando ademas una copia espejo que el juego
+mantiene a la vez). La unica discrepancia se explica sola -- `1942` tenia `e010`
+importada, que la prueba de comportamiento ya habia descartado en tiempo de
+ejecucion; la medida dice `e011`.
+
+Siete no estaban en la tabla: `avsp`, `btime`, `ddragon`, `gng`, `mario`,
+`megaman`, `zaxxon`.
+
+> **PELIGRO con `buscar_creditos.sh`: REESCRIBE `creditos.dat` entero** con solo
+> lo que encuentra en esa pasada (su ultimo bloque es un `> "$SALIDA"`).
+> Lanzado a pelo se lleva por delante las **4945 importadas** y las verificadas
+> de los juegos que no esten en la lista. Hay que darle `SALIDA=` a un temporal
+> y fundir despues. Conviene tambien `CFG_DIR=` a una copia, o las monedas que
+> mete la prueba acaban en los `.cfg` de los juegos.
+
+**Y las cifras hay que darlas de la maquina que toca.** Estas salieron del
+portatil, que tiene 106 sets; **la cabina tiene 104 y no son un subconjunto**:
+alli no estan `19xx`, `tekken3/4/5d`, `tektagt` ni `dkingjr`, y aqui no arrancan
+los que necesitan BIOS o CHD (`arkanoid`, `btoads`, `kinst`, `strhoop`,
+`tekken`, `tekken2`...). En la cabina el numero real es **33 de 104**, no 34 de
+106.
+
+Repasados en la cabina los que aqui no arrancaban: `tekken`, `tekken2`,
+`tmnt2po`, `wboy` y `xevious` arrancan pero **ningun candidato responde**, y los
+otros cinco no estan instalados alli. O sea que esa via esta agotada para ellos.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
