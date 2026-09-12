@@ -114,6 +114,13 @@ sf2 segundos=14.5 velocidad=0
 sfiii3 segundos=25 velocidad=0
 simpsons2p segundos=10.6 velocidad=0 video=16
 mwalk segundos=11.8 velocidad=0 nvram=0 videodura=16
+
+# Berzerk guarda los creditos en su NVRAM y NO se ha podido localizar el
+# contador: 8a3 sube con cada moneda pero no es el almacen (escribirle 0 y
+# reiniciar deja los creditos puestos). Aqui nvram=0 SI vale, y esta medido:
+# arranca limpio con 0 creditos, sin el "FACTORY SETTINGS RESTORED" que si
+# bloquea a las placas Williams. Y esta en hiscore.dat, asi que sus
+# puntuaciones se guardan aparte en su .hi y no se pierden.
 # Dragon's Lair es un LASERDISC: el "juego" es video que se reproduce a su
 # velocidad. Acelerar el emulador NO adelanta una carga, adelanta la PELICULA:
 # se ve a camara rapida y, con el frameskip del arranque, a saltos.
@@ -178,7 +185,7 @@ zaxxon segundos=0.1 velocidad=0 video=44
 19xxu segundos=7.6 velocidad=0
 arkanoid segundos=10 velocidad=0
 avsp segundos=15 velocidad=0
-berzerk segundos=10 velocidad=0
+berzerk segundos=10 velocidad=0 nvram=0
 btoads segundos=15 velocidad=0
 commando segundos=11 velocidad=0
 doubledr segundos=12 velocidad=0

@@ -1288,6 +1288,8 @@ defcmnd @:maincpu,program,a037   # (cheat)
 defence @:maincpu,program,a037   # (cheat)
 defender @:maincpu,program,a037
 robotron @:maincpu,program,9851
+joust @:maincpu,program,a0f2
+tron @:maincpu,program,c501
 defenderb @:maincpu,program,a037   # (cheat)
 defenderg @:maincpu,program,a037   # (cheat)
 defenderom @:maincpu,program,a037   # (cheat)

@@ -15,9 +15,9 @@ con créditos** y **uno arrancaba en el menú de servicio**:
 | `robotron` | arranca con **2 créditos** | **ARREGLADO** — dirección `9851` |
 | `defender` | arranca con **2 créditos** | **ARREGLADO** — dirección `a037` |
 | `mk` | arrancaba en el **TEST MENU** | **ARREGLADO** — DIP Service Mode |
-| `tron` | arranca con **9 créditos** | pendiente, ver abajo |
-| `berzerk` | arranca con **6 créditos** | pendiente |
-| `joust` | arranca con **1 crédito** | pendiente |
+| `tron` | arranca con **9 créditos** | **ARREGLADO** — dirección `c501` |
+| `joust` | arranca con **1 crédito** | **ARREGLADO** — dirección `a0f2` |
+| `berzerk` | arranca con **6 créditos** | **ARREGLADO** — con `nvram=0` |
 
 ## Lo arreglado, y cómo
 
@@ -38,19 +38,43 @@ solo al coincidir con fábrica. Verificado: ya sale su tabla de récords y entra
 la demo. **Es el mismo fallo que el Rack Test de Ms. Pac-Man**, y se enciende
 igual de fácil con un F1 despistado.
 
-## Lo que queda, y por qué no vale `nvram=0`
+## Los tres que faltaban (resueltos el 2026-09-12)
 
-La salida obvia sería `nvram=0`, pero **está medida y no sirve para las Williams**:
+**`joust` → `a0f2`** y **`tron` → `c501`**, las dos verificadas en pantalla. La
+técnica que las sacó fue la **búsqueda diferencial**: foto de toda la RAM, una
+moneda, quedarse con los bytes que suben 1, otra moneda, intersectar. No supone
+ningún valor, que es donde había fallado antes — busqué `berzerk` anclado en 6
+créditos cuando mis propias pruebas ya lo habían dejado en 12.
 
-> Arrancando `joust` con la NVRAM borrada, la pantalla se queda en
-> **`FACTORY SETTINGS RESTORED`** a los 18 y a los 45 segundos. Cambiaríamos
-> «arranca con créditos» por «arranca con un aviso y no entra al juego».
+Dos trampas que costaron una pasada cada una:
 
-| juego | por qué sigue pendiente |
-|---|---|
-| `joust` | se encontró un byte que sube con las monedas (`a0f2`) pero **no es el que pinta**: escribirle 0 deja la pantalla en `CREDITS 4`. Hay otra copia |
-| `berzerk` | su dirección de `creditos.dat` (`8a4`) es **falsa**: se queda en 0 teniendo 6 créditos en pantalla. Y el barrido anclado no encontró ninguna que suba |
-| `tron` | tampoco se encontró. **Pero aquí `nvram=0` SÍ arranca limpio**, con `CREDITS 0` y su atracción normal — a cambio de perder sus puntuaciones, porque no está en `hiscore.dat` |
+- **El marcador NO se repinta al escribir en la RAM.** Escribir 0 en la
+  dirección buena dejaba la pantalla igual, y parecía que la dirección era
+  falsa. Estas placas redibujan el número sólo cuando cambia. La prueba que sí
+  vale es **escribir 0 y meter UNA moneda**: si la dirección era la buena, la
+  pantalla pasa a 1.
+- **Tron no admitía monedas porque estaba en su tope de 9.** No era el ancho del
+  pulso (probado con 30 frames). Se resolvió buscando a la baja, con START, que
+  sí gasta un crédito. Y ahí mordió otra trampa ya documentada: **un solo
+  START** — con la partida en marcha el segundo no gasta nada.
+
+**`berzerk` se arregla con `nvram=0`, y es el único de los cinco.** Su contador
+no se pudo localizar: `8a3` sube con cada moneda pero no es el almacén
+(escribirle 0 y reiniciar deja los créditos puestos). Aquí `nvram=0` sí vale, y
+está medido en las dos direcciones:
+
+- arranca **limpio, con 0 créditos**, sin el `FACTORY SETTINGS RESTORED` que sí
+  bloquea a Joust;
+- y está en `hiscore.dat`, así que **sus puntuaciones se guardan aparte** en su
+  `.hi` y no se pierden.
+
+Como `nvram=0` evita **guardar** y no **cargar**, hubo que borrarle la NVRAM
+vieja una vez.
+
+> **Por qué NO se usó `nvram=0` en los otros cuatro:** arrancando `joust` con la
+> NVRAM borrada, la pantalla se queda en **`FACTORY SETTINGS RESTORED`** a los
+> 18 y a los 45 segundos. Cambiaríamos «arranca con créditos» por «no entra al
+> juego».
 
 ## Lo que NO hay que configurar a mano
 
