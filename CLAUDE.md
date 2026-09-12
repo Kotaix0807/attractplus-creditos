@@ -4447,6 +4447,79 @@ Verificado así: con dos monedas se ve `CREDITOS 2` arriba a la derecha y, en el
 mismo fotograma, el propio juego diciendo `CREDITS: 2` abajo. Las 339
 comprobaciones de `correr.sh` y las de `aviso_mame.sh` siguen en verde.
 
+## Ocultar juegos del menu sin borrar sus ROMs (2026-09-10)
+
+Pedido por Eloy: Gauntlet, Gauntlet II y TMNT tenian que dejar accesible **solo
+la version de 2 jugadores**, y Gradius/Nemesis una sola de las dos. El problema
+es que las versiones que se quieren son CLONES, asi que **sus padres tienen que
+seguir en disco** aunque no deban aparecer:
+
+| se ve en el menu | oculto, pero el `.zip` se queda |
+|---|---|
+| `gauntlet2p` Gauntlet (2 Players, rev 6) | `gauntlet` |
+| `gaunt22p` Gauntlet II (2 Players, rev 2) | `gaunt2` |
+| `gradius` Gradius (Japan, ROM version) | `nemesis` |
+| `tmnt2po` TMNT (Oceania 2 Players) | `tmnt` |
+
+Se hace con un **`global_filter`** en el display (`config/displays.cfg`), que se
+aplica a TODAS sus pestañas -- si fuera un filtro normal, un juego marcado como
+favorito reapareceria en la pestaña de favoritos:
+
+```
+global_filter
+    rule                    Name not_equals gauntlet|gaunt2|nemesis|tmnt
+```
+
+### La trampa: `exception` NO excluye, INCLUYE
+
+AM+ tiene una clausula que se llama `exception` y parece la obvia para esto.
+**Hace justo lo contrario**, y su manual lo dice sin rodeos:
+
+> *«If a game does not match a `rule`, then it is not shown. If a game matches to
+> an `exception`, then it gets listed no matter what (ignoring the rest of the
+> rules in the filter).»*
+
+O sea que `exception` significa «listalo pase lo que pase». Coincide con el
+codigo (`FeFilter::apply_filter`, `fe_info.cpp:711`), que ante una excepcion que
+encaja devuelve `true` -- aceptar -- y corta. **Usarla aqui habria dejado
+visibles exactamente los cuatro que se querian esconder.** Para ocultar, la
+unica via es `rule ... not_equals`.
+
+Dos cosas mas que hacen que una sola linea baste:
+
+- **AM+ compara con `regex_match`, o sea coincidencia COMPLETA**
+  (`fe_info.cpp:545`). Por eso `tmnt` no se lleva por delante a `tmnt2po`, ni
+  `gaunt2` a `gaunt22p`. Con `contains` habria pasado.
+- Los targets validos son los de `FeRomInfo::indexStrings` (`Name`, `Title`,
+  `CloneOf`, `Year`...) y las comparaciones las de `filterCompStrings`
+  (`equals`, `not_equals`, `contains`...).
+
+### `displays.cfg` se REESCRIBE al salir AM+
+
+Del manual: *«changes to this file are only loaded when AM+ first starts, and the
+file is overwritten when AM+ exits»*. Editarlo con el frontend abierto es tirar
+el cambio. Se toca con AM+ parado.
+
+Comprobar que AM+ entendio la regla es facil por eso mismo: si **sobrevive a un
+ciclo de arranque y salida**, la parseo. Y su log lo dice con numeros:
+
+```
+sin filtro:  (94 entries from romlist cache)
+con filtro:  (94 entries from romlist cache, 90 kept, updated globalfilter cache)
+```
+
+**Lo que NO sirve para verificarlo:** el contador `[ListEntry]/[ListSize]` del
+layout marcaba `39/89` **igual con filtro y sin el**, asi que no refleja la lista
+filtrada. A primera vista parecia confirmar el resultado y no confirmaba nada.
+
+### Gradius o Nemesis
+
+Es el mismo juego de Konami (1985) en dos regiones: **Gradius** en Japon,
+**Nemesis** en la exportacion. Se dejo Gradius porque es el nombre con el que se
+conoce la saga entera (Gradius II, III, IV, V), mientras que «Nemesis» fue solo
+el titulo de exportacion de la primera entrega. Cambiarlo es cambiar una palabra
+en esa linea.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
