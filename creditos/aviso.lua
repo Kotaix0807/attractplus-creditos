@@ -71,8 +71,16 @@ function M.nuevo(op)
 
 	-- Creditos que el juego se ha llevado. Quien detecta las pulsaciones de
 	-- start es creditos.lua, que ya tiene un contador de flancos.
+	--
+	-- NUNCA se consume mas de lo que ha entrado: una placa no puede gastar un
+	-- credito que no esta dentro. Sin este tope, cada START que el juego
+	-- IGNORA -- y con la partida ya en marcha los ignora todos, esta medido --
+	-- dejaba una deuda que se comia las monedas siguientes, y el aviso de
+	-- salida se callaba teniendo creditos de verdad dentro de la maquina.
 	function a.consume(n)
-		a.consumido = a.consumido + math.max(0, math.floor(n or 0))
+		local tope = a.entrado - a.consumido
+		if tope <= 0 then return end
+		a.consumido = a.consumido + math.min(tope, math.max(0, math.floor(n or 0)))
 	end
 
 	-- Devuelve la accion para este frame:

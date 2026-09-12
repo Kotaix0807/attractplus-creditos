@@ -4520,6 +4520,102 @@ conoce la saga entera (Gradius II, III, IV, V), mientras que «Nemesis» fue sol
 el titulo de exportacion de la primera entrega. Cambiarlo es cambiar una palabra
 en esa linea.
 
+## El aviso de salida no siempre saltaba: la estimacion se iba a cero sola
+
+Traido por Eloy el 2026-09-12: *«el aviso de salida con creditos en la maquina
+cargados, no siempre funciona... Me pasa por ejemplo cuando juego un buen rato,
+ahi salgo y no me avisa»*. La pista buena estaba en «un buen rato»: **no era
+intermitente, era acumulativo**.
+
+Son **dos causas encadenadas**, y las dos golpean justo en la partida larga.
+
+### 1. Cada START restaba un credito, aunque el juego lo ignorara
+
+Sin la direccion del contador en la RAM, `aviso.lua` estima
+`dentro = entrado - consumido`, y `creditos.lua` llama a `aviso.consume(n)` en
+**cada flanco de START**. Pero con la partida ya en marcha **la placa ignora el
+START y no gasta nada** -- eso ya estaba medido en este documento, en la seccion
+de la busqueda de direcciones («Un solo START»), y no se habia atado con esto.
+
+Reproducido con `lua` a secas sobre el modulo de verdad:
+
+```
+3 monedas metidas, 2 creditos sin gastar:
+  sale enseguida (0 START extra)   dentro=2  -> AVISA
+  2 START de mas                   dentro=0  -> NO AVISA
+  partida larga (5 de mas)         dentro=0  -> NO AVISA
+```
+
+Y habia un segundo efecto peor: **`consumido` no tenia tope**, asi que la deuda
+se arrastraba a las monedas SIGUIENTES. Meter una moneda, jugarla, aporrear
+START y meter dos mas dejaba el aviso mudo con dos creditos de verdad dentro.
+
+**El arreglo, sin ninguna heuristica:** `consumido` nunca puede pasar de
+`entrado`. Una placa no puede gastar un credito que no esta dentro. Eso cierra
+el caso de la deuda arrastrada; lo que la estimacion sigue sin poder distinguir
+es un START que empieza partida de otro que el juego tira, y por eso el arreglo
+de fondo es el siguiente.
+
+### 2. Y casi ningun juego tenia lectura exacta: la prueba se descartaba SIEMPRE
+
+De los 106 juegos instalados, solo **17** tienen direccion verificada en
+`creditos.dat`. Otros **30** la tienen importada de la coleccion de cheats, y
+esas se ganan la confianza probandolas: se mira si el byte sube con las monedas.
+
+**Con monedas de verdad no insertamos ninguna al lanzar** (`MONEDAS = 0`), asi
+que `e.fase` vale `'fin'` desde el frame 1 y la prueba comparaba el valor
+**consigo mismo**. Verificado lanzando Contra:
+
+```
+[creditos] la direccion importada 101a no se movio con las monedas (0 -> 0): la descarto y estimo por los START
+```
+
+O sea que el descarte era **incondicional y en el primer frame**: 89 de 106
+juegos estimaban, y la estimacion se iba a cero sola al jugar un rato.
+
+**El arreglo: la prueba la hace la moneda del JUGADOR.** Cuando no hay monedas
+de lanzamiento, `a_prueba` se queda pendiente hasta que entra una moneda de
+verdad; ahi se apunta el valor y se comprueba `GA_COMPROBAR` frames despues, que
+es el mismo plazo de gracia que ya usaba la devolucion. Verificado en MAME:
+
+```
+[creditos] moneda del jugador: entra en la maquina
+[creditos] la direccion importada 101a subio de 0 a 1: me fio, a partir de ahora la leo
+[P] a_prueba=nil memoria=true dentro=1
+```
+
+**Y mientras esta a prueba, el cuadro NO usa ese numero.** Antes el codigo se
+apoyaba en que la comprobacion resolvia en el frame 1 y luego `e.memoria` era
+nil; ahora la direccion sobrevive hasta la primera moneda, y `fin_del_arranque`
+llama a `asentar_ya()`, asi que `memoria.dentro()` devolveria un numero
+**asentado pero sin comprobar**. La funcion `dentro` que recibe el aviso
+devuelve `nil` mientras haya `a_prueba`: estimar es mejor que anunciar el byte
+de una direccion que no sabemos si es el contador.
+
+### Cuantos juegos gana, medido
+
+Barridos los 30 con direccion importada, metiendo una moneda de verdad:
+
+| | |
+|---|---|
+| **ascienden a lectura exacta** | **15** (1943, atetris, bbredux, commando, contra, dkingjr, dkong3, dkongjr, ffight, galaxian, ncv2, robocop, sf2, snowbros, timeplt) |
+| se descartan con razon | 8 (1942, berzerk, bublbobl, gauntlet, mk, mk2, mk3, sf) |
+| sin probar aqui | 7 -- **no arrancan en el portatil**, les faltan BIOS o CHD (19xx, arkanoid, btoads, kinst, strhoop, tekken, tekken2). En la cabina si se probaran |
+
+Asi que la cabina pasa de **17 a 32** juegos con aviso exacto, y en esos la
+deriva de la estimacion deja de existir por completo.
+
+**Trampa al montar la prueba, y volvio a morder:** `creditos.lua` cuenta las
+monedas leyendo el **boton fisico** (`entrada:seq_pressed(seq)`,
+`creditos.lua:996`), no el campo, porque `set_value` es un OR con la secuencia
+fisica y no se pueden distinguir. Mis dos primeros bancos de pruebas metian la
+moneda con `set_value` y el contador del script marcaba `metido=0 entrado=0`:
+la prueba era invalida y parecia decir que el aviso estaba roto de otra forma.
+Hay que sustituir `GA_ESTADO.pulso_moneda.leer`, igual que hace
+`pruebas/integracion.sh` con el monedero, **y ademas** pulsar la entrada de
+verdad para que el juego conceda el credito. Y la suscripcion del notificador,
+en una global, o el recolector se la lleva a mitad.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de

@@ -854,6 +854,20 @@ local function por_frame()
 			if e.aviso then e.aviso.entra(CREDITOS_POR) end
 			e.metidos = e.metidos + CREDITOS_POR
 
+			-- Direccion importada todavia sin comprobar: esta es la moneda
+			-- con la que se prueba. Con monedas de verdad no insertamos
+			-- ninguna al lanzar, asi que la prueba de siempre -- mirar si el
+			-- byte subio cuando terminaron de entrar las monedas -- comparaba
+			-- el valor consigo mismo y descartaba la direccion SIEMPRE, en el
+			-- primer frame. Aqui hay una moneda de verdad que mirar.
+			if e.a_prueba and not e.a_prueba.reloj and e.leer_ram then
+				local okp, v = pcall(e.leer_ram)
+				if okp and (type(v) == 'number') then
+					e.a_prueba.antes = v
+					e.a_prueba.reloj = COMPROBAR
+				end
+			end
+
 			-- Se apunta para comprobar que el juego la recoge de verdad
 			if (COMPROBAR > 0) and e.leer_ram and e.memoria and e.memoria.asentado then
 				local okp, v = pcall(e.leer_ram)
@@ -910,9 +924,19 @@ local function por_frame()
 		end
 
 	elseif e.a_prueba then
-		-- Direccion importada a prueba: cuando terminen de entrar las monedas
-		-- se mira si ese byte ha subido.
-		if e.fase == 'fin' then
+		-- Direccion importada a prueba: se mira si ese byte sube con una
+		-- moneda. Con monedas insertadas por nosotros, cuando terminan de
+		-- entrar; con monedas de verdad, pasado el plazo de gracia desde que
+		-- el jugador metio la suya.
+		local toca
+		if MONEDAS > 0 then
+			toca = (e.fase == 'fin')
+		elseif e.a_prueba.reloj then
+			e.a_prueba.reloj = e.a_prueba.reloj - 1
+			toca = (e.a_prueba.reloj <= 0)
+		end
+
+		if toca then
 			local ok, ahora = pcall(e.leer_ram)
 			local antes = e.a_prueba.antes
 
@@ -1373,7 +1397,13 @@ if AVISAR and AV then
 		espera = ESPERA_AVISO,
 		-- Si sabemos leer los creditos de la RAM, el cuadro dice el numero
 		-- exacto en vez de una estimacion.
-		dentro = GA_ESTADO.memoria and function() return GA_ESTADO.memoria.dentro() end or nil,
+		-- A prueba = todavia no sabemos si ese byte es el contador, asi que
+		-- devolver nil manda al cuadro a su estimacion. Anunciar el numero de
+		-- una direccion sin comprobar seria peor que estimarlo.
+		dentro = GA_ESTADO.memoria and function()
+			if GA_ESTADO.a_prueba then return nil end
+			return GA_ESTADO.memoria and GA_ESTADO.memoria.dentro()
+		end or nil,
 		log = log,
 	}
 	log('aviso de creditos dentro de la maquina activo')

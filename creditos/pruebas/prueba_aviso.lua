@@ -41,6 +41,22 @@ do
 	igual('nunca baja de cero', a.dentro(), 0)
 end
 
+print('\n1b. un START que el juego IGNORA no puede gastar un credito')
+do
+	-- Con la partida ya en marcha la placa ignora el START (medido), pero
+	-- creditos.lua no puede saberlo y resta igual. Sin tope, esa deuda se
+	-- comia las monedas siguientes y el aviso se callaba.
+	local a = A.nuevo{ entrado = 0 }
+	a.entra(1)
+	a.consume(1)                           -- la partida empieza: se gasta
+	for _ = 1, 5 do a.consume(1) end       -- y aporrea START durante la partida
+	igual('no se gasta de mas', a.consumido, 1)
+
+	a.entra(2)                             -- mete dos monedas mas
+	igual('las monedas nuevas siguen dentro', a.dentro(), 2)
+	igual('y el aviso salta', pulsar(a, 'salir'), 'bloquear')
+end
+
 print('\n2. entrar a mirar un juego y salir NO molesta')
 do
 	-- Solo esta dentro el credito del lanzamiento: el jugador no ha metido
