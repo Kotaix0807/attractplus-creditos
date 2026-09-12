@@ -125,6 +125,16 @@ Si algún día eso pasara a apuntar a una copia, el pull dejaría de aplicar
 también a `creditos.lua` y el síntoma sería justo el de los layouts: arreglas
 algo, lo subes, lo pulleas y la cabina sigue igual.
 
+**Y no basta con volver a pasar `instalar.sh`.** Su `copiar_si_falta()` respeta
+el fichero que ya esté puesto (`instalar.sh:747`: `ya existe, no lo toco`), que
+es lo correcto —no queremos que el instalador pise la configuración de una
+cabina que funciona— pero significa que la plantilla del repo **sólo sirve para
+una instalación nueva**. Actualizar una cabina ya montada es copiar a mano.
+
+Peor todavía con `displays.cfg` y `attract.cfg`: **AM+ los reescribe al salir**.
+Ahí no sólo no llega el pull; si los editas con el frontend abierto, el cambio
+se pierde al cerrarlo. Se tocan con AM+ parado.
+
 **Cuidado al sincronizar a mano.** El arreglo del ancho del layout (2026-09-12)
 se aplicó con un `sed` sobre la copia viva en vez de copiar el fichero del repo:
 el valor quedó bien, pero el comentario que explicaba *por qué* 456 y no 436 se
