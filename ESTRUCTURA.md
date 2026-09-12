@@ -125,15 +125,34 @@ Si algún día eso pasara a apuntar a una copia, el pull dejaría de aplicar
 también a `creditos.lua` y el síntoma sería justo el de los layouts: arreglas
 algo, lo subes, lo pulleas y la cabina sigue igual.
 
-**Y no basta con volver a pasar `instalar.sh`.** Su `copiar_si_falta()` respeta
-el fichero que ya esté puesto (`instalar.sh:747`: `ya existe, no lo toco`), que
-es lo correcto —no queremos que el instalador pise la configuración de una
-cabina que funciona— pero significa que la plantilla del repo **sólo sirve para
-una instalación nueva**. Actualizar una cabina ya montada es copiar a mano.
+**Lo que sí despliega es `instalar.sh`** (tarea `config`), y conviene saber
+exactamente cuánto, porque no trata a todos igual:
 
-Peor todavía con `displays.cfg` y `attract.cfg`: **AM+ los reescribe al salir**.
-Ahí no sólo no llega el pull; si los editas con el frontend abierto, el cambio
-se pierde al cerrarlo. Se tocan con AM+ parado.
+| | qué hace | ¿pisa lo que haya? |
+|---|---|---|
+| `config/plugins/*.nut` | `cp` en bucle (`instalar.sh:756`) | **sí** |
+| `config/layouts/Arcade-UMAG` | `rm -rf` y `cp -r` (`:759`) | **sí, entero** |
+| `config/modules/` | `cp -r` (`:763`) | **sí** |
+| `config/cabina/displays.cfg` | `copiar_si_falta` (`:777`) | **NO** |
+
+O sea que para el layout y los plugins **sí hay vía automática**: volver a pasar
+la tarea `config` del instalador. Lo que no la tiene es **`displays.cfg`**, el
+único fichero protegido por `copiar_si_falta()` (`:747`, «ya existe, no lo
+toco»). Eso es deliberado —ahí vive qué listas y qué layout usa cada display, y
+pisarlo dejaría la cabina arrancando con otra cara— pero significa que la
+plantilla del repo sólo sirve para una instalación nueva, y que un cambio como
+un `global_filter` hay que aplicarlo a mano.
+
+Y con `displays.cfg` y `attract.cfg` hay un tercer nivel: **AM+ los reescribe al
+salir**. Ahí no sólo no llega el pull; si los editas con el frontend abierto, el
+cambio se pierde al cerrarlo. Se tocan con AM+ parado.
+
+> **Corregido el 2026-09-12, el mismo día que se escribió.** Este documento dijo
+> primero que `instalar.sh` tampoco actualizaba plugins ni layouts. **Es falso**:
+> `copiar_si_falta()` existe, pero se usa para **un solo fichero**, `displays.cfg`.
+> Lo di por general tras leer la función y no dónde se llamaba — que es
+> exactamente el error contra el que este proyecto lleva avisando: comprobar la
+> pieza y no su uso.
 
 **Cuidado al sincronizar a mano.** El arreglo del ancho del layout (2026-09-12)
 se aplicó con un `sed` sobre la copia viva en vez de copiar el fichero del repo:
