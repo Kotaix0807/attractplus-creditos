@@ -66,7 +66,14 @@ local pres_ar = (::AM_CONFIG["art_mode"]=="Preserve Aspect Ratio");
 //
 // Initialize the layout's frontend-related graphic elements
 //
-const WIDTH = 436;
+// El ancho DEBE coincidir con el laberinto (57 columnas x 8 px = 456) y con
+// field.png (456x336). Estaba en 436 por error, y ese numero rompia dos cosas
+// a la vez: (1) el motor usa fe.layout.width como borde del tunel, asi que
+// Pac-Man "atravesaba" la pared derecha y salia por el otro lado antes de
+// llegar a ella; (2) el canvas de 436 se centraba dejando barra a la izquierda
+// y los 20 px derechos del field.png se salian de pantalla. El Attrac-Man
+// original usa 456. Alto: 42 filas x 8 = 336, que ya era correcto.
+const WIDTH = 456;
 const HEIGHT = 336;
 
 fe.layout.width = WIDTH;
