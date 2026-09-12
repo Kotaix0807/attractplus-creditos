@@ -4762,6 +4762,73 @@ Repasados en la cabina los que aqui no arrancaban: `tekken`, `tekken2`,
 `tmnt2po`, `wboy` y `xevious` arrancan pero **ningun candidato responde**, y los
 otros cinco no estan instalados alli. O sea que esa via esta agotada para ellos.
 
+## La tecla de salir no tenia antirrebote, y el aviso se contestaba solo
+
+Traido por Eloy el 2026-09-12, y es **la causa de verdad** del «no siempre
+avisa» que arrastraba desde el principio: *«estaba jugando 1943, ingrese 3
+creditos, aparecio un contador arriba... y aun asi el aviso no aparecio»*.
+
+Su dato descartaba media investigacion de golpe: **el contador en pantalla lee
+`e.memoria.dentro()`, exactamente la misma fuente que el cuadro**. Si el
+contador marcaba 3, el aviso veia 3. Asi que la cuenta no era el problema.
+
+### Lo que era
+
+Un microinterruptor abre y cierra varias veces en unos milisegundos al
+pulsarlo. El **boton de moneda** ya tenia antirrebote desde el 2026-08-29
+(`monedero.lua`, `M.pulsador`, 8 frames), porque esto mismo ya habia mordido
+alli. La **tecla de salir no tenia ninguno**: `a.frame()` recibe el nivel y
+calcula el flanco a pelo. O sea que una sola pulsacion daba **dos flancos**, el
+primero pintaba el cuadro y el segundo lo confirmaba tres frames despues.
+
+El jugador ve que no avisa. Lo que pasa es que aviso y se contesto solo.
+
+Y explica el «a veces si y a veces no» sin mas: **el rebote de contactos es
+aleatorio**.
+
+### Como se probo, que es lo que faltaba desde siempre
+
+Este documento ya avisaba de que `aviso_mame.sh` **finge la tecla** sustituyendo
+la funcion que la lee, y que esa es la limitacion de la simulacion. O sea que
+**la pulsacion real nunca se habia probado**, y el fallo vivia justo ahi.
+
+En la cabina no hay `xdotool`, asi que la pulsacion se inyecta con **XTEST por
+`ctypes` sobre `libXtst`**, que no necesita instalar nada (esta en las dos
+maquinas). Con MAME corriendo bajo un `Xvfb :77` y 1943 con tres creditos
+dentro, medido en la cabina:
+
+| patron de la tecla | antes | despues |
+|---|---|---|
+| ESC limpio, 400 ms | frena la salida | frena la salida |
+| **rebote: 20 ms, hueco de 25, y la pulsacion buena** | **`salida confirmada`, MAME SE CIERRA** | **frena la salida** |
+| dos pulsaciones deliberadas, 1,2 s entre ellas | sale | sale |
+
+### El arreglo
+
+`guarda` en `aviso.lua`: durante **15 frames (~250 ms)** tras pintar el cuadro
+no se acepta la confirmacion. Una persona que lee «SALIR otra vez para salir»
+tarda mucho mas que eso. Se ajusta con `GA_AVISO_GUARDA`.
+
+Es el mismo arreglo que ya tenia la moneda, en el boton al que no se le puso.
+
+### Y de paso, lo que se aprendio del mando de la cabina
+
+Preguntado a MAME desde Lua, no supuesto:
+
+```
+UI_CANCEL   seq=[KEYCODE_ESC]
+UI_MENU     seq=[KEYCODE_TAB ... OR JOYCODE_1_BUTTON9]
+UI_SELECT   seq=[KEYCODE_ENTER ... OR JOYCODE_1_BUTTON1]
+dispositivos: PS4 Controller, Xinmotek Dual Controller x2, System keyboard
+```
+
+**`UI_CANCEL` no tiene ningun codigo de mando**, solo ESC. UI_MENU y UI_SELECT
+si traen uno por defecto; UI_CANCEL no. En `~/.mame/cfg/default.cfg` no hay
+ningun bloque `UI_`, y `groovymame.cfg` de AM+ **no define `exit_hotkey`**, asi
+que el frontend no mata al emulador: la unica forma de salir de un juego es un
+ESC de teclado. Conviene tenerlo presente si algun dia el boton de salir deja de
+responder: no es nuestro codigo, es que ahi no hay nada mapeado.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
