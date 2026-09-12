@@ -27,10 +27,22 @@
 # a los 7 y su demo empieza a los 16. Se mide con
 # ./videos.sh --tira <juego>
 #
+# videomas=N SOLO para videos.sh: lo mismo que 'video=', pero RELATIVO --
+# tantos segundos DESPUES de donde acaba 'segundos='. Admite
+# decimales y negativos. Sirve para no escribir dos veces el
+# mismo numero: si manana retocas 'segundos=', el video se mueve
+# solo con el en vez de quedarse apuntando a un instante que ya
+# no existe.
+#
+# mwalk segundos=11.8 nvram=0 videomas=3 -> el clip empieza en 14.8
+#
+# Si un juego lleva los dos, manda 'video=': un numero absoluto
+# escrito a mano es una decision, y no se pisa con una cuenta.
+#
 # videodura=N SOLO para videos.sh: cuanto dura ese video (por defecto 12 s)
 #
-# creditos.lua IGNORA esas dos: su parser guarda cualquier clave y solo consulta
-# las suyas. Estan aqui para que un unico fichero describa cada juego.
+# creditos.lua IGNORA esas tres: su parser guarda cualquier clave y solo
+# consulta las suyas. Estan aqui para que un unico fichero describa cada juego.
 #
 # negro=0 acelera igual pero NO tapa la pantalla. Es como se ve el efecto
 # de la velocidad mientras se ajusta un juego:

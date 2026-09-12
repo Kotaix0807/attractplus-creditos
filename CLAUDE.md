@@ -4476,3 +4476,149 @@ Attract-Mode Plus **no** — cuando se llegue ahí, contrastar con `Manual.md` y
   (exportarlo antes y lanzar en segundo plano no propaga el entorno).
 - Recompilar MAME: `make -j10 NOWERROR=1 USE_QTDEBUG=0` desde `~/Dev/arcade/groovymame_src`.
   `USE_QTDEBUG=0` es obligatorio si se usa `REGENIE=1`, si no falla por falta de `moc` de Qt.
+
+## Grabar MI partida con una tecla, y el desfase de `arranque.dat` (2026-09-12)
+
+Dos encargos de Eloy el mismo día, independientes entre sí.
+
+### `videos.sh` leía los decimales y se los comía CALLADO
+
+Esto salió al empezar y es lo más importante de la tanda, porque llevaba ahí
+desde el principio. `ajustes.lua` acepta decimales desde siempre —su patrón es
+`([%w%.%-]+)` y pasa por `tonumber`— así que `mwalk segundos=11.8` es una línea
+perfectamente válida y `creditos.lua` la aplica tal cual. Pero el lector de
+claves de `videos.sh` pedía `[0-9]+`:
+
+```bash
+v="$( ... | grep -oE "(^|[[:space:]])$2=[0-9]+" | ... )"
+```
+
+O sea que **leía `11` y tiraba el `.8`, sin decir nada**. El vídeo empezaba casi
+un segundo antes de donde se pidió y no había forma de notarlo. Arreglado, y con
+signo, para que `videomas=-2` se pueda escribir.
+
+Y con decimales en juego **bash ya no sabe sumar**: `$(( 11.8 + 3 ))` es un error
+de sintaxis. De ahí `calc()` y `es_menor()`, dos ayudas de awk. El `tope` de
+`grabar_clip` redondea hacia **arriba**: un tope corto cortaría el clip por el
+final.
+
+### `videomas=`: el punto del vídeo, relativo al arranque
+
+Eloy lo planteó así: *«que exista otra variable que automáticamente se asigne a
+la misma cantidad que la variable "segundos", pero esa puede modificarse a
+gusto»*. Definido a preguntas, salió un **desfase**, no una copia:
+
+```
+mwalk segundos=11.8 nvram=0 videomas=3     -> el clip empieza en 14.8
+```
+
+Lo que gana frente a escribir `video=14.8`: si mañana se retoca la carga del
+juego, el vídeo **se mueve solo con ella** en vez de quedarse apuntando a un
+instante que ya no existe.
+
+Decisiones que tomó Eloy, y conviene no darles la vuelta solas:
+
+- **Sólo por juego.** Nada en la línea `defecto`: un desfase general movería
+  todos los vídeos de golpe, y cada placa es cada placa.
+- **`video=` manda sobre `videomas=`.** Un número absoluto escrito a mano es una
+  decisión; no se pisa con una cuenta.
+- **Con `videomas=` NO se aplica el suelo de 8 s.** El punto lo eligió una
+  persona; subirlo por nuestra cuenta sería ignorar la orden. (Sin él sigue
+  valiendo la regla vieja: `segundos=` es un suelo, no el valor final.)
+
+Precedencia completa: `SALTO=` > `video=` > `segundos=`+`videomas=` >
+`segundos=` como suelo > 8 s. El script dice de dónde salió cada uno.
+
+**Verificado ejecutándolo**: con `mwalk segundos=11.8 videomas=3`, el log de
+`creditos.lua` dice `EMPEZANDO clip en 14.8s`, no en 14 ni en 11.
+
+**Aviso de fondo, que no es del código:** poner `segundos=11.8` en Moonwalker no
+sólo mueve el vídeo, **alarga la pantalla negra al entrar al juego**. Y mwalk es
+de los que casi no se pueden acelerar (~139%), así que esos 11,8 segundos
+emulados son unos 8,5 reales de negro en cada partida. En el repo está en `0`
+por eso mismo.
+
+### `grabar.sh`: grabar la partida de uno, con sonido
+
+Pedido: *«comienzo a jugar / encuentro un momento que vale la pena y presiono un
+botón de teclado / detengo la grabación con el mismo botón»*.
+
+Es un guion **aparte** de `videos.sh` y sólo corre cuando se pide. Los dos usan
+la misma API (`begin_recording`/`end_recording`) pero son lo contrario el uno del
+otro: `videos.sh` graba en serie, sin nadie delante, bajo Xvfb y mudo; esto es
+una persona jugando en la cabina, con audio. Mezclarlos habría dejado a los dos
+peor.
+
+Lo que **sí** comparten vive ahora en **`video_comun.sh`**: encontrar el
+emulador, la proporción 4:3 del mueble, el ampliado en dos fases y la conversión
+a mp4. Tener dos copias de eso significaba arreglar una trampa en una y no en la
+otra, que es el error que este documento ya tiene apuntado para el script que
+medía cobertura por una ruta y publicaba por otra.
+
+**La tecla se lee con `input:code_pressed`**, que es el estado CRUDO del teclado:
+no pasa por el ioport del juego ni por la UI de MAME, así que no hay que mapear
+nada ni se pisa ninguna función del emulador. Por defecto **Pausa/Inter**
+(`KEYCODE_PAUSE`), elegida comprobando `inpttype.ipp`: las que parecían obvias
+están cogidas — **Insert es «Fast Forward»**, Inicio/Fin/AvPág/RePág son del menú
+e ImprPant se la queda el escritorio.
+
+Tres cuidados que costaron pensarlos:
+
+- **Sólo el FLANCO.** Con el nivel a secas, tener la tecla pulsada medio segundo
+  —que es lo normal— daría treinta arranques y treinta paradas. Y se arranca
+  suponiendo la tecla *pulsada*, para que tenerla apretada al lanzar el juego no
+  cuente como un flanco.
+- **`code_from_token` NO falla con un token mal escrito**: devuelve un código
+  `INVALID` que luego no se pulsa nunca. O sea que una errata en `TECLA=` sería
+  un fallo mudo — juegas media hora y no se ha grabado nada. Se comprueba dando
+  la vuelta al token con `code_to_token`, que es lo único que lo delata.
+- **El atajo de «nada que hacer» de `creditos.lua` dejaba el modo muerto.** Si el
+  juego no está en `creditos.dat` y no hay nada que vigilar, el script se salía
+  *antes* de suscribir `por_frame` — y los dos modos de grabación viven ahí.
+
+**El indicador `* REC 12s` no entra en el vídeo**, y no es suerte:
+`begin_recording` dibuja desde `m_snap_target`, un render target aparte que sólo
+lleva las vistas de PANTALLA (`video.cpp`, `create_snapshot_bitmap`), así que la
+capa de interfaz no se graba. Es la otra cara de la trampa ya conocida de que
+`screen:snapshot()` no captura lo que pintamos ahí.
+
+**El audio: verificado, no supuesto.** El AVI de MAME lleva el sonido dentro
+—`sound_manager` alimenta la grabación por su cuenta
+(`sound.cpp:2726`)— y sale PCM 16 bits a 48 kHz. Medido en Moonwalker grabando
+una toma de 5 s sobre su música:
+
+| | nivel medio |
+|---|---|
+| toma grabada con `begin_recording` | **-25,0 dB** |
+| el mismo tramo por `-wavwrite` (referencia) | **-25,0 dB** |
+
+Idénticos, o sea que captura el audio real y alineado.
+
+> **Trampa al medir esto, y me costó media hora:** las primeras pruebas salían
+> en silencio digital (-91 dB) y parecía que la grabación no llevaba sonido.
+> **No era eso: Pac-Man y Donkey Kong están callados en esa parte de su
+> atracción.** El `-aviwrite` de siempre daba exactamente el mismo -91 dB, así
+> que la pista buena era comparar contra una referencia del mismo juego y el
+> mismo instante, no contra el silencio. Para probar audio hay que elegir un
+> juego con música continua (mwalk sirve; pacman y dkong no).
+
+**Y sí se oirá en el frontend**: `VF_NoAudio` es un flag de exclusión que el
+layout tiene que pedir, el `Arcade-UMAG` de la cabina no lo pide, y el volumen
+de vídeo de AM+ viene a 100 sin silenciar (`fe_input.cpp:1728`).
+
+Detalles del guion:
+
+- **Varias tomas por sesión** (`toma-1.avi`, `toma-2.avi`…). Al salir se
+  enseñan con su duración y se elige; sin terminal, la más larga.
+- **El vídeo que se reemplaza se guarda** en `<snap>/respaldo/`. Los automáticos
+  se rehacen con `videos.sh` en un minuto; una partida grabada a mano no.
+- **No se tocan los ajustes de vídeo ni de sonido**: los pone `mame.ini`, que es
+  lo que el jugador tiene delante. `videos.sh` sí los forza, pero porque graba a
+  ciegas bajo Xvfb.
+
+**Lo que no se pudo probar aquí:** la pulsación de verdad. En hp-envy no hay
+`xdotool` ni nada que inyecte teclas, así que se comprobó en dos mitades, las dos
+dentro de MAME: que `KEYCODE_PAUSE` resuelve (y que un token inventado da
+`INVALID`), y que el ciclo entero —dos tomas, con sus nombres, duraciones y
+audio— funciona sustituyendo la lectura de la tecla por un horario. **Falta
+pulsarla con los dedos en la cabina.**

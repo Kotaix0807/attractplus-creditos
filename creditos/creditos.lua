@@ -142,6 +142,7 @@ local COLOR_TEXTO  = 0xffffffff
 local COLOR_TITULO = 0xffffdd44
 local COLOR_NEGRO  = 0xff000000
 local COLOR_INDICADOR = 0xff44ff44
+local COLOR_REC    = 0xffff4444   -- el punto rojo de grabando
 local PASO = 0.075          -- alto de linea, en fraccion de pantalla
 
 local BUZON = os.getenv('GA_ARCHIVO')
@@ -632,10 +633,135 @@ local function paso_grabacion()
 	end
 end
 
+-- ── grabar MI partida, con una tecla (GA_GRABAR_TECLA) ─────────────────────
+--
+-- Pedido por Eloy el 2026-09-12: juego yo, encuentro un momento que vale la
+-- pena, pulso una tecla y empieza a grabar; la misma tecla corta.
+--
+-- Es un modo APARTE del de arriba, y conviene no confundirlos:
+--
+--   GA_GRABAR        videos.sh: el instante lo decide arranque.dat, se acelera
+--                    la carga y el emulador SALE solo al cerrar el clip.
+--   GA_GRABAR_TECLA  esto: no decide nada. Ni acelera, ni tapa, ni sale. El
+--                    jugador manda.
+--
+-- Los dos usan la misma API de MAME (begin_recording / end_recording) y el AVI
+-- lleva el SONIDO dentro: el gestor de sonido alimenta la grabacion por su
+-- cuenta (video_manager::add_sound_to_recording), asi que no hay que capturar
+-- audio aparte ni sincronizar nada. Lo unico imprescindible es no lanzar el
+-- emulador con '-sound none'.
+--
+--   GA_GRABAR_TECLA    token de la tecla; '1' significa el defecto
+--   GA_GRABAR_ARCHIVO  prefijo ABSOLUTO; cada toma es <prefijo>N.avi
+--
+-- La tecla se lee con input:code_pressed, que es el estado CRUDO del teclado:
+-- no pasa por el ioport del juego ni por la UI del emulador, asi que no hay que
+-- mapear nada y no se pisa ninguna funcion de MAME. Por eso el defecto es
+-- Pausa/Inter: comprobado contra inpttype.ipp, MAME no la usa para nada (y las
+-- que parecian obvias si -- Insert es 'Fast Forward', Inicio/Fin/AvPag son de
+-- su menu, ImprPant se la queda el escritorio).
+local TECLA_DEFECTO = 'KEYCODE_PAUSE'
+local TECLA
+do
+	local t = os.getenv('GA_GRABAR_TECLA')
+	if t and t ~= '' and not GRABAR then
+		TECLA = {
+			token    = (t == '1') and TECLA_DEFECTO or t,
+			prefijo  = os.getenv('GA_GRABAR_ARCHIVO') or 'toma-',
+			grabando = false,
+			-- Se arranca suponiendo la tecla PULSADA: si el jugador la tenia
+			-- apretada al lanzar el juego, no queremos que eso cuente como un
+			-- flanco y arranque una grabacion sola.
+			antes    = true,
+			tomas    = 0,
+			desde    = 0,
+			mensaje  = 0,
+		}
+	end
+end
+
+local function tecla_para()
+	local g = TECLA
+	if not (g and g.grabando) then return end
+	pcall(function() manager.machine.video:end_recording() end)
+	g.grabando = false
+	local okt, t = pcall(emu.time)
+	log('grabacion: toma %d cerrada (%.1fs)', g.tomas, okt and (t - g.desde) or 0)
+end
+
+local function paso_tecla()
+	local g = TECLA
+
+	local oki, inp = pcall(function() return manager.machine.input end)
+	if not oki or not inp then return end
+
+	if g.codigo == nil then
+		local okc, c = pcall(function() return inp:code_from_token(g.token) end)
+		-- code_from_token NO falla con un token mal escrito: devuelve un codigo
+		-- INVALID que luego nunca se pulsa. O sea que una errata en la tecla
+		-- seria un fallo mudo -- juegas media hora y no se ha grabado nada.
+		-- Se comprueba dando la vuelta al token, que es lo unico que lo delata.
+		local vuelta = okc and select(2, pcall(function() return inp:code_to_token(c) end))
+		if not okc or not c or vuelta == 'INVALID' then
+			log('AVISO: no entiendo la tecla %s; no se podra grabar', tostring(g.token))
+			TECLA = nil
+			return
+		end
+		g.codigo = c
+		log('grabacion a mano: pulsa %s para empezar y para parar', g.token)
+	end
+
+	local okp, ahora = pcall(function() return inp:code_pressed(g.codigo) end)
+	if not okp then return end
+
+	-- Solo el FLANCO. Con el nivel a secas, tener la tecla pulsada medio segundo
+	-- (que es lo normal) daria treinta arranques y treinta paradas.
+	if ahora and not g.antes then
+		if g.grabando then
+			tecla_para()
+			g.mensaje = 180        -- ~3 s de "guardada", para saber que corto
+		else
+			g.tomas = g.tomas + 1
+			local fichero = string.format('%s%d.avi', g.prefijo, g.tomas)
+			local okb = pcall(function()
+				manager.machine.video:begin_recording(fichero, 'avi')
+			end)
+			if okb then
+				local okt, t = pcall(emu.time)
+				g.grabando, g.desde, g.mensaje = true, okt and t or 0, 0
+				log('grabacion: toma %d empezada -> %s', g.tomas, fichero)
+			else
+				g.tomas = g.tomas - 1
+				log('AVISO: no se pudo empezar a grabar en %s', fichero)
+			end
+		end
+	end
+	g.antes = ahora
+
+	if g.mensaje > 0 then g.mensaje = g.mensaje - 1 end
+end
+
+-- Salir a mitad de una toma dejaria el AVI sin cerrar. MAME lo cierra por su
+-- cuenta al destruir la grabacion, pero mas vale hacerlo en el sitio y dejarlo
+-- dicho en el log, que es lo que lee el guion de fuera para saber que hay.
+if TECLA then
+	-- Y se apunta en 'deshaceres', como todo lo demas: si la placa se reinicia,
+	-- creditos.lua se ejecuta otra vez y el notificador viejo se sumaria al
+	-- nuevo (es la averia de Elevator Action, ya documentada).
+	pcall(function()
+		local sub = emu.add_machine_stop_notifier(function() tecla_para() end)
+		local d = GA_ESTADO.deshaceres
+		d[#d + 1] = function()
+			if sub and sub.unsubscribe then sub:unsubscribe() end
+		end
+	end)
+end
+
 local function por_frame()
 	local e = GA_ESTADO
 
 	if GRABAR then paso_grabacion() end
+	if TECLA then paso_tecla() end
 
 	if e.arranque then
 		e.arranque_frames = e.arranque_frames + 1
@@ -1306,6 +1432,27 @@ GA_ESTADO.pintor = function()
 		end
 	end
 
+	-- Grabando MI partida: hay que VER que esta puesto, o se graban veinte
+	-- minutos sin querer y luego no hay quien encuentre el momento bueno.
+	--
+	-- Y no ensucia el video: begin_recording dibuja desde m_snap_target, un
+	-- render target aparte que solo lleva las vistas de PANTALLA
+	-- (video.cpp, create_snapshot_bitmap), asi que la capa de interfaz -- esta
+	-- misma -- no entra en el AVI. Es la otra cara de la trampa ya conocida de
+	-- que screen:snapshot() no captura lo que pintamos aqui.
+	if TECLA then
+		if TECLA.grabando then
+			local okt, t = pcall(emu.time)
+			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
+			contenedor:draw_text('right', 0.03, string.format('* REC %ds ',
+				okt and math.floor(t - TECLA.desde) or 0), COLOR_REC)
+		elseif TECLA.mensaje > 0 then
+			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
+			contenedor:draw_text('right', 0.03,
+				string.format('TOMA %d GUARDADA ', TECLA.tomas), COLOR_INDICADOR)
+		end
+	end
+
 	-- Mensaje corto al meter una moneda. Es la pieza que de verdad evita el
 	-- malentendido: el jugador ve en el momento que ese credito es para este
 	-- juego y que su monedero sigue intacto.
@@ -1343,8 +1490,12 @@ if not GA_PINTOR_PUESTO then
 	GA_PINTOR_PUESTO = true
 end
 
+-- Atajo para los juegos en los que no hay nada que hacer. Los dos modos de
+-- grabacion NO entran aqui: viven en por_frame, asi que salirse antes de
+-- suscribirlo los dejaria muertos sin decir nada (y un juego que no esta en
+-- creditos.dat es justo el caso probable).
 if (GA_ESTADO.fase == 'fin') and not GA_ESTADO.cuenta and not GA_ESTADO.aviso
-		and not GA_ESTADO.memoria then
+		and not GA_ESTADO.memoria and not GRABAR and not TECLA then
 	log('nada que insertar y nada que vigilar')
 	return
 end
