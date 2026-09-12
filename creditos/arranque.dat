@@ -97,11 +97,11 @@
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto segundos=5 velocidad=0
 simpsons segundos=11 velocidad=0 video=16
-tapper segundos=3 velocidad=0
+tapper segundos=3 velocidad=0 barrido=0.5
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
-rbtapper segundos=3 velocidad=0
+rbtapper segundos=3 velocidad=0 barrido=0.5
 pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=0.1 velocidad=0
 nrallyx segundos=12.8 velocidad=0 indicador=0 video=28

@@ -252,6 +252,24 @@ local INDICADOR = ajuste('indicador', 'GA_INDICADOR', 0) ~= 0
 local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
 local FIJO = not AUTO
 
+-- barrido=N (SEGUNDOS): adelantar la limpieza de creditos a ese instante en vez
+-- de hacerla al terminar el arranque. Es para las placas que traen creditos en
+-- su NVRAM y REPINTAN el rotulo al verlos cambiar: si el barrido llega despues
+-- de que hayan escrito el mensaje largo, la rutina de dibujo de la placa no
+-- borra el hueco y quedan restos del texto viejo. Root Beer Tapper pasa de
+--   CREDIT 4 PRESS 1 OR 2 PLAYER
+-- a
+--   CREDIT 0 PRESINSERT COINAYER
+-- porque INSERT COIN son 11 caracteres centrados en el hueco de 19 del otro y
+-- solo se estampan esos 11: sobreviven las cuatro letras de cada lado.
+--
+-- Va apagado y POR JUEGO a proposito. Barrer pronto significa escribir en la
+-- RAM de una placa que todavia puede estar autoprobandose, y eso, hecho a lo
+-- bruto, rompe el arranque (ver «Los creditos que la NVRAM guarda entre
+-- sesiones» en CLAUDE.md). Solo se pone donde se ha comprobado que el 0 se
+-- queda puesto y la pantalla sale limpia.
+local BARRIDO_PRONTO = math.max(0, ajuste_frames('barrido', 'GA_BARRIDO', 0))
+
 -- Velocidad del emulador durante el arranque, en PORCENTAJE:
 --   100 = normal, 200 = el doble, 1000 = diez veces
 --     0 = sin freno, lo mas rapido que la maquina pueda
@@ -470,6 +488,7 @@ GA_ESTADO = {
 	deshaceres = {},   -- para dejarlo todo como estaba si la placa se reinicia
 	arranque  = false, -- true mientras la maquina esta arrancando
 	arranque_frames = 0,
+	barrido_pronto = false,   -- ya se adelanto la limpieza (barrido=N)?
 	estable   = 0,     -- frames que el contador de creditos lleva quieto
 	ultimo_ram = nil,
 	pendiente = nil,   -- moneda cobrada a la espera de aparecer en el juego
@@ -765,6 +784,21 @@ local function por_frame()
 
 	if e.arranque then
 		e.arranque_frames = e.arranque_frames + 1
+
+		-- barrido=N: quitar los creditos de la NVRAM ANTES de que la placa
+		-- pinte su rotulo largo. Va aqui dentro a proposito: durante el
+		-- arranque tapado la pantalla esta en negro y el boton de moneda
+		-- cerrado, asi que no hay nada del jugador que respetar todavia.
+		if (BARRIDO_PRONTO > 0) and not e.barrido_pronto
+			and (e.arranque_frames >= BARRIDO_PRONTO) and e.limpiar and e.leer_ram then
+			local okb, vb = pcall(e.leer_ram)
+			if okb and (type(vb) == 'number') then
+				e.barrido_pronto = true
+				log('barrido adelantado al frame %d (barrido=N): la placa todavia '
+					.. 'no ha pintado el rotulo', e.arranque_frames)
+				e.limpiar(vb)
+			end
+		end
 
 		if e.leer_ram then
 			local okr, v = pcall(e.leer_ram)
@@ -1211,6 +1245,9 @@ if MEM then
 				end
 
 			end
+
+			-- por_frame lo necesita para poder adelantarlo (barrido=N)
+			GA_ESTADO.limpiar = limpiar
 
 			-- Con arranque tapado, quien decide cuando la RAM es de fiar es
 			-- el fin del arranque (llama a asentar_ya). El contador de frames
