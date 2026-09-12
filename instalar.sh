@@ -1298,6 +1298,94 @@ PY
 	aviso "  reinicia el frontend para que surta efecto"
 }
 
+tarea_escritorio() {
+	paso "El escritorio de GroovyArcade"
+	local f=/opt/galauncher/startfe-X.sh
+	if [ ! -f "$f" ]; then
+		aviso "  no existe $f: esto solo aplica a GroovyArcade"
+		return 0
+	fi
+	if ! grep -q 'startlxde &> /dev/tty12' "$f"; then
+		verde "  ya esta arreglado"
+		return 0
+	fi
+	# Por que no funciona: en Arch la regla de udev deja TODAS las tty en
+	# 0600 root:tty (50-udev-default.rules), y systemd solo cede por ACL la
+	# terminal de la sesion del usuario. tty12 no es de nadie, asi que el
+	# usuario no puede escribir ahi. Y bash NO ejecuta una orden cuyo destino
+	# de redireccion no puede abrir: startlxde no llega a arrancar, startfe-X
+	# sale con error, el .xinitrc se acaba y X se cierra. El sintoma es
+	# "el escritorio crashea y vuelve a gasetup", que no apunta a esto.
+	if ! d_si "El escritorio no arranca" \
+"El guion de GroovyArcade manda el registro de LXDE a /dev/tty12:
+
+    startlxde &> /dev/tty12
+
+En Arch esa terminal es 0600 root:tty y el usuario no puede escribir ahi, asi
+que bash falla la redireccion y NO ejecuta startlxde. El escritorio no llega a
+arrancar y se vuelve a gasetup.
+
+Mandarlo al registro, como hacen los otros ocho frontends del mismo fichero?" si
+	then
+		return 0
+	fi
+	sudo cp -n "$f" "$f.antes_instalar" 2>/dev/null
+	if sudo sed -i 's|startlxde &> /dev/tty12|startlxde \&>> "$LOG_DIR"/lxde.log|' "$f" \
+		&& grep -q 'lxde.log' "$f"; then
+		verde "  arreglado (copia en $f.antes_instalar)"
+	else
+		rojo "  no se pudo modificar $f"
+		return 1
+	fi
+	# OJO: es un fichero de la DISTRO. Cualquier actualizacion del paquete se
+	# lo lleva por delante y el sintoma vuelve, sin avisar.
+	aviso "  es un fichero de la distro: una actualizacion lo deshace, y hay que repasarlo"
+}
+
+tarea_teclado() {
+	paso "La distribucion del teclado"
+	command -v localectl >/dev/null || { aviso "  no hay localectl"; return 0; }
+	local x11 vc
+	x11="$( localectl status 2>/dev/null | sed -n 's/.*X11 Layout: *//p' )"
+	if [ -n "$x11" ] && [ "$x11" != "(unset)" ]; then
+		verde "  ya esta puesta: $x11"
+		return 0
+	fi
+	# Sin nada configurado X cae al 'us' por defecto, aunque el idioma del
+	# sistema sea otro. Se deduce del locale en vez de preguntar a ciegas.
+	local loc; loc="$( localectl status 2>/dev/null | sed -n 's/.*System Locale: *LANG=//p' )"
+	case "$loc" in
+		es_ES*)                    x11=es;    vc=es ;;
+		es_*)                      x11=latam; vc=la-latin1 ;;   # America Latina
+		pt_BR*)                    x11=br;    vc=br-abnt2 ;;
+		pt_*)                      x11=pt;    vc=pt ;;
+		fr_*)                      x11=fr;    vc=fr ;;
+		de_*)                      x11=de;    vc=de ;;
+		it_*)                      x11=it;    vc=it ;;
+		en_GB*)                    x11=gb;    vc=uk ;;
+		en_*)                      x11=us;    vc=us ;;
+		*)  aviso "  no se que teclado va con el idioma '${loc:-sin definir}': se deja como esta"
+		    return 0 ;;
+	esac
+	if ! d_si "El teclado" \
+"El teclado no esta configurado, asi que X usa el 'us' de por defecto: la enye,
+el interrogante de apertura y los acentos no salen donde deben.
+
+El idioma del sistema es ${loc:-desconocido}, que corresponde a:
+
+    teclado de X:       $x11
+    teclado de consola: $vc
+
+Ponerlo?" si
+	then
+		return 0
+	fi
+	sudo localectl set-x11-keymap "$x11" && sudo localectl set-keymap "$vc" \
+		&& verde "  puesto: X11=$x11, consola=$vc" \
+		|| { rojo "  localectl fallo"; return 1; }
+	aviso "  se aplica al arrancar la sesion grafica, no en caliente"
+}
+
 tarea_arte() {
 	paso "Descargando artes"
 	if [ ! -x "$AQUI/attractplus" ]; then
@@ -1427,6 +1515,15 @@ compilar_por_defecto=ON
 # Instalar el binario en el sistema solo se da por hecho en GroovyArcade, que
 # es donde gasetup lanza el del PATH y ese tiene que ser el nuestro.
 binario_por_defecto=OFF
+
+# Se marcan solas solo si el problema ESTA. Si ya esta arreglado, la tarea sale
+# sin hacer nada igualmente; esto es para no proponer trabajo que no hace falta.
+escritorio_por_defecto=OFF
+grep -q 'startlxde &> /dev/tty12' /opt/galauncher/startfe-X.sh 2>/dev/null \
+	&& escritorio_por_defecto=ON
+teclado_por_defecto=OFF
+[ "$( localectl status 2>/dev/null | sed -n 's/.*X11 Layout: *//p' )" = "(unset)" ] \
+	&& teclado_por_defecto=ON
 [ "$ES_GROOVYARCADE" = 1 ] && binario_por_defecto=ON
 
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
@@ -1442,7 +1539,7 @@ else
 fi
 if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 	seleccion=$( whiptail --title "Que quieres que haga" --notags \
-		--checklist "Espacio marca y desmarca, Enter confirma." 20 74 8 \
+		--checklist "Espacio marca y desmarca, Enter confirma." 22 74 10 \
 		deps     "Instalar las dependencias que falten"          ON \
 		compilar "Compilar Attract-Mode Plus"                    $compilar_por_defecto \
 		binario  "Instalarlo en el sistema (lo que lanza gasetup)" $binario_por_defecto \
@@ -1451,6 +1548,8 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		arte     "Descargar marquesinas y capturas"              ON \
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
+		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
+		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
 		descargar "Bajar GroovyMAME ya parcheado (81 MB, sin compilar)" OFF \
 		mame     "Parchear y compilar GroovyMAME (largo)"        OFF \
 		videos   "Grabar los videos de muestra (~10 min)"        OFF \
@@ -1492,6 +1591,8 @@ hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
+hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }
+hace teclado  && { tarea_teclado      || fallos=$((fallos+1)); }
 hace romlist  && { tarea_romlist      || fallos=$((fallos+1)); }
 hace arte     && { tarea_arte         || fallos=$((fallos+1)); }
 hace videos   && { tarea_videos       || fallos=$((fallos+1)); }
