@@ -4915,6 +4915,95 @@ frame (3 monedas -> 1, 2, 3). Se deja apuntado sin causa en vez de inventarsela.
 Si vuelve a aparecer, el primer sitio donde mirar es una doble asignacion como
 la del punto 3.
 
+## El contador mentia pasado el 9: catorce placas guardan BCD
+
+Traido por Eloy el 2026-09-13: *«el contador de la parte superior llega hasta 9
+y luego se reinicia»*. Medido metiendo 30 monedas juego a juego en la cabina,
+son **dos cosas distintas** y ninguna era lo que parecia.
+
+### 1. BCD, y afectaba tambien al aviso de salida
+
+Catorce de los 33 juegos con direccion conocida guardan el contador en decimal
+codificado en binario. El byte va `0x09 -> 0x10`, asi que leido en crudo el
+credito 10 parece **16** y el 20 parece **32**:
+
+```
+pacman, antes:  9:9(0x09) 10:16(0x10) 11:17(0x11) ... 20:32(0x20)
+pacman, ahora:  9:9(0x09) 10:10(0x0a) 11:11(0x0b) ... 12:12(0x0c)
+```
+
+No era solo el marcador: el **cuadro de aviso al salir** anuncia «quedan N
+creditos» leyendo lo mismo, asi que mentia igual.
+
+Se traduce en `leer_ram`/`escribir_ram`, que es el unico sitio por el que pasan
+todos los consumidores -- marcador, aviso, barrido y tope. Un nibble > 9 no es
+BCD valido (la placa esta inicializando su RAM, o la direccion no es la que
+creiamos) y ahi se devuelve el byte tal cual, que es lo que el asentamiento
+espera. La marca es la palabra `bcd` al final de la linea de `creditos.dat`.
+
+**Verificado en pantalla, que es lo unico que vale:** capturada la ventana de
+Pac-Man con 12 monedas dentro, nuestro rotulo dice `CREDITOS 12` y el juego dice
+`CREDIT 12` abajo. El mismo numero.
+
+BCD: `ddragon defender dkong dkongjr frogger joust kungfum mspacman pacman
+popeye robocop robotron timeplt zaxxon`.
+
+### 2. El «se reinicia» literal es 1942, no 1943
+
+Su byte va 1..9 y **en la moneda 10 vuelve a 0**, y sigue 1, 2, 3... Y como el
+marcador solo se pinta con `n > 0`, al dar la vuelta **desaparece**. Eso es
+exactamente lo que se veia. 1943 tambien tiene tope 9 pero ahi el byte se queda
+clavado: 30 monedas y no se mueve.
+
+### Y de ahi el cerrojo por maquina llena
+
+Segunda mitad del encargo: *«en aquellos juegos que tengan limite de creditos,
+cuando se llegue al limite, se deberia bloquear el boton»*. Dos vias:
+
+- **`limite=N` en `arranque.dat`**: al llegar se cierra el boton y sale
+  `MAQUINA LLENA: N CREDITOS`. No se pierde ni una moneda. Puesto en los once
+  medidos con tope 9: `1942 1943 avsp btime elevator galaxian megaman rbtapper
+  snowbros tapper tron`.
+- **Aprendizaje solo**, para el resto: la primera moneda que se pierde con el
+  contador quieto fija el tope, y el log dice que numero escribir en el fichero.
+  Se pierde esa una. Equivocarse sale barato -- en cuanto el jugador gasta un
+  credito el contador baja y el boton se abre solo.
+
+`cerrojo.lua` gana una tercera razon para estar echado (`lleno`), al lado de
+«sin creditos» y «arrancando». Solo se cierra con un numero **fiable**: hace
+falta direccion comprobada y no a prueba. Dejar al jugador sin boton por una
+lectura dudosa seria peor que perder una moneda.
+
+### Los otros dos detalles de la misma tanda
+
+- **`contador=0/1` por juego**, expuesto en el plugin **Arranque**, que es donde
+  Eloy quiere los ajustes generales. Anadir un ajuste al plugin es una fila en
+  su tabla `AJUSTES`... y mueve el indice de «Salir», que `prueba_arranque.nut`
+  tenia escrito a mano. Las pruebas lo cazaron; queda anotado en el fichero.
+- **El recuadro de los rotulos era una banda fija** de 0.60 a 0.99, o sea el 39%
+  del ancho para un texto que ocupa el 17% (`CREDITOS 9` mide 0.17). Ahora se
+  mide con `manager.ui:get_string_width`, que devuelve las mismas coordenadas
+  0..1 del contenedor, y el recuadro se ajusta. Vale para los cuatro rotulos de
+  esa esquina.
+
+### Dos trampas del banco de pruebas, las dos ya documentadas y repetidas igual
+
+La primera tanda de medidas **no valia**, y por dos motivos distintos:
+
+- **`-cfg_directory` a un directorio NUEVO son los DIP de FABRICA.** Missile
+  Command volvia a tener su premio cada cuatro monedas -- el que ya se le habia
+  quitado -- y daba 20 creditos con 16 monedas. Hay que copiar los `.cfg` de
+  verdad, igual que ya estaba escrito para `buscar_creditos.sh`.
+- **Una NVRAM vacia hace que las placas Williams digan `FACTORY SETTINGS
+  RESTORED` y rechacen las monedas.** `defender`, `joust` y `robotron` salieron
+  con el contador sin moverse, y yo estuve a punto de darlos por «sin tope». Con
+  su NVRAM buena responden y son BCD como los demas. Es exactamente la trampa
+  que este documento ya tenia apuntada de la tanda de la NVRAM.
+
+> **Regla:** toda medida sobre una placa se hace con SUS ficheros -- `.cfg` y
+> NVRAM --, copiados a un temporal. Partir de vacio no es un entorno limpio, es
+> un entorno **distinto**.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
