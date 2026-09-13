@@ -4829,6 +4829,92 @@ que el frontend no mata al emulador: la unica forma de salir de un juego es un
 ESC de teclado. Conviene tenerlo presente si algun dia el boton de salir deja de
 responder: no es nuestro codigo, es que ahi no hay nada mapeado.
 
+## Los indices de mando NO son fijos: eran la otra mitad del «a veces no avisa»
+
+Pedido por Eloy el 2026-09-12: *«puedes mapear de manera universal el joy 2
+button 7?»* -- el boton de moneda. Salieron tres cosas encadenadas.
+
+### 1. El mapeo estaba repetido en nueve `.cfg` por juego
+
+`1942`, `1943`, `arkanoid`, `asteroid`, `avsp`, `berzerk`, `btoads`, `mslug` y
+`pacman` traian su propio `<newseq>` de COIN1. Quitado de todos y puesto **una
+sola vez** en `~/.mame/cfg/default.cfg`, que es un remapeo por TIPO y vale para
+cualquier juego.
+
+**Y eso arregla de paso el cerrojo**, que este documento ya tenia apuntado como
+roto en los juegos con mapeo propio: un `<newseq>` por juego vive en
+`m_live->seq` y **gana a `set_default_input_seq`**, asi que en esos nueve el
+boton de moneda no se podia cerrar mientras la placa arrancaba -- el agujero de
+Q*bert con 52 creditos. Comprobado: ya no sale
+`AVISO: el cerrojo no ha surtido efecto`.
+
+### 2. `JOYCODE_N` es el ORDEN DE ENUMERACION, no el aparato
+
+Esto es lo gordo, y explica el «a veces funciona y a veces no» que Eloy traia
+desde hacia dias. Preguntado a MAME desde Lua:
+
+```
+joystick 1  PS4 Controller             id=0300d042...
+joystick 2  Xinmotek Dual Controller   id=0300b578...
+joystick 3  Xinmotek Dual Controller   id=0300b578...   <- el mismo id, son iguales
+```
+
+Con el mando de PS4 enchufado el panel es 2 y 3; **sin el, pasa a ser 1 y 2**.
+La prueba de que eso ya habia mordido estaba en los propios ficheros:
+`mslug.cfg` tenia el mapeo en `JOYCODE_1_BUTTON7` y los otros ocho en
+`JOYCODE_2_BUTTON7`. No son criterios distintos: son **dias distintos**, con el
+mando puesto y sin poner.
+
+Se clava con un fichero de **`ctrlr`**, que es la pieza de MAME para esto
+(`mapdevice`, por id de dispositivo). `~/.mame/ctrlr/cabina.cfg` y
+`ctrlr cabina` en `mame.ini`; copia versionada en
+`config/cabina/ctrlr-cabina.cfg`:
+
+```xml
+<mapdevice device="0300d042..." controller="JOYCODE_1" />   <!-- PS4 -->
+<mapdevice device="0300b578..." controller="JOYCODE_2" />   <!-- Xinmotek -->
+<mapdevice device="0300b578..." controller="JOYCODE_3" />   <!-- Xinmotek -->
+```
+
+**Los dos Xinmotek comparten id** (es el GUID de VID/PID y son identicos), asi
+que cual de los dos cae en el 2 y cual en el 3 sigue sin poder fijarse. Por eso
+la moneda se mapea a **los dos a la vez**:
+
+```
+COIN1 -> JOYCODE_2_BUTTON7 OR JOYCODE_3_BUTTON7 OR KEYCODE_5
+```
+
+Verificado con el PS4 enchufado: los indices salen 1=PS4, 2 y 3=Xinmotek.
+
+### 3. Y una colision que solo aparecio al preguntar
+
+Al clavar los indices al reves -- panel en 1 y 2, PS4 en 3 -- aparecia esto en
+`default.cfg`:
+
+```
+P1_BUTTON5 -> JOYCODE_1_BUTTON7
+COIN1      -> JOYCODE_1_BUTTON7 OR ...
+```
+
+o sea el mismo boton fisico haciendo de moneda y de boton 5 del jugador 1. En
+un juego de cinco botones, jugar metia creditos.
+
+**No se resolvia razonando**: los dos repartos posibles encajaban con los datos.
+Lo cerro Eloy diciendo con que juega -- **con el mando de PS4** -- y eso fija que
+`P1_*` apunta al PS4, que es `JOYCODE_1`, y la moneda al mueble. Sin esa
+respuesta habria cambiado sus controles creyendo que los arreglaba.
+
+> **Regla:** el reparto de indices no se deduce de los ficheros. Dos historias
+> distintas dejan exactamente las mismas lineas en `default.cfg`.
+
+### Lo que queda sin explicar
+
+Una sola pasada de 1943 dio **5 creditos con 3 monedas**. **No se ha reproducido
+en tres repeticiones** con la misma orden, ni con la traza del contador frame a
+frame (3 monedas -> 1, 2, 3). Se deja apuntado sin causa en vez de inventarsela.
+Si vuelve a aparecer, el primer sitio donde mirar es una doble asignacion como
+la del punto 3.
+
 ## Próximos pasos
 
 1. Plantearse generar el `.deb` (hay directorio `debian/`) en vez de
