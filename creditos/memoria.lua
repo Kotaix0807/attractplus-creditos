@@ -46,6 +46,12 @@ function M.entrada(ruta, juego)
 					-- comprobado nunca: hay cheats de creditos infinitos que
 					-- parchean el codigo en vez de escribir el contador.
 					comprobada = not linea:find('(cheat)', 1, true),
+					-- Muchas placas guardan el contador en BCD: el byte va
+					-- 0x09 -> 0x10, o sea que leido en crudo el credito 10
+					-- parece 16. Medido en la cabina metiendo 30 monedas en
+					-- pacman, dkong, frogger y los Williams. Se marca con la
+					-- palabra 'bcd' al final de la linea.
+					bcd = linea:find('%f[%w]bcd%f[%W]') ~= nil,
 				}
 				break
 			end

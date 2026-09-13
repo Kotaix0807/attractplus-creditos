@@ -4,6 +4,11 @@
 # Las marcadas (cheat) vienen de la coleccion de cheats de MAME y NO estan
 # comprobadas: se leen solo si pasan la prueba de las monedas, y nunca se
 # escribe en ellas. Varias direcciones con "+" son copias del mismo contador.
+# La marca "bcd" dice que la placa guarda el contador en decimal codificado en
+# binario: el byte salta de 0x09 a 0x10, asi que leido en crudo el credito 10
+# parece 16. Medido metiendo 30 monedas juego a juego en la cabina.
+# OJO: buscar_creditos.sh REESCRIBE este fichero y se lleva las marcas por
+# delante. Hay que darle SALIDA= a un temporal y fundir a mano.
 005 @:maincpu,program,c80b   # (cheat)
 005a @:maincpu,program,c80b   # (cheat)
 10yard @:maincpu,program,e019   # (cheat)
@@ -1274,7 +1279,7 @@ ddpdojblkb @:maincpu,program,80395a   # (cheat)
 ddpdojblkbl @:maincpu,program,80395a   # (cheat)
 ddpdojp @:maincpu,program,80394a   # (cheat)
 ddr2mlb @:maincpu,program,800e506c   # (cheat)
-ddragon @:maincpu,program,21
+ddragon @:maincpu,program,21 bcd
 ddream95 @:maincpu,program,11481c   # (cheat)
 deathsml @:maincpu,program,c060b23   # (cheat)
 decodark @:maincpu,program,80   # (cheat)
@@ -1289,12 +1294,12 @@ deerhunte @:maincpu,program,209abd   # (cheat)
 deerhuntj @:maincpu,program,209abf   # (cheat)
 defcmnd @:maincpu,program,a037   # (cheat)
 defence @:maincpu,program,a037   # (cheat)
-defender @:maincpu,program,a037
+defender @:maincpu,program,a037 bcd
 gng @:maincpu,program,23
 mario @:maincpu,program,6bf1
 megaman @:maincpu,program,ff8068
-robotron @:maincpu,program,9851
-joust @:maincpu,program,a0f2
+robotron @:maincpu,program,9851 bcd
+joust @:maincpu,program,a0f2 bcd
 tron @:maincpu,program,c501
 defenderb @:maincpu,program,a037   # (cheat)
 defenderg @:maincpu,program,a037   # (cheat)
@@ -1338,7 +1343,7 @@ divebomb @:fgcpu,program,e035   # (cheat)
 djgirl @:maincpu,program,f88c   # (cheat)
 dking @:maincpu,program,6001   # (cheat)
 dkingjr @:maincpu,program,6001
-dkong @:maincpu,program,6001
+dkong @:maincpu,program,6001 bcd
 dkong3 @:maincpu,program,6004+6bf1
 dkong3abl @:maincpu,program,6bf1   # (cheat)
 dkong3b @:maincpu,program,6bf1   # (cheat)
@@ -1353,7 +1358,7 @@ dkongj @:maincpu,program,6001   # (cheat)
 dkongjnrj @:maincpu,program,6001   # (cheat)
 dkongjo @:maincpu,program,6001   # (cheat)
 dkongjo1 @:maincpu,program,6001   # (cheat)
-dkongjr @:maincpu,program,6001
+dkongjr @:maincpu,program,6001 bcd
 dkongjr2 @:maincpu,program,6001   # (cheat)
 dkongjrb @:maincpu,program,6001   # (cheat)
 dkongjrc @:maincpu,program,6001   # (cheat)
@@ -1742,7 +1747,7 @@ freezeat2 @:maincpu,program,90000665   # (cheat)
 friskyt @:maincpu,program,7834   # (cheat)
 friskyta @:maincpu,program,7834   # (cheat)
 friskytb @:maincpu,program,7834   # (cheat)
-frogger @:maincpu,program,83e1
+frogger @:maincpu,program,83e1 bcd
 fruitpc @:maincpu,program,10204dbc   # (cheat)
 fsoccer @:maincpu,program,e113   # (cheat)
 fsoccerb @:maincpu,program,e113   # (cheat)
@@ -2434,7 +2439,7 @@ kovqhsgs @:maincpu,program,811b02   # (cheat)
 kovytzy @:maincpu,program,8165d3   # (cheat)
 krzybowl @:maincpu,program,f02477   # (cheat)
 ktiger2 @:maincpu,program,4006cb   # (cheat)
-kungfum @:maincpu,program,e913
+kungfum @:maincpu,program,e913 bcd
 kungfut @:maincpu,program,c000   # (cheat)
 kungfuta @:maincpu,program,c000   # (cheat)
 kurikint @:maincpu,program,8187   # (cheat)
@@ -2836,7 +2841,7 @@ mspacmab @:maincpu,program,4e6e   # (cheat)
 mspacmab2 @:maincpu,program,4e6e   # (cheat)
 mspacmab3 @:maincpu,program,4e6e   # (cheat)
 mspacmab4 @:maincpu,program,4e6e   # (cheat)
-mspacman @:maincpu,program,4e6e
+mspacman @:maincpu,program,4e6e bcd
 mspacmanbcc @:maincpu,program,4e6e   # (cheat)
 mspacmanbco @:maincpu,program,4e6e   # (cheat)
 mspacmanbg @:maincpu,program,4e6e   # (cheat)
@@ -3051,7 +3056,7 @@ pacgal2 @:maincpu,program,4e6e   # (cheat)
 pacheart @:maincpu,program,4e6e   # (cheat)
 packbang @:maincpu,program,20001e   # (cheat)
 packbangp @:maincpu,program,20001e   # (cheat)
-pacman @:maincpu,program,4e6e
+pacman @:maincpu,program,4e6e bcd
 pacmanbl @:maincpu,program,426e   # (cheat)
 pacmanbla @:maincpu,program,426e   # (cheat)
 pacmanblb @:maincpu,program,426e   # (cheat)
@@ -3236,7 +3241,7 @@ pooyan @:maincpu,program,8802   # (cheat)
 pooyans @:maincpu,program,8802   # (cheat)
 pop_hh @:maincpu,program,c040   # (cheat)
 popbingo @:maincpu,program,410c3   # (cheat)
-popeye @:maincpu,program,8fdd
+popeye @:maincpu,program,8fdd bcd
 popeyeb2 @:maincpu,program,8fdd   # (cheat)
 popeyeb3 @:maincpu,program,8fdd   # (cheat)
 popeyebl @:maincpu,program,8fdd   # (cheat)
@@ -3574,7 +3579,7 @@ roadriotb @:maincpu,program,ff8093   # (cheat)
 roadrunn @:maincpu,program,401ff5   # (cheat)
 roadrunn1 @:maincpu,program,401ff5   # (cheat)
 roadrunn2 @:maincpu,program,401ff5   # (cheat)
-robocop @:maincpu,program,318dc5+ff8dc5
+robocop @:maincpu,program,318dc5+ff8dc5 bcd
 robocop2 @:maincpu,program,1b8048   # (cheat)
 robocop2j @:maincpu,program,1b8048   # (cheat)
 robocop2u @:maincpu,program,1b8048   # (cheat)
@@ -4440,7 +4445,7 @@ timecris @:maincpu,program,800b1d5c   # (cheat)
 timecrpt @:maincpu,program,8007d408   # (cheat)
 timecrs2 @:maincpu,program,2ce7b7   # (cheat)
 timelimt @:maincpu,program,8083   # (cheat)
-timeplt @:maincpu,program,a986
+timeplt @:maincpu,program,a986 bcd
 timeplta @:maincpu,program,a986   # (cheat)
 timepltc @:maincpu,program,a986   # (cheat)
 timesold @:maincpu,program,40005   # (cheat)
@@ -4954,7 +4959,7 @@ yukiwo @:maincpu,program,200708   # (cheat)
 yuyugogo @:maincpu,program,b00180   # (cheat)
 zaviga @:maincpu,program,19   # (cheat)
 zavigaj @:maincpu,program,19   # (cheat)
-zaxxon @:maincpu,program,6012
+zaxxon @:maincpu,program,6012 bcd
 zero @:maincpu,program,a037   # (cheat)
 zero2 @:maincpu,program,a037   # (cheat)
 zeropnt @:maincpu,program,ef0011   # (cheat)

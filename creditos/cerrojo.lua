@@ -41,6 +41,11 @@ function M.nuevo(op)
 		-- cobrarle al jugador por nada.
 		listo    = (op.listo ~= false),
 		rechazadas = 0,
+		-- Tercera razon para cerrar: la MAQUINA esta llena. Casi todas las
+		-- placas tienen un tope de creditos (1943 llega a 9) y a partir de ahi
+		-- las monedas se pierden en silencio -- ni las cuenta ni avisa. Quien
+		-- sabe si se ha llegado es creditos.lua, que es el que lee la RAM.
+		lleno    = op.lleno or function() return false end,
 		bloquear = op.bloquear or function() end,
 		soltar   = op.soltar or function() end,
 		log      = op.log or function() end,
@@ -76,7 +81,7 @@ function M.nuevo(op)
 	-- Una vez por frame: ajusta el cerrojo al estado actual. Solo llama a
 	-- bloquear/soltar cuando la situacion cambia, no en cada frame.
 	function c.frame()
-		local hace_falta = ( not c.listo ) or ( c.disponible() <= 0 )
+		local hace_falta = ( not c.listo ) or ( c.disponible() <= 0 ) or c.lleno()
 
 		if c.echado ~= hace_falta then
 			c.echado = hace_falta
@@ -85,6 +90,8 @@ function M.nuevo(op)
 				c.bloquear()
 				if not c.listo then
 					c.log('la maquina esta arrancando: boton de moneda cerrado')
+				elseif c.lleno() then
+					c.log('la maquina esta llena: boton de moneda cerrado')
 				elseif c.ilimitado then
 					c.log('boton de moneda cerrado')
 				else
@@ -110,6 +117,7 @@ function M.nuevo(op)
 	-- Por que no pasa la moneda, para poder explicarselo al jugador.
 	function c.motivo()
 		if not c.listo then return 'arrancando' end
+		if c.lleno() then return 'lleno' end
 		if c.disponible() <= 0 then return 'sin creditos' end
 		return nil
 	end

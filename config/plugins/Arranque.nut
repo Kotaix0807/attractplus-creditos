@@ -44,6 +44,8 @@ class Arranque
 			"1 = muestra '>> CARGANDO AL 300%' mientras la emulacion va acelerada. Para ajustar" ],
 		[ "nvram",     "Guardar NVRAM",
 			"0 = este juego no guarda creditos ni puntuaciones entre sesiones" ],
+		[ "contador",  "Contador de creditos",
+			"1 = muestra CREDITOS N arriba a la derecha. Solo sale en los juegos cuya direccion de creditos conocemos" ],
 		[ "auto",      "Alargar solo",
 			"1 = se alarga hasta detectar que la placa esta lista. Solo en los juegos que estan en creditos.dat" ],
 	];

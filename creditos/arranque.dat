@@ -97,11 +97,11 @@
 # una moneda nada mas empezar. Si el juego no la coge, sube los segundos.
 defecto segundos=5 velocidad=0
 simpsons segundos=11 velocidad=0 video=16
-tapper segundos=3 velocidad=0 barrido=0.5
+tapper segundos=3 velocidad=0 barrido=0.5 limite=9
 # Estos arrancan con los creditos de la sesion anterior, guardados en su NVRAM.
 # nvram=0 hace que no la guarden, asi que cada arranque es de fabrica. El
 # precio: tampoco conservan las puntuaciones.
-rbtapper segundos=3 velocidad=0 barrido=0.5
+rbtapper segundos=3 velocidad=0 barrido=0.5 limite=9
 pacman segundos=5 velocidad=0 indicador=0
 qbert segundos=0.1 velocidad=0
 nrallyx segundos=12.8 velocidad=0 indicador=0 video=28
@@ -148,7 +148,7 @@ kof97 segundos=11.8 velocidad=0 video=99
 kof98 segundos=11.6 velocidad=0 video=81
 kof99 segundos=4 velocidad=0 video=44
 mario segundos=0.4 velocidad=0 video=32
-megaman segundos=14 velocidad=0 video=50
+megaman segundos=14 velocidad=0 video=50 limite=9
 megaman2 segundos=26 velocidad=0 video=81
 missile segundos=0 velocidad=100 video=8
 mk segundos=2.8 velocidad=0 video=44
@@ -169,7 +169,7 @@ samsho3 segundos=11.8 velocidad=0 video=44
 samsho4 segundos=11.8 velocidad=0 video=90
 samsho5 segundos=4 velocidad=0 video=90
 sf segundos=14 velocidad=0 video=44
-snowbros segundos=4.4 velocidad=0 video=50
+snowbros segundos=4.4 velocidad=0 video=50 limite=9
 ssf2t segundos=17 velocidad=0 video=81
 ssriders segundos=5 velocidad=0 video=81
 strhoop segundos=11.8 velocidad=0 video=32
@@ -184,15 +184,15 @@ zaxxon segundos=0.1 velocidad=0 video=44
 # "segundos=" de cada placa, cronometrado en vez de estimado.
 19xxu segundos=7.6 velocidad=0
 arkanoid segundos=10 velocidad=0
-avsp segundos=15 velocidad=0
+avsp segundos=15 velocidad=0 limite=9
 berzerk segundos=10 velocidad=0 nvram=0
 btoads segundos=15 velocidad=0
 commando segundos=11 velocidad=0
 doubledr segundos=12 velocidad=0
-elevator segundos=2.2 velocidad=0
+elevator segundos=2.2 velocidad=0 limite=9
 fatfury1 segundos=12 velocidad=0
 ffight segundos=12.3 velocidad=0
-galaxian segundos=3.6 velocidad=0
+galaxian segundos=3.6 velocidad=0 limite=9
 kof2000 segundos=4 velocidad=0
 kungfum segundos=1 velocidad=0
 mk3 segundos=10 velocidad=0
@@ -201,4 +201,8 @@ popeye segundos=0.5 velocidad=0
 starwars segundos=0.1 velocidad=0
 tekken segundos=10 velocidad=0
 tekken2 segundos=10.2 velocidad=0
-tron segundos=1 velocidad=0
+tron segundos=1 velocidad=0 limite=9
+
+1943 limite=9
+btime limite=9
+1942 limite=9

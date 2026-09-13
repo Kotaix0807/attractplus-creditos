@@ -110,7 +110,6 @@ local MENSAJE_FRAMES = math.max(30, num('GA_MENSAJE', 150))   -- ~2,5 s a 60 Hz
 -- el jugador mete la moneda y no recibe ninguna señal de que haya entrado.
 -- Solo se pinta cuando sabemos el numero DE VERDAD (direccion de creditos.dat
 -- ya comprobada); estimarlo y enseñarlo seria peor que no enseñar nada.
-local CONTADOR = os.getenv('GA_CONTADOR') ~= '0'
 -- Quien paga el credito, y cuando. Es la decision de fondo del sistema:
 --   'meter': el monedero se descuenta AL METER la moneda. Es el diseno con
 --            contador fisico: el jugador ve bajar el numero, asi que gastar al
@@ -252,6 +251,17 @@ local NEGRO = ajuste('negro', 'GA_NEGRO', 1) ~= 0
 -- ver de un vistazo si el ajuste esta haciendo algo. Apagado por defecto: en
 -- una cabina no pinta nada, es para ajustar.
 local INDICADOR = ajuste('indicador', 'GA_INDICADOR', 0) ~= 0
+-- contador=0 en arranque.dat esconde el marcador de creditos en ese juego, y
+-- la linea 'defecto' lo apaga para todos. Va por ajuste y no solo por variable
+-- de entorno porque se edita desde la cabina, con el plugin Arranque.
+local CONTADOR = ajuste('contador', 'GA_CONTADOR', 1) ~= 0
+
+-- limite=N en arranque.dat: cuantos creditos admite la placa. Al llegar ahi se
+-- CIERRA el boton de moneda, porque a partir de ese punto el juego tira las
+-- monedas en silencio (1943 se queda clavado en 9: medido metiendo 30).
+-- Si no se pone, se aprende sola la primera vez que una moneda se pierde con
+-- el contador quieto -- ver 'tope aprendido'. Ponerla evita perder esa.
+local LIMITE = math.max(0, ajuste('limite', 'GA_LIMITE', 0))
 local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
 local FIJO = not AUTO
 
@@ -492,6 +502,8 @@ GA_ESTADO = {
 	arranque  = false, -- true mientras la maquina esta arrancando
 	arranque_frames = 0,
 	barrido_pronto = false,   -- ya se adelanto la limpieza (barrido=N)?
+	tope      = (LIMITE > 0) and LIMITE or nil,   -- creditos que admite la placa
+	tope_medido = false, -- se aprendio ejecutando, no venia de arranque.dat
 	estable   = 0,     -- frames que el contador de creditos lleva quieto
 	ultimo_ram = nil,
 	pendiente = nil,   -- moneda cobrada a la espera de aparecer en el juego
@@ -840,6 +852,18 @@ local function por_frame()
 					if llegados < 0 then llegados = 0 end
 					local perdidos = p.creditos - llegados
 
+					-- La moneda no llego y el contador NO se movio: la
+					-- explicacion es que la placa esta llena. Se apunta como
+					-- tope para cerrar el boton y no perder las siguientes.
+					-- Equivocarse aqui sale barato: en cuanto el jugador gaste
+					-- un credito el contador baja y el boton se abre solo.
+					if (llegados == 0) and (p.antes > 0) and not e.tope then
+						e.tope, e.tope_medido = p.antes, true
+						log('tope aprendido: la placa no admite mas de %d creditos '
+							.. '(pon "limite=%d" en arranque.dat y no se pierde ni esa)',
+							p.antes, p.antes)
+					end
+
 					if perdidos > 0 then
 						if e.cuenta and (COBRO == 'meter') then
 							e.cuenta.devuelve(perdidos)
@@ -879,6 +903,11 @@ local function por_frame()
 			if e.cerrojo.motivo() == 'arrancando' then
 				e.mensaje = 'ESPERA, LA MAQUINA ESTA ARRANCANDO'
 				log('moneda rechazada: la placa todavia esta arrancando y la tiraria')
+			elseif e.cerrojo.motivo() == 'lleno' then
+				e.mensaje = string.format('MAQUINA LLENA: %d CREDITOS. JUEGA ANTES DE METER MAS',
+					e.tope or 0)
+				log('moneda rechazada: la maquina ya tiene sus %d creditos y la tiraria',
+					e.tope or 0)
 			else
 				e.mensaje = 'SIN CREDITOS. VUELVE AL MENU PARA ANADIR'
 				log('moneda rechazada: el jugador ya metio sus %d creditos', e.cerrojo.limite)
@@ -1077,6 +1106,17 @@ if VIGILAR and MON then
 				GA_ESTADO.cerrojo = CER.nuevo{
 					ilimitado = not HAY_MONEDERO,
 					limite   = SALDO,
+					-- La placa esta llena: solo se puede afirmar leyendo su
+					-- contador, y solo si la direccion esta comprobada de
+					-- verdad (a_prueba = importada sin verificar). Sin numero
+					-- fiable no se cierra nada: dejar al jugador sin boton por
+					-- una lectura dudosa seria peor que perder una moneda.
+					lleno = function()
+						local e = GA_ESTADO
+						if not e.tope or not e.memoria or e.a_prueba then return false end
+						local n = e.memoria.dentro()
+						return (type(n) == 'number') and (n >= e.tope)
+					end,
 					bloquear = function()
 						CAMPO:set_default_input_seq('standard', vacia)
 
@@ -1212,13 +1252,40 @@ if MEM then
 		end
 
 		if esp and entrada then
-			GA_ESTADO.leer_ram = function() return esp:read_u8(entrada.dir) end
+			-- BCD: muchas placas guardan el contador en decimal codificado en
+			-- binario, asi que el byte salta de 0x09 a 0x10 y leido en crudo el
+			-- credito 10 parece 16. Se traduce AQUI, en el unico sitio por el
+			-- que pasan todos: el marcador de pantalla, el cuadro de aviso, el
+			-- barrido y el tope de la placa ven creditos, no bytes.
+			local function a_credito(b)
+				if not entrada.bcd then return b end
+				local alto, bajo = math.floor(b / 16), b % 16
+				-- Un nibble > 9 no es BCD valido: la placa esta inicializando
+				-- su RAM o la direccion no es la que creiamos. Se devuelve el
+				-- byte tal cual y que el asentamiento haga su trabajo.
+				if (alto > 9) or (bajo > 9) then return b end
+				return (alto * 10) + bajo
+			end
+
+			local function a_byte(n)
+				if not entrada.bcd then return n end
+				if n < 0 then n = 0 end
+				if n > 99 then n = 99 end
+				return (math.floor(n / 10) * 16) + (n % 10)
+			end
+
+			if entrada.bcd then
+				log('el contador de este juego va en BCD: se traduce al leerlo')
+			end
+
+			GA_ESTADO.leer_ram = function() return a_credito(esp:read_u8(entrada.dir)) end
 
 			-- Se escribe en TODAS las copias: hay juegos que guardan varias y
 			-- pintan el marcador desde una que no es la primera.
 			GA_ESTADO.escribir_ram = function(v)
+				local b = a_byte(v)
 				for _, d in ipairs(entrada.dirs or { entrada.dir }) do
-					esp:write_u8(d, v)
+					esp:write_u8(d, b)
 				end
 			end
 
@@ -1459,6 +1526,34 @@ end
 -- pantalla: el de la pantalla se rota con el juego, asi que en un vertical como
 -- Pac-Man el texto salia tumbado. El de la interfaz es donde MAME pinta sus
 -- propios menus y siempre se lee derecho. Sus coordenadas son 0..1.
+-- Un rotulo arriba a la derecha con el recuadro PEGADO al texto.
+--
+-- Antes era una banda fija de 0.60 a 0.99, o sea el 39% del ancho de la
+-- pantalla para un texto que ocupa la mitad: 'CREDITOS 9' mide 0.17. Se
+-- pregunta el ancho a la interfaz -- get_string_width devuelve las mismas
+-- coordenadas 0..1 del contenedor (luaengine_ui.cpp) -- y si esa llamada
+-- fallara se vuelve al ancho fijo de antes, que es feo pero nunca deja el
+-- texto sin fondo.
+local MARGEN_X, MARGEN_Y = 0.010, 0.006
+
+local function rotulo_derecha(contenedor, texto, color)
+	local ancho, alto = 0.39, 0.030
+
+	local okw, w = pcall(function() return manager.ui:get_string_width(texto) end)
+	if okw and (type(w) == 'number') and (w > 0) then ancho = w end
+
+	local okh, h = pcall(function() return manager.ui.line_height end)
+	if okh and (type(h) == 'number') and (h > 0) then alto = h end
+
+	local y0 = 0.015
+	local x1 = 1.0 - MARGEN_X
+	local x0 = math.max(0.0, x1 - ancho - (2 * MARGEN_X))
+
+	contenedor:draw_box(x0, y0, x1 + MARGEN_X, y0 + alto + (2 * MARGEN_Y),
+		COLOR_FONDO, COLOR_FONDO)
+	contenedor:draw_text(x0 + MARGEN_X, y0 + MARGEN_Y, texto, color or COLOR_INDICADOR)
+end
+
 GA_ESTADO.pintor = function()
 	local e = GA_ESTADO
 
@@ -1478,8 +1573,7 @@ GA_ESTADO.pintor = function()
 				or ((VELOCIDAD_PCT == 0) and '>> CARGANDO SIN FRENO'
 					or string.format('>> CARGANDO AL %d%%', VELOCIDAD_PCT))
 
-			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
-			contenedor:draw_text('right', 0.03, etiqueta .. ' ', COLOR_INDICADOR)
+			rotulo_derecha(contenedor, etiqueta, COLOR_INDICADOR)
 		end
 
 		if NEGRO then return end
@@ -1497,9 +1591,7 @@ GA_ESTADO.pintor = function()
 	if CONTADOR and not e.arranque and e.memoria and not e.a_prueba then
 		local n = e.memoria.dentro()
 		if n and n > 0 then
-			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
-			contenedor:draw_text('right', 0.03,
-				string.format('CREDITOS %d ', n), COLOR_INDICADOR)
+			rotulo_derecha(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR)
 		end
 	end
 
@@ -1514,13 +1606,11 @@ GA_ESTADO.pintor = function()
 	if TECLA then
 		if TECLA.grabando then
 			local okt, t = pcall(emu.time)
-			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
-			contenedor:draw_text('right', 0.03, string.format('* REC %ds ',
+			rotulo_derecha(contenedor, string.format('* REC %ds',
 				okt and math.floor(t - TECLA.desde) or 0), COLOR_REC)
 		elseif TECLA.mensaje > 0 then
-			contenedor:draw_box(0.60, 0.015, 0.99, 0.075, COLOR_FONDO, COLOR_FONDO)
-			contenedor:draw_text('right', 0.03,
-				string.format('TOMA %d GUARDADA ', TECLA.tomas), COLOR_INDICADOR)
+			rotulo_derecha(contenedor, string.format('TOMA %d GUARDADA', TECLA.tomas),
+				COLOR_INDICADOR)
 		end
 	end
 

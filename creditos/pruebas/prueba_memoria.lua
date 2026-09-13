@@ -38,6 +38,18 @@ do
 	igual('y sabe que no esta comprobada', M.entrada(RUTA, 'galaga').comprobada, false)
 	igual('las medidas si lo estan', M.entrada(RUTA, 'pacman').comprobada, true)
 
+	-- La marca 'bcd': la placa guarda el contador en decimal codificado en
+	-- binario, o sea que el byte salta de 0x09 a 0x10 y el credito 10 leido en
+	-- crudo parece 16.
+	local h = io.open(RUTA, 'a')
+	h:write('popeye @:maincpu,program,8fdd bcd\n')
+	h:write('bcdfalso @:maincpu,program,1234   # no lleva la palabra suelta\n')
+	h:close()
+	igual('lee la marca bcd', M.entrada(RUTA, 'popeye').bcd, true)
+	igual('sin marca, no es bcd', M.entrada(RUTA, 'pacman').bcd, false)
+	igual('y no se confunde con un nombre que la contenga',
+		M.entrada(RUTA, 'bcdfalso').bcd, false)
+
 	-- Hay juegos que guardan varias copias del contador y pintan desde una que
 	-- no es la primera: hay que escribir en todas (Q*bert lleva tres).
 	local h = io.open(RUTA, 'a')
