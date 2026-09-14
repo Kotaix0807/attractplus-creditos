@@ -86,6 +86,14 @@ fi
 
 duracion() { ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null; }
 
+# Pico de volumen del audio en dB, o vacio si el fichero no tiene pista. Sirve
+# para confirmar que el clip salio CON sonido: -91 dB es silencio digital
+# absoluto, asi que un pico por debajo de -80 es un clip mudo.
+pico_audio() {
+	ffmpeg -hide_banner -nostats -i "$1" -af volumedetect -f null /dev/null 2>&1 \
+		| sed -n 's/.*max_volume: \(-\?[0-9.]*\) dB.*/\1/p' | head -1
+}
+
 if [ "${#TOMAS[@]}" -eq 1 ]; then
 	ELEGIDA="${TOMAS[0]}"
 else
@@ -110,18 +118,36 @@ fi
 echo
 printf 'convirtiendo %s (%.1f s)... ' "$( basename "$ELEGIDA" )" "$( duracion "$ELEGIDA" )"
 
-# El video que se reemplaza se guarda. Los automaticos se pueden rehacer con
-# videos.sh en un minuto, pero una partida grabada a mano NO: si esto pisara la
-# toma buena de la semana pasada no habria forma de recuperarla.
+# El video que se reemplaza se guarda como red de seguridad: los automaticos se
+# rehacen con videos.sh en un minuto, pero una partida grabada a mano NO. Se
+# guarda SOLO la ultima version reemplazada (nombre fijo '.anterior', se
+# sobreescribe): antes se apilaba una copia con fecha por cada regrabacion y
+# 'respaldo' crecia sin limite. Eloy pidio que no gastara espacio, asi que ahora
+# queda como mucho un respaldo por juego.
 mkdir -p "$DESTINO"
 if ya="$( video_existente "$JUEGO" )"; then
 	mkdir -p "$DESTINO/respaldo"
-	cp -f "$ya" "$DESTINO/respaldo/$( basename "$ya" ).$( date +%Y%m%d-%H%M%S )"
+	cp -f "$ya" "$DESTINO/respaldo/$( basename "$ya" ).anterior"
 fi
 
 # salto 0 y dura vacia: la toma dura lo que quisiste, no una ventana fijada.
 if convertir_a_mp4 "$ELEGIDA" "$JUEGO" 0 ""; then
 	echo "$( du -h "$DESTINO/$JUEGO.mp4" | cut -f1 )"
+	# Confirmar que el clip lleva sonido, que es medio encargo. Si saliera mudo
+	# el jugador lo descubriria tarde (al reproducirlo en el frontend), asi que
+	# se avisa aqui. OJO: que la cabina no se oiga NO significa que el clip este
+	# mudo -- el audio se toma del mezclador interno de MAME, no de los altavoces
+	# (si no hay sonido por el mueble, es un problema de salida ALSA, no del clip).
+	pico="$( pico_audio "$DESTINO/$JUEGO.mp4" )"
+	if [ -z "$pico" ]; then
+		echo "AVISO: el clip NO tiene pista de audio."
+	elif awk -v p="$pico" 'BEGIN{exit !(p<=-80)}' 2>/dev/null; then
+		echo "AVISO: el clip salio MUDO (pico $pico dB). El juego pudo estar"
+		echo "       callado en ese tramo, o MAME no genero sonido (revisa 'sound'"
+		echo "       y 'volume' en mame.ini: 'sound none' o 'volume' bajo lo silencian)."
+	else
+		echo "sonido OK (pico $pico dB)"
+	fi
 	echo
 	echo "$DESTINO/$JUEGO.mp4"
 	[ -d "$DESTINO/respaldo" ] && echo "(el video anterior esta en $DESTINO/respaldo/)"
