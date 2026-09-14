@@ -780,12 +780,12 @@ en este módulo.
 **`_quitar_bytes(datos, valor)`** — filtra (elimina) todos los bytes iguales a
 `valor` de la secuencia (para `byte-trim`/`byte-skip`).
 
-**`BASE40`** — una tabla de alfabeto de 40 caracteres está definida pero
-**no se usa en ningún sitio del fichero**: el docstring del módulo menciona
-`decoding-profile=base-40` entre lo que "debería" soportarse, pero
-`_leer_int` no implementa esa rama (cualquier perfil que no sea `bcd`/`bcd-le`
-lanza `NoSeSabe`). Es código muerto / una pieza dejada a medio hacer para un
-perfil que, de aparecer en algún XML, hoy no se descifraría.
+**`BASE40`** — *(eliminado el 2026-09-13)*. Era una tabla de alfabeto de 40
+caracteres definida pero no usada en ningún sitio: el perfil
+`decoding-profile=base-40` nunca se implementó en `_leer_int` (cualquier perfil
+que no sea `bcd`/`bcd-le` lanza `NoSeSabe`, así que un XML que lo use simplemente
+no se descifra, sin romper nada). Se quitó junto con la mención `base-40` del
+docstring del módulo, para que la lista sólo enumere lo que de verdad soporta.
 
 ### 3.4 Decodificar un campo: `_leer_int` y `_leer_text`
 
@@ -894,12 +894,12 @@ coincide (`resto`) — y devuelve `con_tam + sin_tam + resto`, es decir,
 probando primero las que encajan de tamaño, luego las que no dicen nada, y
 solo al final las que dicen un tamaño distinto (por si acaso encajan igual).
 
-**`_elegir_estructura(raiz, datos, fuente)`** — una función parecida, más
-simple (se queda solo con la primera estructura exacta, o la primera sin
-tamaño, o la primera de todas), que está **definida pero no se llama desde
-ningún sitio** del módulo: quedó como código muerto, sustituida por el bucle
-de `descifrar_con_xml` que prueba **todas** las candidatas de `_estructuras`
-hasta que una funcione, en vez de comprometerse con una sola elegida de
+**`_elegir_estructura(raiz, datos, fuente)`** — *(eliminada el 2026-09-13)*. Era
+una función más simple (se quedaba con la primera estructura exacta, o la primera
+sin tamaño, o la primera de todas) que estaba **definida pero no se llamaba desde
+ningún sitio**: quedó como código muerto, sustituida por el bucle de
+`descifrar_con_xml` que prueba **todas** las candidatas de `_estructuras` hasta
+que una funcione, en vez de comprometerse con una sola elegida de
 antemano.
 
 **`resolver(ruta_xml, saltos=8)` → `(ruta_final, raíz_XML)`.** Sigue la cadena
@@ -1393,18 +1393,14 @@ Cuatro argumentos posicionales obligatorios, comprobados a mano
    nunca a medio escribir, se queda con la versión vieja completa o con la
    nueva completa.
 
-**Nota sobre una discrepancia con `CLAUDE.md`.** El propio `CLAUDE.md` (sección
-"La calibración de `arranque.dat`") atribuye a este guion un fallo mudo:
-*"aplasta la sangría de todos los comentarios de cabecera (los deja pegados al
-margen)"* al volcar valores en masa. Leyendo el código de `escribir_ajuste.py`
-tal como está hoy (único commit del fichero en el historial de git), **no se
-observa ese comportamiento**: las líneas de comentario se copian
-literalmente, carácter a carácter, sin tocarlas. Es posible que esa
-observación se refiera a un mecanismo distinto (por ejemplo, cómo otro script
-en Bash volcaba valores antes de que existiera este `.py`, o a una
-circunstancia concreta del fichero de la cabina que no se reproduce aquí). Se
-deja constancia de la discrepancia en vez de asumir cuál de las dos fuentes
-tiene razón.
+**Discrepancia con `CLAUDE.md`, resuelta el 2026-09-13.** `CLAUDE.md` atribuía a
+este guion un fallo mudo: *"aplasta la sangría de todos los comentarios de
+cabecera"* al volcar valores. **Era falso.** El código copia las líneas de
+comentario y las líneas en blanco literalmente (la rama `pelada.startswith("#")`
+añade la línea original sin tocar); lo único que reescribe es la propia línea del
+juego editado, cuyos espacios internos quedan normalizados a uno. Comprobado
+ejecutándolo sobre un `arranque.dat` con comentarios sangrados: sólo cambió la
+línea del juego, la cabecera quedó intacta. Se corrigió la nota de `CLAUDE.md`.
 
 ### 7.4 Punto de entrada
 
@@ -1977,19 +1973,20 @@ la sección de cada script):
     (`IndexError`). Ninguno es grave en la práctica actual, pero son la
     prueba de por qué `contador_arduino.py` se reescribió con las funciones separadas
     en `log()`/`logOk()` y devolviendo `True`/`False` explícitos.
-12. **`BASE40` en `hi2txt.py` está definida pero no se usa**: el
-    `decoding-profile="base-40"` que menciona el docstring del módulo no está
-    implementado; cualquier XML que lo use fallaría con `NoSeSabe`.
-13. **`_elegir_estructura()` en `hi2txt.py` es código muerto**: no la llama
-    nadie; la sustituyó el bucle de `descifrar_con_xml()` que prueba todas
-    las estructuras candidatas de `_estructuras()` en vez de comprometerse
-    con una elegida de antemano.
+12. **`BASE40` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Estaba definida y
+    no se usaba (el perfil `base-40` nunca se implementó); se quitó junto con su
+    mención en el docstring. Un XML que use `base-40` sigue fallando limpiamente
+    con `NoSeSabe`, como cualquier perfil no soportado.
+13. **`_elegir_estructura()` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Era
+    código muerto: no la llamaba nadie; la sustituyó el bucle de
+    `descifrar_con_xml()` que prueba todas las estructuras candidatas de
+    `_estructuras()` en vez de comprometerse con una elegida de antemano.
 14. **`importar_cheats.py` reescribe `creditos.dat` entero** en cada
     ejecución que encuentre algo nuevo: es seguro porque funde con
     `leer_existentes()` antes de reescribir, pero conviene no lanzarlo sobre
     la colección completa sin querer y sin haber hecho copia de seguridad del
     fichero, tal como ya advierte `CLAUDE.md`.
 15. **La discrepancia sobre `escribir_ajuste.py` y la sangría de los
-    comentarios** (sección 7.3): el código actual del script no reproduce el
-    fallo que `CLAUDE.md` le atribuye. Queda anotada para que se investigue
-    si vuelve a aparecer.
+    comentarios** (sección 7.3) — *(resuelta el 2026-09-13)*. El código no
+    aplasta la sangría: copia los comentarios verbatim. La nota equivocada
+    estaba en `CLAUDE.md` y se corrigió; el script no se tocó.

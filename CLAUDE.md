@@ -5228,9 +5228,13 @@ pull, la fusión habría sido sobre datos viejos.
 > **Regla:** antes de un `git pull` en la cabina, mirar `git status` allí. Lo que
 > salga como `M` puede ser trabajo medido que no está en ningún otro sitio.
 
-**Y una trampa de `escribir_ajuste.py`**: ese guion reescribe `arranque.dat`
-entero para volcar los `video=` en masa, y por el camino **aplasta la sangría de
-todos los comentarios de cabecera** (los deja pegados al margen). No rompe nada
-—el parser ignora los comentarios— pero deshace la tabla de ayuda del fichero,
-que es lo único que explica qué hace cada clave. El commit la devuelve; volver a
-ejecutar el guion la pierde otra vez.
+**`escribir_ajuste.py` y los comentarios** (corregido el 2026-09-13): pone o
+cambia UNA clave de un juego sin tocar el resto. Los comentarios y las líneas en
+blanco se copian **verbatim** —conserva la sangría de la tabla de ayuda de
+cabecera—; lo único que reescribe es la propia línea del juego editado, cuyos
+espacios internos quedan normalizados a uno. Una versión anterior de esta nota
+decía que «aplastaba la sangría de todos los comentarios de cabecera»: **era
+falso.** Comprobado ejecutándolo sobre un `arranque.dat` con comentarios
+sangrados —sólo cambió la línea del juego; la cabecera quedó intacta— y leyendo
+el código: los comentarios se añaden con la línea original sin tocar
+(`escribir_ajuste.py`, la rama `pelada.startswith("#")`).

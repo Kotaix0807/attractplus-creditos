@@ -23,7 +23,7 @@ los 58 que tienen decodificador):
     <elt size type id .../>        un campo
     <loop count="N"> ... </loop>   una tabla
 
-  type="int"   base=10|16, endianness, decoding-profile=bcd|bcd-le|base-40,
+  type="int"   base=10|16, endianness, decoding-profile=bcd|bcd-le,
                nibble-skip=odd|even, byte-skip=0xNN, byte-trim=0xNN
   type="text"  charset + ascii-offset
   type="raw"   se salta
@@ -75,9 +75,6 @@ def _intercambiar(datos, paso):
 
 def _quitar_bytes(datos, valor):
     return bytes(b for b in datos if b != valor)
-
-
-BASE40 = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,-"
 
 
 def _leer_int(trozo, elt):
@@ -219,31 +216,6 @@ def _estructuras(raiz, datos, fuente):
         (con_tam if tam == len(datos) else
          sin_tam if tam is None else resto).append(st)
     return con_tam + sin_tam + resto
-
-
-def _elegir_estructura(raiz, datos, fuente):
-    """Un juego puede traer varias estructuras (versiones de MAME distintas).
-
-    Se elige por el tamano declarado en <check><size>, que es como lo hace la
-    propia herramienta cuando no se le pasa el hiscore.dat.
-    """
-    candidatas = []
-    for st in raiz.findall("structure"):
-        f = st.get("file", ".hi")
-        if fuente and f not in (fuente, ".hi" if fuente == "hi" else fuente):
-            continue
-        chk = st.find("check")
-        tam = None
-        if chk is not None and chk.find("size") is not None:
-            tam = _entero(chk.find("size").text)
-        candidatas.append((st, tam))
-    exactas = [st for st, t in candidatas if t == len(datos)]
-    if exactas:
-        return exactas[0]
-    sin_tam = [st for st, t in candidatas if t is None]
-    if sin_tam:
-        return sin_tam[0]
-    return candidatas[0][0] if candidatas else None
 
 
 def resolver(ruta_xml, saltos=8):
