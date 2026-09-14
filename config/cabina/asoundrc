@@ -1,0 +1,25 @@
+# ALSA: saca el audio por la placa ONBOARD, no por el mando.
+#
+# Un mando (p.ej. el DualShock de PS4) se enumera como tarjeta USB-Audio y
+# puede quedarse con la tarjeta 0 -- la 'default' de ALSA --, y entonces el
+# emulador y el frontend suenan por el mando en vez de por los altavoces del
+# mueble. Aqui la default se fija a la placa ONBOARD por NOMBRE (@CARD@), asi
+# que el indice de tarjeta da igual y ningun mando puede robarla.
+#
+# dmix permite que suenen a la vez varias apps (el frontend y el emulador).
+# Lo instala instalar.sh (tarea 'audio'), que sustituye @CARD@ por la placa
+# onboard detectada; el fichero que hubiera se guarda en
+# ~/.asoundrc.antes_instalar.
+pcm.!default {
+    type plug
+    slave.pcm "cabina_mix"
+}
+pcm.cabina_mix {
+    type dmix
+    ipc_key 1789
+    slave { pcm "hw:CARD=@CARD@" }
+}
+ctl.!default {
+    type hw
+    card @CARD@
+}

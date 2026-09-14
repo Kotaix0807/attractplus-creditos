@@ -19,7 +19,8 @@
 #
 # Se puede fijar por entorno lo que se quiera saltar la deteccion:
 #   MAME=/usr/bin/groovymame ROMS=/ruta CREDITOS=/ruta DESTINO=/ruta
-#   TAREAS="config romlist"   (deps compilar config romlist arte crt mame videos)
+#   TAREAS="config romlist"   (deps compilar binario config romlist arte crt
+#                              audio salida escritorio teclado descargar mame videos)
 #
 # Lo que NO hace, a proposito:
 #   - No toca ~/.attract/config/attract.cfg si ya existe: ahi estan tus teclas.
@@ -1221,6 +1222,48 @@ PY
 	fi
 }
 
+tarea_audio() {
+	paso "Sonido: sacar el audio por la placa, no por el mando"
+
+	# Diagnosticado en la cabina el 2026-09-13: el mando de PS4 se enumera como
+	# tarjeta USB-Audio y se habia quedado con la tarjeta 0 -- la 'default' de
+	# ALSA --, asi que el emulador y el frontend sonaban por el mando y no por
+	# los altavoces del mueble (el ~/.asoundrc fijaba 'defaults.pcm.card 0').
+	# El clip grabado SI llevaba sonido: begin_recording toma el mezclador
+	# interno de MAME, no la salida. Era solo enrutado de salida.
+	#
+	# Se fija la default a la placa ONBOARD por NOMBRE (no por indice, que un
+	# mando puede robar), con dmix para que suenen a la vez frontend y emulador.
+	local plantilla="$AQUI/config/cabina/asoundrc"
+	[ -f "$plantilla" ] || { rojo "  no encuentro $plantilla"; return 1; }
+
+	# La placa buena es la primera de /proc/asound/cards que NO sea USB-Audio.
+	local card
+	card="$( awk -F'[][]' '/^ *[0-9]+ \[/ && $0 !~ /USB-Audio/ {id=$2; gsub(/ /,"",id); print id; exit}' \
+	         /proc/asound/cards 2>/dev/null )"
+	if [ -z "$card" ]; then
+		aviso "  no encuentro una placa de sonido onboard en /proc/asound/cards"
+		aviso "  (¿solo hay dispositivos USB?). No toco ~/.asoundrc."
+		return 0
+	fi
+	echo "  placa de salida: $card"
+
+	local destino="$HOME/.asoundrc" nuevo
+	nuevo="$( sed "s/@CARD@/$card/g" "$plantilla" )"
+	if [ -f "$destino" ] && [ "$( cat "$destino" )" = "$nuevo" ]; then
+		verde "  ~/.asoundrc ya esta como debe"
+		return 0
+	fi
+	if [ -f "$destino" ]; then
+		cp "$destino" "$destino.antes_instalar"
+		echo "  (el ~/.asoundrc anterior queda en ~/.asoundrc.antes_instalar)"
+	fi
+	printf '%s\n' "$nuevo" > "$destino"
+	verde "  ~/.asoundrc -> salida por '$card' (dmix)"
+	aviso "  si el frontend ya estaba abierto, reinicialo para que lo coja"
+	return 0
+}
+
 tarea_salida() {
 	paso "Mandando la imagen al CRT"
 	local xinit="$HOME/.xinitrc"
@@ -1525,6 +1568,9 @@ teclado_por_defecto=OFF
 [ "$( localectl status 2>/dev/null | sed -n 's/.*X11 Layout: *//p' )" = "(unset)" ] \
 	&& teclado_por_defecto=ON
 [ "$ES_GROOVYARCADE" = 1 ] && binario_por_defecto=ON
+# El enrutado de audio (que no lo robe un mando USB) es un arreglo de cabina.
+audio_por_defecto=OFF
+[ "$ES_GROOVYARCADE" = 1 ] && audio_por_defecto=ON
 
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
 # Se puede fijar por entorno, que es como se prueba sin ir tarea por tarea:
@@ -1533,6 +1579,7 @@ if [ -z "${TAREAS:-}" ]; then
 	TAREAS="deps config romlist arte"
 	[ "$compilar_por_defecto" = ON ] && TAREAS="deps compilar $TAREAS"
 	[ "$binario_por_defecto"  = ON ] && TAREAS="$TAREAS binario"
+	[ "$audio_por_defecto"    = ON ] && TAREAS="$TAREAS audio"
 	FIJADAS=0
 else
 	FIJADAS=1
@@ -1547,6 +1594,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		romlist  "Construir la lista de juegos"                  ON \
 		arte     "Descargar marquesinas y capturas"              ON \
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
+		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
 		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
@@ -1590,6 +1638,7 @@ hace descargar && { tarea_descargar  || fallos=$((fallos+1)); }
 hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
+hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }
 hace teclado  && { tarea_teclado      || fallos=$((fallos+1)); }
