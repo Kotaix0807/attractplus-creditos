@@ -20,7 +20,7 @@ la que corre.
 
 En `arduino/` va todo lo del contador físico: `Arcade.ino` (el firmware) y
 `sandbox.py` (el banco de pruebas del puerto serie, una versión temprana de
-`daemon.py`).
+`contador_arduino.py`).
 
 Y un quinto que **no es código pero manda más que el código**:
 
@@ -41,7 +41,7 @@ Y un quinto que **no es código pero manda más que el código**:
        │                                              │
        │ (monedero, hoy APAGADO)                      │ arranque tapado
        v                                              │ cerrojo de la moneda
-  daemon.py ──> puerto serie ──> Arduino               │ aviso al salir
+  contador_arduino.py ──> puerto serie ──> Arduino               │ aviso al salir
 ```
 
 **Hoy la cabina va a monedas de verdad**: el plugin de créditos está
@@ -57,11 +57,11 @@ Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 
 | Fichero | Qué hace |
 |---|---|
-| `CLAUDE.md` | La memoria del proyecto: decisiones, mediciones y trampas |
-| `ESTRUCTURA.md` | Este fichero |
+| `CLAUDE.md` | La memoria del proyecto: decisiones, mediciones y trampas. Única documentación que sigue en la raíz, porque es lo que Claude Code carga como instrucciones |
+| `docs/` | **Toda la demás documentación** (2026-09-13): `ESTRUCTURA.md` (este fichero), `lua.md`/`sh.md`/`py.md` (cada script explicado a fondo), `direcciones-ram.md` (cómo se localizan las direcciones de RAM de créditos y puntajes), `README.md` (índice) y los informes (`puntajes.md`, `INFORME-CREDITOS-NVRAM.md`) |
 | `config/plugins/Creditos.nut` | El monedero del frontend. **Desactivado** |
 | `config/plugins/Arranque.nut` | Menú en la cabina para ajustar la carga de cada juego |
-| `daemon.py` | Vigila el monedero y lo manda al Arduino por el puerto serie |
+| `contador_arduino.py` | Vigila el monedero y lo manda al Arduino por el puerto serie |
 | `instalar.sh` | Instalador guiado con whiptail: dependencias, compilación, configuración, artes |
 | `cabina.sh` | Arranca el frontend en el CRT y devuelve el escritorio al salir |
 | `pantalla.py` | Cambia la disposición de monitores (bajo Wayland, `xrandr` no manda) |

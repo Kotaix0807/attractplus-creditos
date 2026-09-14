@@ -3,9 +3,21 @@
 Contexto traspasado desde otra sesión. Todo lo marcado como **verificado** se
 comprobó ejecutando código y mirando capturas de pantalla reales, no de memoria.
 
-**Mapa del proyecto: `ESTRUCTURA.md`** — qué hay en cada directorio, quién lee
-qué fichero de configuración y las trampas de sincronización. Este documento
-(`CLAUDE.md`) es el *por qué* de cada decisión; `ESTRUCTURA.md` es el *dónde*.
+**Mapa del proyecto: `docs/ESTRUCTURA.md`** — qué hay en cada directorio, quién
+lee qué fichero de configuración y las trampas de sincronización. Este documento
+(`CLAUDE.md`) es el *por qué* de cada decisión; `docs/ESTRUCTURA.md` es el
+*dónde*.
+
+**Toda la documentación del proyecto vive en `docs/`** (2026-09-13): el mapa
+(`ESTRUCTURA.md`), el funcionamiento a fondo de cada script
+(`docs/lua.md`, `docs/sh.md`, `docs/py.md`), la explicación detallada de cómo se
+localizan las direcciones de RAM de créditos y puntajes
+(`docs/direcciones-ram.md`), y los informes técnicos (`puntajes.md`,
+`INFORME-CREDITOS-NVRAM.md`). `docs/README.md` es el índice. Sólo `CLAUDE.md`
+sigue en la raíz, porque es lo que Claude Code carga como instrucciones del
+proyecto. Los `.md` de la raíz y de `extlibs/`, `util/`, `src/`,
+`config/modules/` y `config/layouts/` son de Attract-Mode Plus (upstream) y no se
+tocan.
 
 ## Decisión de Eloy (2026-08-29): monedas de verdad — ES LO QUE HAY AHORA
 
@@ -37,7 +49,7 @@ Sus pruebas siguen pasando, porque los escenarios lo piden explícitamente.
 
 Dos cosas que quedan sueltas con este flujo, por si se quieren retomar:
 
-- **`daemon.py` y el contador físico se quedan sin nada que enseñar**, porque ya
+- **`contador_arduino.py` y el contador físico se quedan sin nada que enseñar**, porque ya
   no hay monedero. La evolución natural sería que mostrara los créditos que hay
   **dentro del juego**, que para los juegos de `creditos.dat` se leen de la RAM.
 - **La tarifa del DIP ahora decide dinero de verdad.** Sigue forzada a 1 moneda
@@ -120,7 +132,7 @@ Lo que se tocó, por orden de importancia:
 - **Se sigue exigiendo saldo para elegir juego**, pero **sin cobrarlo**:
   `m_coste` pasa de ser un precio a ser un mínimo. Sin créditos no hay nada que
   hacer dentro de una partida, así que dejar entrar sería un engaño.
-- **`daemon.py` no cambia**: ya se limita a enseñar el `saldo`.
+- **`contador_arduino.py` no cambia**: ya se limita a enseñar el `saldo`.
 
 ### Lo que no cambia
 
@@ -262,11 +274,11 @@ MAME directamente. Ahora hay cerrojo, ver «El cerrojo del botón de moneda».
 Montado el 2026-08-28, escrito por Eloy con tutoría.
 
 ```
-Creditos.nut escribe ~/.attract/creditos.txt  ->  daemon.py lo vigila
+Creditos.nut escribe ~/.attract/creditos.txt  ->  contador_arduino.py lo vigila
    ->  puerto serie 9600  ->  Arcade.ino  ->  contador físico
 ```
 
-**`daemon.py`** (en la raíz del repo): lee el `saldo`, y sólo cuando **cambia**
+**`contador_arduino.py`** (en la raíz del repo): lee el `saldo`, y sólo cuando **cambia**
 respecto a lo último enviado manda `N\n` por `/dev/ttyUSB0`. Detalles que
 costaron una iteración cada uno:
 
@@ -4014,7 +4026,7 @@ prueba `7z`, `7za`, `7zz` y `7zr`, y el mensaje da el paquete de cada distro.
   cada maquina, que es lo correcto: un binario versionado no arranca en ARM.
 - `sandbox.py` se fue de la raiz a **`arduino/`**, con `Arcade.ino`, que es su
   pareja: no es basura, es el banco de pruebas del puerto serie de Eloy.
-- `daemon.py` y `arduino/sandbox.py` no tenian **shebang**, asi que `./daemon.py`
+- `contador_arduino.py` y `arduino/sandbox.py` no tenian **shebang**, asi que `./contador_arduino.py`
   no funcionaba.
 
 ### Aviso para las tres sesiones: `git add -A` barre lo ajeno
@@ -5019,7 +5031,7 @@ La primera tanda de medidas **no valia**, y por dos motivos distintos:
 5. ~~El bloqueo de la moneda cuando el saldo llega a 0.~~ **Hecho** el
    2026-08-28: `cerrojo.lua`, con `set_default_input_seq`, que no ensucia el
    `.cfg`.
-6. Arrancar `daemon.py` solo con la cabina (servicio de `systemd` de usuario).
+6. Arrancar `contador_arduino.py` solo con la cabina (servicio de `systemd` de usuario).
 
 **Aviso**: la API de MAME de este documento está verificada ejecutándola. La de
 Attract-Mode Plus **no** — cuando se llegue ahí, contrastar con `Manual.md` y

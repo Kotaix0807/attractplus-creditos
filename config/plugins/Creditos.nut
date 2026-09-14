@@ -177,7 +177,7 @@ class Creditos
 			fe.nv[ NV_CLAVE ] <- m_creditos;
 
 		// El monedero se escribe en CADA cambio, no solo al lanzar el juego:
-		// es lo que lee el contador fisico de la cabina (daemon.py), que tiene
+		// es lo que lee el contador fisico de la cabina (contador_arduino.py), que tiene
 		// que enterarse de la moneda en el momento en que entra. De paso, el
 		// fichero se recrea solo si alguien lo borra.
 		//
