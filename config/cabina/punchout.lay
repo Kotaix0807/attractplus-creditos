@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!--
+Vistas a medida para Punch-Out!! en la cabina (pantalla 4:3).
+En MAME cada <screen> se ESTIRA para llenar su rectangulo <bounds> (comprobado
+en pantalla), asi que el aspecto final lo fija el rectangulo.
+  index 0 = pantalla de ARRIBA (info: rival, marcador, VS, publico)
+  index 1 = pantalla de ABAJO (el JUEGO: el ring)
+La PRIMERA vista es la que MAME usa por defecto: se pone "medio" delante.
+Para cambiarla en la cabina: Tab -> Video Options -> View (se guarda por juego).
+-->
+<mamelayout version="2">
+
+	<!-- 1) LADO A LADO con estiron MEDIO (~1.43x): las dos pantallas grandes,
+	        estiradas un poco a lo alto, con un borde fino arriba y abajo.
+	        Es la vista POR DEFECTO. -->
+	<view name="Cabina - lado a lado (medio)">
+		<screen index="1"><bounds x="0" y="0" width="4" height="5" /></screen>
+		<screen index="0"><bounds x="4" y="0" width="4" height="5" /></screen>
+	</view>
+
+	<!-- 2) JUEGO grande a la izquierda + INFO pequena a la derecha, como el
+	        mueble original. Conserva las dos pantallas con el juego dominante y
+	        sin apenas deformar. -->
+	<view name="Cabina - juego + info">
+		<screen index="1"><bounds x="0"  y="0"      width="11" height="12"    /></screen>
+		<screen index="0"><bounds x="11" y="3.8125" width="5"  height="4.375" /></screen>
+	</view>
+
+	<!-- 3) Solo el JUEGO a pantalla completa 4:3 (lo mas grande; sin la info). -->
+	<view name="Cabina - solo juego">
+		<screen index="1"><bounds x="0" y="0" width="4" height="3" /></screen>
+	</view>
+
+	<!-- 4) LADO A LADO llenando el 4:3 sin bordes (~1.71x, muy estirado). -->
+	<view name="Cabina - lado a lado (lleno)">
+		<screen index="1"><bounds x="0" y="0" width="4" height="6" /></screen>
+		<screen index="0"><bounds x="4" y="0" width="4" height="6" /></screen>
+	</view>
+
+	<!-- 5) LADO A LADO en proporcion nativa (sin estirar), de referencia:
+	        es lo que se ve de serie en side-by-side y queda pequeno. -->
+	<view name="Cabina - lado a lado (natural)">
+		<screen index="1"><bounds x="0"     y="0" width="6.857" height="6" /></screen>
+		<screen index="0"><bounds x="6.857" y="0" width="6.857" height="6" /></screen>
+	</view>
+
+</mamelayout>

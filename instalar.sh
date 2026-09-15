@@ -867,6 +867,22 @@ Quitar esos displays? (se guarda copia en displays.cfg.antes_instalar)" si
 		fi
 	fi
 
+	# Vistas de MAME a medida por juego (artwork). Para juegos con alguna
+	# particularidad -- p.ej. las DOS pantallas de Punch-Out!!, que MAME apila y
+	# dejan el combate pequeno: config/cabina/punchout.lay las coloca lado a lado
+	# estiradas para el 4:3 del mueble. Van al artpath del emulador, una carpeta
+	# por juego con un default.lay; la primera vista del fichero es la de defecto.
+	local artdir; artdir="$( mame_opcion artpath )"; artdir="${artdir%%;*}"
+	if [ -n "$artdir" ]; then
+		local lay juego
+		for lay in "$AQUI"/config/cabina/*.lay; do
+			[ -e "$lay" ] || continue
+			juego="$( basename "$lay" .lay )"
+			mkdir -p "$artdir/$juego" && cp "$lay" "$artdir/$juego/default.lay" \
+				&& echo "  + vista de MAME: $artdir/$juego/default.lay"
+		done
+	fi
+
 	# AM+ busca su configuracion en ~/.attract y punto (fe_settings.cpp:54-60).
 	# Si la cabina la tiene en otro sitio -- GroovyArcade la pone en
 	# ~/shared/frontends/attract -- hay que enlazarla, o el frontend arrancara
