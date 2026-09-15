@@ -164,9 +164,16 @@ convertir_a_mp4() {
 	#      entera, ya sobre una imagen grande.
 	# Hacerlo al reves (proporcion primero) reparte mal las filas y se ve
 	# irregular.
+	# El factor se calcula sobre el alto YA CORREGIDO (destino_px), no sobre el
+	# alto crudo del AVI. Frogger y Galaxian graban 768 de alto (su placa da tres
+	# lineas por linea util), asi que 700/768 daba amp=1 -- no se ampliaban y
+	# salian diminutos (224x298) mientras el resto salia a ~672 de ancho. El alto
+	# corregido de esos dos es ~298, asi que 700/298 da amp=3 y quedan como los
+	# demas. Para el resto de juegos destino_px y crudo tienen casi el mismo alto,
+	# asi que el factor no cambia.
 	amp=1
 	if [ "$AMPLIAR" != "0" ]; then
-		amp=$(( 700 / ${crudo#*x} + 1 ))
+		amp=$(( 700 / ${destino_px#*x} + 1 ))
 		[ "$amp" -lt 1 ] && amp=1
 		[ "$amp" -gt 4 ] && amp=4
 	fi

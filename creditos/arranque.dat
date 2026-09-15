@@ -199,8 +199,8 @@ mk3 segundos=10 velocidad=0
 mslug segundos=11.8 velocidad=0
 popeye segundos=0.5 velocidad=0
 starwars segundos=0.1 velocidad=0
-tekken segundos=10 velocidad=0
-tekken2 segundos=10.2 velocidad=0
+tekken segundos=10 velocidad=0 video=80
+tekken2 segundos=10.2 velocidad=0 video=100
 tron segundos=1 velocidad=0 limite=9
 
 1943 limite=9
