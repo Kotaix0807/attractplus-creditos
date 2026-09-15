@@ -867,19 +867,44 @@ Quitar esos displays? (se guarda copia en displays.cfg.antes_instalar)" si
 		fi
 	fi
 
-	# Vistas de MAME a medida por juego (artwork). Para juegos con alguna
-	# particularidad -- p.ej. las DOS pantallas de Punch-Out!!, que MAME apila y
-	# dejan el combate pequeno: config/cabina/punchout.lay las coloca lado a lado
-	# estiradas para el 4:3 del mueble. Van al artpath del emulador, una carpeta
-	# por juego con un default.lay; la primera vista del fichero es la de defecto.
-	local artdir; artdir="$( mame_opcion artpath )"; artdir="${artdir%%;*}"
-	if [ -n "$artdir" ]; then
-		local lay juego
+	# Vistas de MAME a medida por juego (artwork), OPCIONAL: es una preferencia
+	# visual, no algo que toda cabina quiera. Para juegos de DOS pantallas que
+	# MAME apila y dejan el juego pequeno -- p.ej. Punch-Out!! --,
+	# config/cabina/<juego>.lay las coloca lado a lado y estiradas para el 4:3.
+	# La primera vista del fichero es la de defecto; se cambia en el juego con
+	# Tab > Video Options > View.
+	if ls "$AQUI"/config/cabina/*.lay >/dev/null 2>&1 && \
+	   d_si "Vistas a medida de MAME" \
+"Algunos juegos de dos pantallas (Punch-Out!!) se ven pequenos porque MAME las
+apila una sobre otra. Hay vistas a medida que las ponen lado a lado y estiradas
+para llenar el 4:3 del mueble.
+
+Instalarlas? (luego se cambia de vista en el propio juego)" si
+	then
+		local artdir chain inidir lay juego pantallas rep i
+		artdir="$( mame_opcion artpath )"; artdir="${artdir%%;*}"
+		chain="$( mame_opcion bgfx_screen_chains )"
+		inidir="$( mame_opcion inipath )"; inidir="${inidir%%;*}"
 		for lay in "$AQUI"/config/cabina/*.lay; do
 			[ -e "$lay" ] || continue
 			juego="$( basename "$lay" .lay )"
-			mkdir -p "$artdir/$juego" && cp "$lay" "$artdir/$juego/default.lay" \
-				&& echo "  + vista de MAME: $artdir/$juego/default.lay"
+			if [ -n "$artdir" ]; then
+				mkdir -p "$artdir/$juego" && cp "$lay" "$artdir/$juego/default.lay" \
+					&& echo "  + vista de MAME: $artdir/$juego/default.lay"
+			fi
+			# Si hay shader (bgfx), aplicarlo a TODAS las pantallas del juego y no
+			# solo a la primera: un .ini por juego con la cadena repetida por
+			# pantalla. Sin esto, la 2a pantalla de Punch-Out sale sin scanlines.
+			if [ -n "$chain" ] && [ -n "$inidir" ] && [ -x "$MAME" ]; then
+				pantallas="$( "$MAME" -listxml "$juego" 2>/dev/null | grep -c '<display ' )"
+				if [ "${pantallas:-0}" -ge 2 ]; then
+					rep="$chain"
+					for i in $( seq 2 "$pantallas" ); do rep="$rep,$chain"; done
+					mkdir -p "$inidir"
+					echo "bgfx_screen_chains $rep" > "$inidir/$juego.ini"
+					echo "  + shader en las $pantallas pantallas: $inidir/$juego.ini"
+				fi
+			fi
 		done
 	fi
 
