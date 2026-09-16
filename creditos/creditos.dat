@@ -1619,6 +1619,7 @@ fantzn2x @:maincpu,program,23a691   # (cheat)
 fantzn2xp @:maincpu,program,235415   # (cheat)
 farmer @:maincpu,program,c068   # (cheat)
 farwest @:maincpu,program,321a   # (cheat)
+fatfury1 @:maincpu,program,d00034 bcd   # (cheat) contador en la backup RAM del Neo-Geo (0xD00034, BCD), persiste entre estados; hallado por Eloy
 fbait @:maincpu,program,800b060a   # (cheat)
 fbait2 @:maincpu,program,800c0f68   # (cheat)
 fbait2bc @:maincpu,program,a4d9c   # (cheat)
@@ -4187,7 +4188,7 @@ stratof @:maincpu,program,60046   # (cheat)
 stress @:maincpu,program,183d05   # (cheat)
 strfbomb @:maincpu,program,4002   # (cheat)
 strgchmp @:maincpu,program,2c5ff6   # (cheat)
-strhoop @:maincpu,program,100a1a   # (cheat)
+strhoop @:maincpu,program,d00034 bcd   # (cheat) contador comun de la BIOS Neo-Geo MVS (0xD00034, BCD, backup RAM), solo lectura
 strider2 @:maincpu,program,c3628   # (cheat)
 strider2a @:maincpu,program,c3628   # (cheat)
 strider2u @:maincpu,program,c3628   # (cheat)
@@ -4995,3 +4996,22 @@ zipzapa @:maincpu,program,c81fe1   # (cheat)
 zoom909 @:maincpu,program,f800   # (cheat)
 zunkyou @:maincpu,program,fffa66   # (cheat)
 zzyzzyxx @:maincpu,program,5010   # (cheat)
+
+# --- Neo-Geo (MVS): el contador de creditos lo lleva la BIOS en la backup RAM,
+# --- en 0xD00034 (BCD), COMUN a todos los juegos MVS. Solo lectura (la BIOS lo
+# --- gestiona). Verificado en la cabina 2026-09-16: los 13 leen 0x11 con 11
+# --- monedas, y fatfury1/mslug/kof97 cuadran CREDITS 11 en pantalla. Persiste
+# --- entre attract, seleccion y partida. (doubledr y fatfury1 van aparte, en
+# --- su sitio alfabetico; strhoop tambien.)
+kof97 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+kof98 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+kof99 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+kof2000 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+mslug @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+mslug2 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+mslug3 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+samsho @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+samsho2 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+samsho3 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+samsho4 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+samsho5 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
