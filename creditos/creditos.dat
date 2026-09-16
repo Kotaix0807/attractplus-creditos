@@ -4,6 +4,10 @@
 # Las marcadas (cheat) vienen de la coleccion de cheats de MAME y NO estan
 # comprobadas: se leen solo si pasan la prueba de las monedas, y nunca se
 # escribe en ellas. Varias direcciones con "+" son copias del mismo contador.
+# Excepcion: digdug lleva (cheat) aunque se comprobo a mano -- su contador vive
+# en el chip de E/S de Namco y el byte 85a7 es un ESPEJO de solo lectura (se lee
+# bien, pero escribir no surte efecto), asi que se marca (cheat) para no escribir
+# nunca en el. Verificado en pantalla el 2026-09-16 (CREDIT N cuadra con 85a7).
 # La marca "bcd" dice que la placa guarda el contador en decimal codificado en
 # binario: el byte salta de 0x09 a 0x10, asi que leido en crudo el credito 10
 # parece 16. Medido metiendo 30 monedas juego a juego en la cabina.
@@ -1336,6 +1340,7 @@ dietgoea @:maincpu,program,380064   # (cheat)
 dietgoeb @:maincpu,program,380064   # (cheat)
 dietgoj @:maincpu,program,380064   # (cheat)
 dietgou @:maincpu,program,380064   # (cheat)
+digdug @:maincpu,program,85a7 bcd   # (cheat) espejo de solo lectura del chip de E/S de Namco
 diggerc @:maincpu,program,1da5   # (cheat)
 dirtfoxj @:maincpu,program,1033fd   # (cheat)
 discoboy @:maincpu,program,f88c   # (cheat)
@@ -1406,6 +1411,7 @@ dorunrun @:maincpu,program,200f   # (cheat)
 dorunrun2 @:maincpu,program,200f   # (cheat)
 dorunrunc @:maincpu,program,800f   # (cheat)
 dorunrunca @:maincpu,program,800f   # (cheat)
+doubledr @:maincpu,program,102239 bcd   # (cheat) espejo de solo lectura, creditos gestionados por la BIOS Neo-Geo MVS
 dowild @:maincpu,program,2012   # (cheat)
 dquizgo @:maincpu,program,341c8b   # (cheat)
 dragoona @:maincpu,program,c01044   # (cheat)
@@ -1787,6 +1793,7 @@ gakupara @:maincpu,program,c11e   # (cheat)
 gakupara102 @:maincpu,program,c11e   # (cheat)
 galactic @:maincpu,program,2002   # (cheat)
 galactica2 @:maincpu,program,8002   # (cheat)
+galaga @:maincpu,program,99b5 bcd   # (cheat) espejo de solo lectura del contador del chip Namco 51XX (mirror 99b5/99b8), hallado por Eloy
 galaktron @:maincpu,program,4002   # (cheat)
 galap1 @:maincpu,program,4002   # (cheat)
 galap2 @:maincpu,program,4002   # (cheat)
@@ -2617,6 +2624,7 @@ mandingag @:maincpu,program,4002   # (cheat)
 mandingarf @:maincpu,program,4002   # (cheat)
 mandinka @:maincpu,program,8002   # (cheat)
 maniacsp @:maincpu,program,ff7059   # (cheat)
+mappy @:maincpu,program,1373 decenas=1372   # (cheat) contador partido en dos digitos (Namco 51XX): 1372 decenas, 1373 unidades, digitos 0-9
 marble @:maincpu,program,401ff5   # (cheat)
 marble2 @:maincpu,program,401ff5   # (cheat)
 marble3 @:maincpu,program,401ff5   # (cheat)

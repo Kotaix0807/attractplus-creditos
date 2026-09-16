@@ -1278,11 +1278,33 @@ if MEM then
 				log('el contador de este juego va en BCD: se traduce al leerlo')
 			end
 
-			GA_ESTADO.leer_ram = function() return a_credito(esp:read_u8(entrada.dir)) end
+			-- Contador partido en dos digitos (Namco: mappy). La direccion
+			-- principal son las UNIDADES y entrada.decenas la otra mitad; el
+			-- valor es decenas*10 + unidades, con cada byte en 0-9. Si algun
+			-- byte no es un digito valido (la RAM aun sin asentar), se devuelve
+			-- el de unidades en crudo, igual que a_credito con un BCD invalido.
+			GA_ESTADO.leer_ram = function()
+				if entrada.decenas then
+					local u = esp:read_u8(entrada.dir)
+					local t = esp:read_u8(entrada.decenas)
+					if (u > 9) or (t > 9) then return u end
+					return (t * 10) + u
+				end
+				return a_credito(esp:read_u8(entrada.dir))
+			end
 
 			-- Se escribe en TODAS las copias: hay juegos que guardan varias y
-			-- pintan el marcador desde una que no es la primera.
+			-- pintan el marcador desde una que no es la primera. En los de dos
+			-- digitos se reparte en decenas y unidades. (En mappy no se llega a
+			-- escribir: va marcado (cheat), o sea solo lectura.)
 			GA_ESTADO.escribir_ram = function(v)
+				if entrada.decenas then
+					if v < 0 then v = 0 end
+					if v > 99 then v = 99 end
+					esp:write_u8(entrada.decenas, math.floor(v / 10))
+					esp:write_u8(entrada.dir, v % 10)
+					return
+				end
 				local b = a_byte(v)
 				for _, d in ipairs(entrada.dirs or { entrada.dir }) do
 					esp:write_u8(d, b)

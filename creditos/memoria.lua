@@ -37,6 +37,11 @@ function M.entrada(ruta, juego)
 					lista[#lista + 1] = tonumber(d, 16)
 				end
 
+				-- Los flags van despues de la direccion; se leen del tramo
+				-- ANTES del comentario, para que un '#' con prosa no cuele.
+				local sin_com = linea:gsub('#.*', '')
+				local dec = sin_com:match('%f[%w]decenas=(%x+)')
+
 				encontrada = {
 					cpu = cpu,
 					espacio = espacio,
@@ -52,6 +57,14 @@ function M.entrada(ruta, juego)
 					-- pacman, dkong, frogger y los Williams. Se marca con la
 					-- palabra 'bcd' al final de la linea.
 					bcd = linea:find('%f[%w]bcd%f[%W]') ~= nil,
+					-- Algunos Namco (mappy) NO guardan el contador como un
+					-- numero binario ni en BCD, sino partido en DOS bytes: uno
+					-- con el digito de las decenas y otro con el de las unidades
+					-- (0-9 cada uno). Con 'decenas=<dir>' al final de la linea,
+					-- la direccion principal son las UNIDADES y el valor es
+					-- decenas*10 + unidades. Verificado en la cabina 2026-09-16
+					-- (1372=decenas, 1373=unidades: 02 04 = 24 creditos).
+					decenas = dec and tonumber(dec, 16) or nil,
 				}
 				break
 			end

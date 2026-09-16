@@ -62,6 +62,19 @@ do
 	igual('la tercera', q.dirs[3], 0x1100)
 	igual('una direccion sola tambien da lista', M.entrada(RUTA, 'pacman').dirs[1], 0x4e6e)
 	igual('un fichero que no existe', M.entrada('/no/existe.dat', 'pacman'), nil)
+
+	-- Formato de dos digitos (Namco: mappy). El contador va partido en dos
+	-- bytes: la direccion principal son las UNIDADES y 'decenas=<dir>' la otra
+	-- mitad. El valor es decenas*10 + unidades (lo combina creditos.lua al leer).
+	local m = io.open(RUTA, 'a')
+	m:write('mappy @:maincpu,program,1373 decenas=1372   # (cheat) dos digitos\n')
+	m:close()
+	local mp = M.entrada(RUTA, 'mappy')
+	igual('la direccion principal son las unidades', mp.dir, 0x1373)
+	igual('lee la direccion de las decenas', mp.decenas, 0x1372)
+	igual('sin decenas=, es nil', M.entrada(RUTA, 'pacman').decenas, nil)
+	igual('y una de dos digitos no es bcd', mp.bcd, false)
+
 	os.remove(RUTA)
 end
 
