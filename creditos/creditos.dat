@@ -1302,6 +1302,7 @@ defender @:maincpu,program,a037 bcd
 gng @:maincpu,program,23
 mario @:maincpu,program,6bf1
 megaman @:maincpu,program,ff8068
+megaman2 @:maincpu,program,ff8068   # binario, topa en 9, escribible; misma direccion que megaman (Capcom). El contador REAL: FF05B1 (que hallo Eloy) es una variable de la BIOS que se va a 0xFF tras START. Verificado 2026-09-17 (CREDIT 9)
 robotron @:maincpu,program,9851 bcd
 joust @:maincpu,program,a0f2 bcd
 tron @:maincpu,program,c501
