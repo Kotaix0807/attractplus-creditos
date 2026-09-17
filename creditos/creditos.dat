@@ -1303,6 +1303,7 @@ gng @:maincpu,program,23
 mario @:maincpu,program,6bf1
 megaman @:maincpu,program,ff8068
 megaman2 @:maincpu,program,ff8068   # binario, topa en 9, escribible; misma direccion que megaman (Capcom). El contador REAL: FF05B1 (que hallo Eloy) es una variable de la BIOS que se va a 0xFF tras START. Verificado 2026-09-17 (CREDIT 9)
+mvsc @:maincpu,program,ff4499   # binario, topa en 9, escribible; CPS2. Hallado por Eloy. Verificado 2026-09-17 (CREDITS 9)
 robotron @:maincpu,program,9851 bcd
 joust @:maincpu,program,a0f2 bcd
 tron @:maincpu,program,c501
@@ -2756,7 +2757,7 @@ mjreachbl @:maincpu,program,78be   # (cheat)
 mjvegas @:maincpu,program,689b   # (cheat)
 mjvegasa @:maincpu,program,689b   # (cheat)
 mjzoomin @:maincpu,program,f0411   # (cheat)
-mk @:maincpu,program,ffab7a   # (cheat)
+mk @:maincpu,:nvram/share,12   # (cheat) contador en la CMOS (share :nvram, offset 0x12), binario. Midway lo guarda por triplicado + complemento (0x16=255-N), por eso NO se escribe. Verificado 2026-09-17 (CREDIT 12)
 mk2 @:maincpu,program,c40b   # (cheat)
 mk2ua @:maincpu,program,7e30b8   # (cheat)
 mk3 @:maincpu,program,d3a5   # (cheat)
