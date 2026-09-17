@@ -74,6 +74,16 @@ do
 	igual('lee la direccion de las decenas', mp.decenas, 0x1372)
 	igual('sin decenas=, es nil', M.entrada(RUTA, 'pacman').decenas, nil)
 	igual('y una de dos digitos no es bcd', mp.bcd, false)
+	igual('mappy no lleva nibble alto', mp.nibble_alto, false)
+
+	-- Variante nibble alto (berzerk): cada digito en el nibble alto del byte.
+	local bz = io.open(RUTA, 'a')
+	bz:write('berzerk @:maincpu,program,8a5 decenas=8a4 nibblealto   # (cheat)\n')
+	bz:close()
+	local bze = M.entrada(RUTA, 'berzerk')
+	igual('berzerk: unidades', bze.dir, 0x8a5)
+	igual('berzerk: decenas', bze.decenas, 0x8a4)
+	igual('berzerk: nibble alto', bze.nibble_alto, true)
 
 	os.remove(RUTA)
 end

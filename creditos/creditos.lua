@@ -1285,9 +1285,15 @@ if MEM then
 			-- el de unidades en crudo, igual que a_credito con un BCD invalido.
 			GA_ESTADO.leer_ram = function()
 				if entrada.decenas then
-					local u = esp:read_u8(entrada.dir)
-					local t = esp:read_u8(entrada.decenas)
-					if (u > 9) or (t > 9) then return u end
+					local ub = esp:read_u8(entrada.dir)      -- byte de las unidades (crudo)
+					local tb = esp:read_u8(entrada.decenas)  -- byte de las decenas (crudo)
+					local u, t = ub, tb
+					-- berzerk guarda el digito en el nibble alto (0x10=1..0x90=9)
+					if entrada.nibble_alto then
+						u = math.floor(ub / 16)
+						t = math.floor(tb / 16)
+					end
+					if (u > 9) or (t > 9) then return ub end
 					return (t * 10) + u
 				end
 				return a_credito(esp:read_u8(entrada.dir))
@@ -1301,8 +1307,10 @@ if MEM then
 				if entrada.decenas then
 					if v < 0 then v = 0 end
 					if v > 99 then v = 99 end
-					esp:write_u8(entrada.decenas, math.floor(v / 10))
-					esp:write_u8(entrada.dir, v % 10)
+					local t, u = math.floor(v / 10), v % 10
+					if entrada.nibble_alto then t = t * 16; u = u * 16 end
+					esp:write_u8(entrada.decenas, t)
+					esp:write_u8(entrada.dir, u)
 					return
 				end
 				local b = a_byte(v)

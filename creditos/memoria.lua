@@ -65,6 +65,12 @@ function M.entrada(ruta, juego)
 					-- decenas*10 + unidades. Verificado en la cabina 2026-09-16
 					-- (1372=decenas, 1373=unidades: 02 04 = 24 creditos).
 					decenas = dec and tonumber(dec, 16) or nil,
+					-- Variante del formato de dos digitos: algunas placas guardan
+					-- cada digito en el NIBBLE ALTO del byte (berzerk: la unidad va
+					-- 0x10,0x20..0x90, o sea digito = byte>>4). Con la palabra
+					-- 'nibblealto' al final, cada byte se lee con >>4. Verificado
+					-- en berzerk 2026-09-16 (8a4=decenas, 8a5=unidades en nibble alto).
+					nibble_alto = sin_com:find('%f[%w]nibblealto%f[%W]') ~= nil,
 				}
 				break
 			end
