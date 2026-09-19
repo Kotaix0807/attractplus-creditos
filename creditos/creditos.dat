@@ -1306,6 +1306,7 @@ megaman2 @:maincpu,program,ff8068   # binario, topa en 9, escribible; misma dire
 mvsc @:maincpu,program,ff4499   # binario, topa en 9, escribible; CPS2. Hallado por Eloy. Verificado 2026-09-17 (CREDITS 9)
 mwalk @:maincpu,program,ff2000   # (cheat) binario, topa en 9, solo lectura; contador REAL (Sega System 18). FFFF80 y demas eran espejos/ruido del demo. Verificado 2026-09-19 (sube 0..9, baja con START, CREDITS 8=FF2000=8 en pantalla)
 polepos @:51xx:mcu,data,19   # (cheat) contador en el MCU de E/S Namco 51xx (RAM interna, data 0x19), NO en la RAM del Z80. 81xx/85xx/89xx eran espejos del display (capa de texto). Verificado 2026-09-19 (sube con monedas; Eloy confirmo escribiendo)
+punchout @:maincpu,program,d7db bcd   # BCD, escribible; contador de creditos (Nintendo). Verificado 2026-09-19 (CREDIT 12 = 0x12 en pantalla). Hallado por Eloy (100%)
 robotron @:maincpu,program,9851 bcd
 joust @:maincpu,program,a0f2 bcd
 tron @:maincpu,program,c501
