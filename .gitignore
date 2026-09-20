@@ -29,3 +29,6 @@ test.sh
 creditos/tira-*.png
 
 *.antes_*
+/notas.txt
+/docs/INFORME.md
+/hiscore/
