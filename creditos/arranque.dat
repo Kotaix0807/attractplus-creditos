@@ -114,7 +114,6 @@ sf2 segundos=14.5 velocidad=0
 sfiii3 segundos=25 velocidad=0
 simpsons2p segundos=10.6 velocidad=0 video=16
 mwalk segundos=11.8 velocidad=0 nvram=0 videodura=16
-
 # Berzerk guarda los creditos en su NVRAM y NO se ha podido localizar el
 # contador: 8a3 sube con cada moneda pero no es el almacen (escribirle 0 y
 # reiniciar deja los creditos puestos). Aqui nvram=0 SI vale, y esta medido:
@@ -143,7 +142,7 @@ gng segundos=8.3 velocidad=0 video=32
 goldnaxe segundos=6.2 velocidad=0 video=99
 gradius video=44
 joust segundos=10.8 velocidad=0 video=50
-kinst segundos=15 velocidad=0 video=81
+kinst velocidad=0 contador=1 segundos=15 video=81
 kof97 segundos=11.8 velocidad=0 video=99
 kof98 segundos=11.6 velocidad=0 video=81
 kof99 segundos=4 velocidad=0 video=44
@@ -179,7 +178,6 @@ tmnt2po video=32
 wboy segundos=0.1 velocidad=0 video=54
 xevious segundos=12.5 velocidad=0 video=50
 zaxxon segundos=0.1 velocidad=0 video=44
-
 # Medidos en la cabina juego a juego (pasada de ajuste de Eloy): el
 # "segundos=" de cada placa, cronometrado en vez de estimado.
 19xxu segundos=7.6 velocidad=0
@@ -202,7 +200,6 @@ starwars segundos=0.1 velocidad=0
 tekken segundos=10 velocidad=0 video=80
 tekken2 segundos=10.2 velocidad=0 video=100
 tron segundos=1 velocidad=0 limite=9
-
 1943 limite=9
 btime limite=9
 1942 limite=9
