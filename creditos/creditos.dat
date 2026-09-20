@@ -2422,7 +2422,7 @@ kidcham @:maincpu,program,fffc49   # (cheat)
 kidicars1 @:maincpu,program,14e   # (cheat)
 kikstart @:maincpu,program,816d   # (cheat)
 kingdmgp @:maincpu,program,10041d   # (cheat)
-kinst @:maincpu,program,8808f3e8   # (cheat)
+kinst @:maincpu,program,0808f3e8   # binario, escribible; contador de creditos (Killer Instinct, MIPS; en rambase2, DRAM de trabajo en 0x08000000). La importada 8808f3e8 tenia el byte alto mal (0x88=KSEG -> bus abierto 0xff); la real es 0808f3e8. Volatil: no persiste entre sesiones. START cuesta 2 creditos. Verificado en pantalla en la cabina 2026-09-20 ("CREDITS N").
 kirameki @:maincpu,program,407c7f   # (cheat)
 kittenk @:maincpu,program,401dc   # (cheat)
 klax @:maincpu,program,c0e6   # (cheat)
