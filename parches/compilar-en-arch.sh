@@ -108,10 +108,18 @@ for p in "$AQUI"/*.patch; do
 done
 
 # ---------------------------------------------------------------- compilar
+# USE_SYSTEM_LIB_PORTAUDIO=1: enlaza el portaudio DEL SISTEMA en vez del
+# empaquetado en 3rdparty/. Es imprescindible para el audio de la cabina: el
+# portaudio empaquetado abre el hw: crudo en EXCLUSIVA, asi que los sonidos de
+# creditos/aviso.lua (aplay) dan "device or resource busy". El del sistema pasa
+# por el ALSA 'default' (dmix) y comparte la tarjeta. Comprobado en la cabina
+# 2026-09-20: el groovymame de la distro (enlaza libportaudio.so del sistema)
+# comparte, y nuestro build (portaudio empaquetado) no. Requiere 'sound
+# portaudio' en mame.ini (lo pone instalar.sh, tarea audio).
 paso "Compilando con $TRABAJOS trabajos (esto tarda horas)"
 extra=()
 command -v ccache >/dev/null && extra+=( "PATH=/usr/lib/ccache:$PATH" )
-( cd "$FUENTES" && env "${extra[@]}" make -j"$TRABAJOS" NOWERROR=1 USE_QTDEBUG=0 ) || {
+( cd "$FUENTES" && env "${extra[@]}" make -j"$TRABAJOS" NOWERROR=1 USE_QTDEBUG=0 USE_SYSTEM_LIB_PORTAUDIO=1 ) || {
 	rojo "Fallo la compilacion. Lo mas comun es quedarse sin memoria:"
 	rojo "  vuelve a lanzarlo con TRABAJOS=1 ./parches/compilar-en-arch.sh"
 	exit 1
