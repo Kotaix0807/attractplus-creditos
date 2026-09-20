@@ -308,6 +308,10 @@ libswresample     libswresample-dev        ffmpeg
 # primera columna admite alternativas separadas por "|": basta con que exista
 # UNA. Sirve para ImageMagick, que en su version 7 dejo de instalar `convert`
 # y solo trae `magick`.
+#
+# `aplay` (paquete alsa-utils en todas las distros) lo usa creditos/aviso.lua
+# para reproducir los sonidos del aviso de salida. Si falta, el aviso sigue
+# funcionando pero mudo, asi que se trata como una dependencia mas.
 #            comprobacion      debian                   arch          fedora               opensuse
 HERRAMIENTAS="
 git               git                      git           git                  git
@@ -318,6 +322,7 @@ cmake             cmake                    cmake         cmake                cm
 ffmpeg            ffmpeg                   ffmpeg        ffmpeg-free          ffmpeg
 curl              curl                     curl          curl                 curl
 magick|convert    imagemagick              imagemagick   ImageMagick          ImageMagick
+aplay             alsa-utils               alsa-utils    alsa-utils           alsa-utils
 "
 
 # Donde guarda MAME cada cosa. NO se puede suponer: en Ubuntu el ini esta en
