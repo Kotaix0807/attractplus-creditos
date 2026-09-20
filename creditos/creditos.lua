@@ -1413,6 +1413,13 @@ if MEM then
 				for _, d in ipairs(entrada.dirs or { entrada.dir }) do
 					esp:write_u8(d, b)
 				end
+				-- CMOS Midway (mk/mk2/mk3): al lado del contador va su complemento
+				-- a 1 (valor + complemento = 0xFF). Se escribe tambien, o la placa
+				-- lo veria descuadrado. Verificado: con ambos consistentes, el
+				-- barrido resetea los creditos sin dejar la CMOS en "INVALID".
+				if entrada.complemento then
+					esp:write_u8(entrada.complemento, (0xFF - b) % 256)
+				end
 			end
 
 			-- La limpieza cierra el agujero del jugador pillo: aunque el

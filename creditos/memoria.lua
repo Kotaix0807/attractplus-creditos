@@ -41,6 +41,7 @@ function M.entrada(ruta, juego)
 				-- ANTES del comentario, para que un '#' con prosa no cuele.
 				local sin_com = linea:gsub('#.*', '')
 				local dec = sin_com:match('%f[%w]decenas=(%x+)')
+				local comp = sin_com:match('%f[%w]complemento=(%x+)')
 
 				encontrada = {
 					cpu = cpu,
@@ -71,6 +72,13 @@ function M.entrada(ruta, juego)
 					-- 'nibblealto' al final, cada byte se lee con >>4. Verificado
 					-- en berzerk 2026-09-16 (8a4=decenas, 8a5=unidades en nibble alto).
 					nibble_alto = sin_com:find('%f[%w]nibblealto%f[%W]') ~= nil,
+					-- Algunas CMOS (Midway: mk/mk2/mk3) guardan el contador con su
+					-- COMPLEMENTO A 1 al lado (valor + complemento = 0xFF), y lo
+					-- reparan/validan al arrancar. Con 'complemento=<dir>' al escribir
+					-- el contador se escribe tambien 0xFF-valor ahi, para que la CMOS
+					-- quede consistente y el barrido pueda resetear los creditos sin
+					-- dejarla en "CMOS INVALID". Verificado en la cabina 2026-09-20.
+					complemento = comp and tonumber(comp, 16) or nil,
 				}
 				break
 			end

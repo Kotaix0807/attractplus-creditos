@@ -2760,10 +2760,10 @@ mjreachbl @:maincpu,program,78be   # (cheat)
 mjvegas @:maincpu,program,689b   # (cheat)
 mjvegasa @:maincpu,program,689b   # (cheat)
 mjzoomin @:maincpu,program,f0411   # (cheat)
-mk @:maincpu,:nvram/share,12   # (cheat) contador en la CMOS (share :nvram, offset 0x12), binario. Midway lo guarda por triplicado + complemento (0x16=255-N), por eso NO se escribe. Verificado 2026-09-17 (CREDIT 12)
-mk2 @:maincpu,:nvram/share,21c   # (cheat) contador en la CMOS (share :nvram, offset 0x21c), binario. Midway la guarda por triplicado + complemento, por eso NO se escribe (solo lectura). Hallado por Eloy (100%). Verificado 2026-09-19 (sube 0..13). Antes tenia la importada c40b.
+mk @:maincpu,:nvram/share,21c complemento=22a   # binario, escribible; contador EN VIVO de la CMOS (share :nvram, 0x21c; complemento a 1 en 0x22a). El viejo 0x12 era la AUDITORIA de monedas (solo sube), NO el credito. Sin marca cheat: el barrido resetea los creditos al arrancar escribiendo 0 + complemento 0xFF. Verificado en la cabina 2026-09-20 (arranca en CREDITS 0, CMOS valida, acepta moneda 0->1). Hallado por Eloy.
+mk2 @:maincpu,:nvram/share,21c complemento=22a   # binario, escribible; contador en vivo de la CMOS (share :nvram, 0x21c; complemento en 0x22a). Mismo layout que mk. Sin marca cheat: el barrido resetea los creditos al arrancar. Hallado por Eloy. Verificado 2026-09-19/20. Antes tenia la importada c40b.
 mk2ua @:maincpu,program,7e30b8   # (cheat)
-mk3 @:maincpu,:nvram/share,354   # (cheat) contador en la CMOS (share :nvram, offset 0x354), binario, topa en ~30. Midway la guarda por triplicado + complemento, por eso NO se escribe (solo lectura). Hallado por Eloy (100%). Verificado 2026-09-19 (sube 1 por moneda). Antes tenia la importada d3a5.
+mk3 @:maincpu,:nvram/share,354 complemento=362   # binario, escribible; contador en vivo de la CMOS (share :nvram, 0x354; complemento en 0x362). Sin marca cheat: el barrido resetea los creditos al arrancar. Hallado por Eloy. Verificado 2026-09-19/20. Antes tenia la importada d3a5.
 mk3mdb @:maincpu,program,fffd02   # (cheat)
 mka @:maincpu,program,ffab7a   # (cheat)
 mkua @:maincpu,program,7e30b8   # (cheat)

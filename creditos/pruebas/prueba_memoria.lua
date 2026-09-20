@@ -85,6 +85,17 @@ do
 	igual('berzerk: decenas', bze.decenas, 0x8a4)
 	igual('berzerk: nibble alto', bze.nibble_alto, true)
 
+	-- Complemento a 1 (CMOS Midway: mk/mk2/mk3). Al lado del contador va
+	-- 0xFF-valor, y con 'complemento=<dir>' se escribe tambien.
+	local mkf = io.open(RUTA, 'a')
+	mkf:write('mk @:maincpu,:nvram/share,21c complemento=22a\n')
+	mkf:close()
+	local mke = M.entrada(RUTA, 'mk')
+	igual('mk: contador en vivo', mke.dir, 0x21c)
+	igual('mk: complemento', mke.complemento, 0x22a)
+	igual('mk: sin (cheat) es comprobada', mke.comprobada, true)
+	igual('sin complemento=, es nil', M.entrada(RUTA, 'pacman').complemento, nil)
+
 	os.remove(RUTA)
 end
 
