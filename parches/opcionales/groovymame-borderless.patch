@@ -1,0 +1,25 @@
+# OPCIONAL (no se aplica por defecto): pantalla completa SIN BORDES (borderless).
+#
+# Cambia el fullscreen de MAME de SDL_WINDOW_FULLSCREEN (exclusivo, cambia el
+# modo de video -> parpadeo/negro al entrar y salir en pantallas de PC) a
+# SDL_WINDOW_FULLSCREEN_DESKTOP (ventana sin bordes al tamano del escritorio, sin
+# cambio de modo -> transiciones instantaneas). Eloy 2026-09-20.
+#
+# OJO: en un monitor de recreativa real con switchres+KMS NO se quiere esto:
+# alli el fullscreen exclusivo con modelines nativas es lo correcto. Por eso es
+# opcional. Se activa con la opcion 'borderless' de instalar.sh, que ademas pone
+# AM+ en window_mode=fillscreen y changeres=0.
+#
+diff --git a/src/osd/sdl/window.cpp b/src/osd/sdl/window.cpp
+index 8a777324d7a..e46a55869bb 100644
+--- a/src/osd/sdl/window.cpp
++++ b/src/osd/sdl/window.cpp
+@@ -880,7 +880,7 @@ int sdl_window_info::complete_create()
+ 	// create the SDL window
+ 	// soft driver also used | SDL_WINDOW_INPUT_GRABBED | SDL_WINDOW_MOUSE_FOCUS
+ 	m_extra_flags |= (fullscreen() ?
+-			SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_FULLSCREEN : SDL_WINDOW_RESIZABLE);
++			SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_RESIZABLE);
+ 
+ //#if defined(SDLMAME_WIN32)
+ 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");

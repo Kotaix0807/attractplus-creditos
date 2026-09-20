@@ -1337,6 +1337,54 @@ tarea_audio() {
 	return 0
 }
 
+# Pantalla completa SIN bordes (borderless), para que no haya cambio de modo de
+# video (parpadeo/negro) al entrar/salir de un juego. Dos ajustes de config; el
+# binario de GroovyMAME debe llevar ademas el parche opcional (se aplica solo si
+# esta tarea esta activa, via BORDERLESS=1 -> compilar-en-arch.sh).
+#
+# OJO: en un monitor de RECREATIVA real con switchres+KMS esto NO se quiere (ahi
+# el fullscreen exclusivo con modelines nativas es lo correcto). Por eso es
+# opcional y viene apagado por defecto.
+tarea_borderless() {
+	paso "Pantalla completa sin bordes (borderless: evita el parpadeo al entrar/salir)"
+
+	# 1) AM+ a fillscreen: ventana sin bordes al tamano del escritorio, sin
+	# cambiar el modo de video (fullscreen SI lo cambia).
+	local cfg="$DESTINO/config/attract.cfg"
+	if [ -f "$cfg" ]; then
+		cp "$cfg" "$cfg.antes_borderless"
+		if grep -qE "^[[:space:]]*window_mode[[:space:]]" "$cfg"; then
+			sed -i -E "s|^([[:space:]]*window_mode[[:space:]]+).*|\1fillscreen|" "$cfg"
+			echo "  AM+ window_mode = fillscreen"
+		else
+			aviso "  no encuentro 'window_mode' en attract.cfg; ponlo a 'fillscreen' a mano"
+		fi
+		aviso "  reinicia el frontend para que lo coja (AM+ reescribe attract.cfg al salir)"
+	else
+		aviso "  aun no existe $cfg (corre la tarea 'config' antes)"
+	fi
+
+	# 2) MAME sin cambio de resolucion por juego.
+	local ini; ini="$( mame_ini )"
+	if [ -n "$ini" ] && [ -f "$ini" ]; then
+		cp "$ini" "$ini.antes_borderless" 2>/dev/null
+		if grep -qE "^changeres[[:space:]]" "$ini"; then
+			sed -i -E "s|^(changeres[[:space:]]+).*|\10|" "$ini"
+		else
+			printf '%-25s %s\n' changeres 0 >> "$ini"
+		fi
+		echo "  MAME changeres = 0 (en $ini)"
+	else
+		aviso "  no encuentro el mame.ini todavia"
+	fi
+
+	# 3) El binario de GroovyMAME.
+	aviso "  para el efecto completo, GroovyMAME debe llevar el parche borderless:"
+	aviso "  se aplica solo si compilas con esta tarea activa (BORDERLESS=1)."
+	aviso "  Si usas un binario prebuilt, tiene que ser uno compilado con el parche."
+	return 0
+}
+
 tarea_salida() {
 	paso "Mandando la imagen al CRT"
 	local xinit="$HOME/.xinitrc"
@@ -1674,6 +1722,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		descargar "Bajar GroovyMAME ya parcheado (81 MB, sin compilar)" OFF \
 		mame     "Parchear y compilar GroovyMAME (largo)"        OFF \
 		videos   "Grabar los videos de muestra (~10 min)"        OFF \
+		borderless "Pantalla completa SIN bordes (evita el parpadeo al entrar/salir)" OFF \
 		3>&1 1>&2 2>&3 ) && TAREAS="${seleccion//\"/}"
 fi
 # Sin roms no hay lista de juegos, ni artes que emparejar, ni videos que grabar.
@@ -1685,6 +1734,11 @@ echo
 echo "Tareas: $TAREAS"
 
 hace() { [[ " $TAREAS " == *" $1 "* ]]; }
+
+# Borderless: si se pidio, que el compilado de GroovyMAME aplique el parche
+# opcional (compilar-en-arch.sh lo mira). El ajuste de config (AM+ fillscreen +
+# changeres) lo hace tarea_borderless mas abajo.
+hace borderless && export BORDERLESS=1
 
 # --- a trabajar ---
 # El orden importa: dependencias antes de compilar, compilar antes de la lista.
@@ -1712,6 +1766,7 @@ hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
+hace borderless && { tarea_borderless || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }
 hace teclado  && { tarea_teclado      || fallos=$((fallos+1)); }

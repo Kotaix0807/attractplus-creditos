@@ -97,15 +97,27 @@ fi
 
 # ---------------------------------------------------------------- parches
 paso "Aplicando los parches de la cabina"
-for p in "$AQUI"/*.patch; do
-	nombre="$(basename "$p")"
+aplicar_parche() {   # $1 = fichero .patch
+	local p="$1" nombre; nombre="$(basename "$p")"
 	# -N no lo aplica dos veces; --dry-run primero para no dejarlo a medias.
 	if patch -d "$FUENTES" -p1 -N --dry-run -s -r - < "$p" >/dev/null 2>&1; then
 		patch -d "$FUENTES" -p1 -N -r - < "$p" >/dev/null && echo "  + $nombre"
 	else
 		aviso "  = $nombre ya estaba (o no encaja en estas fuentes)"
 	fi
+}
+for p in "$AQUI"/*.patch; do
+	[ -e "$p" ] && aplicar_parche "$p"
 done
+# Parches OPCIONALES: no van en el glob de arriba. El borderless se aplica solo
+# si BORDERLESS=1 (lo pone la opcion 'borderless' de instalar.sh). Ver la
+# cabecera de parches/opcionales/groovymame-borderless.patch.
+if [ "${BORDERLESS:-0}" = 1 ]; then
+	echo "  (borderless activado: aplico parches/opcionales)"
+	for p in "$AQUI"/opcionales/*.patch; do
+		[ -e "$p" ] && aplicar_parche "$p"
+	done
+fi
 
 # ---------------------------------------------------------------- compilar
 # USE_SYSTEM_LIB_PORTAUDIO=1: enlaza el portaudio DEL SISTEMA en vez del
