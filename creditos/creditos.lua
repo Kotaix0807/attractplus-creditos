@@ -103,6 +103,10 @@ local ESPERA_AVISO = math.max(30, num('GA_AVISO_ESPERA', 300))
 -- Frames que se ignora un segundo flanco de la tecla de salir: es el rebote de
 -- contactos de la primera pulsacion, no una confirmacion. Ver aviso.lua.
 local GUARDA_AVISO = math.max(0, num('GA_AVISO_GUARDA', 15))
+-- Frames que se bloquea el START del juego mientras el aviso esta en pantalla
+-- (y despues de cerrarlo con START), para que ese START no se cuele tambien en
+-- la partida. 0 lo desactiva.
+local BLOQUEO_START = math.max(0, num('GA_AVISO_START', 12))   -- ~0,2 s a 60 Hz
 local MENSAJE_FRAMES = math.max(30, num('GA_MENSAJE', 150))   -- ~2,5 s a 60 Hz
 -- Contador de creditos permanente en pantalla. Hace falta porque hay placas que
 -- NO lo enseñan: Missile Command (1980) no tiene ningun numero -- avisa haciendo
@@ -497,6 +501,7 @@ GA_ESTADO = {
 	escribir_ram = nil,
 	consumido_visto = 0,
 	cerrojo   = nil,   -- limita las monedas del jugador a su monedero
+	bloqueo_start = 0, -- cuenta atras del bloqueo del START durante el aviso
 	metidos   = 0,     -- creditos que el jugador ha pagado en esta partida
 	deshaceres = {},   -- para dejarlo todo como estaba si la placa se reinicia
 	arranque  = false, -- true mientras la maquina esta arrancando
@@ -1049,8 +1054,13 @@ local function por_frame()
 
 	if e.aviso then
 		-- "seguir jugando" es cualquier cosa que signifique que el jugador
-		-- esta a lo suyo: darle a start.
-		local accion = e.aviso.frame(e.leer_salir(), s1 or s2)
+		-- esta a lo suyo: darle a start. Se lee el START FISICO (por la
+		-- secuencia guardada), no s1/s2 (type_pressed), porque si lo tenemos
+		-- bloqueado type_pressed devuelve false y no veriamos el START con el
+		-- que el jugador cierra el aviso.
+		local seguir = (GA_ESTADO.leer_start_fisico and GA_ESTADO.leer_start_fisico())
+			or s1 or s2
+		local accion = e.aviso.frame(e.leer_salir(), seguir)
 
 		if accion == 'bloquear' then
 			-- Esto es lo que frena la salida sin tocar ningun mapeo de
@@ -1063,6 +1073,19 @@ local function por_frame()
 
 		elseif accion == 'salir' then
 			manager.machine:exit()
+		end
+
+		-- Bloquear el START del juego mientras el aviso esta en pantalla y unos
+		-- frames despues (BLOQUEO_START), para que el START con el que se cierra
+		-- el aviso no le de tambien al START de la partida.
+		if GA_ESTADO.bloquear_start then
+			if e.aviso.visible() then
+				e.bloqueo_start = BLOQUEO_START
+				GA_ESTADO.bloquear_start()
+			elseif (e.bloqueo_start or 0) > 0 then
+				e.bloqueo_start = e.bloqueo_start - 1
+				if e.bloqueo_start <= 0 then GA_ESTADO.soltar_start() end
+			end
 		end
 	end
 end
@@ -1195,6 +1218,72 @@ do
 	GA_ESTADO.leer_salir  = lector('UI_CANCEL')
 	GA_ESTADO.leer_start1 = lector('START1')
 	GA_ESTADO.leer_start2 = lector('START2')
+
+	-- Bloqueo del START del juego mientras el aviso esta en pantalla. Sin esto,
+	-- el START con el que el jugador cierra el aviso ("seguir jugando") se cuela
+	-- tambien en la partida y le da al START del juego. Misma tecnica que el
+	-- cerrojo de la moneda: se guarda la secuencia POR DEFECTO del campo (la que
+	-- set_default_input_seq cambia sin tocar el .cfg) y ademas la EFECTIVA, para
+	-- leer el boton fisico AUNQUE lo tengamos bloqueado (si no, no detectariamos
+	-- el START con el que se cierra el aviso).
+	if BLOQUEO_START > 0 then
+		local function buscar_campo(token)
+			local ok, tipo = pcall(function() return io_:token_to_input_type(token) end)
+			if not ok or not tipo then return nil end
+			for _, port in pairs(io_.ports) do
+				for _, campo in pairs(port.fields) do
+					if campo.type == tipo then return campo end
+				end
+			end
+			return nil
+		end
+
+		local entrada = manager.machine.input
+		local starts = {}
+		for _, tk in ipairs({ 'START1', 'START2' }) do
+			local campo = buscar_campo(tk)
+			if campo then
+				local oke, efec = pcall(function() return emu.input_seq(campo:input_seq('standard')) end)
+				local okd, def  = pcall(function() return emu.input_seq(campo:default_input_seq('standard')) end)
+				if oke and okd and efec and def then
+					starts[#starts + 1] = { campo = campo, leer = efec, defecto = def }
+				end
+			end
+		end
+
+		if #starts > 0 then
+			local vacia = emu.input_seq()
+			local echado = false
+
+			GA_ESTADO.leer_start_fisico = function()
+				for _, s in ipairs(starts) do
+					if entrada:seq_pressed(s.leer) then return true end
+				end
+				return false
+			end
+			GA_ESTADO.bloquear_start = function()
+				if echado then return end
+				for _, s in ipairs(starts) do
+					pcall(function() s.campo:set_default_input_seq('standard', vacia) end)
+				end
+				echado = true
+			end
+			GA_ESTADO.soltar_start = function()
+				if not echado then return end
+				for _, s in ipairs(starts) do
+					pcall(function() s.campo:set_default_input_seq('standard', s.defecto) end)
+				end
+				echado = false
+			end
+
+			-- Si la placa se reinicia, dejar el START como estaba.
+			GA_ESTADO.deshaceres[#GA_ESTADO.deshaceres + 1] = function()
+				for _, s in ipairs(starts) do
+					pcall(function() s.campo:set_default_input_seq('standard', s.defecto) end)
+				end
+			end
+		end
+	end
 
 	if MON then
 		GA_ESTADO.pulso_start1 = MON.pulsador(function() return GA_ESTADO.leer_start1() end)
