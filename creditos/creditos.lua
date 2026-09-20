@@ -130,6 +130,13 @@ local ASENTAR = math.max(0, num('GA_ASENTAR', 180))   -- ~3 s a 60 Hz
 -- Como el emulador va sin freno durante ese rato, ser generoso no cuesta
 -- tiempo real: 20 segundos emulados son un parpadeo.
 local COMPROBAR = math.max(0, num('GA_COMPROBAR', 90))      -- ~1,5 s de gracia
+-- Plazo para CONFIRMAR una direccion importada (cheat) tras la moneda del
+-- jugador: se mira si el byte subio. Es aparte de COMPROBAR (la devolucion de
+-- la moneda) porque un credito se registra en la RAM en pocos frames, asi que
+-- no hace falta esperar 1,5 s: con esto el contador aparece antes en esos
+-- juegos. Si algun juego tarda mas en registrar el credito y se descarta su
+-- direccion por error, subir este valor.
+local CONFIRMAR = math.max(1, num('GA_CONFIRMAR', 45))      -- ~0,75 s
 local REBOTE = math.max(0, num('GA_ANTIRREBOTE', 8))        -- ~130 ms a 60 Hz
 local LIMPIAR = os.getenv('GA_LIMPIAR') ~= '0'
 local COBRO = (os.getenv('GA_COBRO') or 'meter'):lower()
@@ -935,7 +942,7 @@ local function por_frame()
 				local okp, v = pcall(e.leer_ram)
 				if okp and (type(v) == 'number') then
 					e.a_prueba.antes = v
-					e.a_prueba.reloj = COMPROBAR
+					e.a_prueba.reloj = CONFIRMAR
 				end
 			end
 
