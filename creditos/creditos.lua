@@ -138,8 +138,8 @@ local CERROJO = os.getenv('GA_CERROJO') ~= '0'
 local TOPE = math.max(1, num('GA_TOPE', 9))   -- casi ninguna placa clasica pasa de 9
 
 -- Colores del cuadro y del mensaje (formato 0xAARRGGBB de MAME)
-local COLOR_BORDE  = 0xffffaa00
-local COLOR_FONDO  = 0xf4000000
+local COLOR_BORDE  = 0xff1030AA
+local COLOR_FONDO  = 0xff000000
 local COLOR_TEXTO  = 0xffffffff
 local COLOR_TITULO = 0xffffdd44
 local COLOR_NEGRO  = 0xff000000
@@ -874,8 +874,8 @@ local function por_frame()
 						end
 						e.metidos = math.max(0, e.metidos - perdidos)
 
-						e.mensaje = 'LA MAQUINA NO LA COGIO. CREDITO DEVUELTO'
-						e.mensaje_reloj = MENSAJE_FRAMES
+						-- e.mensaje = ''
+						-- e.mensaje_reloj = MENSAJE_FRAMES
 						log('la maquina no recogio %d credito(s): devueltos', perdidos)
 					end
 
@@ -1578,9 +1578,9 @@ local function rotulo_derecha(contenedor, texto, color)
 	local y0 = 0.015
 	local x1 = 1.0 - MARGEN_X
 	local x0 = math.max(0.0, x1 - ancho - (2 * MARGEN_X))
-
+	
 	contenedor:draw_box(x0, y0, x1 + MARGEN_X, y0 + alto + (2 * MARGEN_Y),
-		COLOR_FONDO, COLOR_FONDO)
+	COLOR_FONDO, COLOR_FONDO)
 	contenedor:draw_text(x0 + MARGEN_X, y0 + MARGEN_Y, texto, color or COLOR_INDICADOR)
 end
 
@@ -1661,7 +1661,17 @@ GA_ESTADO.pintor = function()
 	local alto = PASO * (#lineas + 1)
 	local y0 = (1.0 - alto) / 2
 
-	contenedor:draw_box(0.06, y0, 0.94, y0 + alto, COLOR_BORDE, COLOR_FONDO)
+	local duracion_fade = 5 -- frames que dura el fade de entrada (~0.08 s a 60 fps)
+	local alfa_objetivo = 0xFF -- alfa final del cuadro (0xFF = opaco)
+	
+	local frame_actual = math.min(a.reloj or 0, duracion_fade)
+	
+	local alfa_calculado = math.floor((frame_actual / duracion_fade) * alfa_objetivo)
+	
+	local fondo_fade = (alfa_calculado << 24) | (COLOR_FONDO & 0x00FFFFFF)
+	local borde_fade = (alfa_calculado << 24) | (COLOR_BORDE & 0x00FFFFFF)
+
+	contenedor:draw_box(0.06, y0, 0.94, y0 + alto, borde_fade, fondo_fade)
 
 	for i, texto in ipairs(lineas) do
 		if texto ~= '' then

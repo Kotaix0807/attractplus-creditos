@@ -27,7 +27,31 @@
 -- Aqui no se habla con MAME: son datos y una maquina de estados, para poder
 -- probarlo con lua a secas. Ver pruebas/prueba_aviso.lua
 
+local WARN_EXIT_SFX = "cape-fly-hurt.wav"
+local WARN_EXIT_SFX_2 = "peach-help.wav"
+local CONTINUE = "checkpoint.wav"
+
 local M = {}
+
+-- Obtener dinamicamente el directorio del script
+local source = debug.getinfo(1, "S").source
+local script_dir = source:match("@?(.*)/") or "."
+local function playSound(soundID)
+    -- 1. Ruta limpia (sin comillas) para que Lua pueda verificar que existe
+    local rawPath = script_dir .. "/sfx/" .. soundID
+    local file = io.open(rawPath, "r")
+
+    if file then
+        file:close()
+    else
+        print("Error: No se encontró el sonido " .. rawPath)
+        return
+    end
+
+    -- 2. Ruta formateada: le añadimos las comillas simples y el espacio antes del & para Linux
+    local comando_sfx = "aplay -q '" .. rawPath .. "' &"
+    os.execute(comando_sfx)
+end
 
 -- op.entrado   creditos que ya han entrado en la maquina
 -- op.espera    frames que el cuadro se queda en pantalla antes de rendirse
@@ -138,6 +162,9 @@ function M.nuevo(op)
 			if flanco_salir and (a.metido > 0) and a.puede_quedar() then
 				a.estado = 'avisando'
 				a.reloj = 0
+
+				playSound(WARN_EXIT_SFX_2)
+
 				local n = a.dentro()
 				if a.seguro() then
 					a.log('salida frenada: %s en la maquina', (n == 1) and 'queda 1 credito'
@@ -164,6 +191,7 @@ function M.nuevo(op)
 			else
 				a.estado = 'jugando'
 				a.log('salida confirmada')
+				playSound(WARN_EXIT_SFX)
 				return 'salir'
 			end
 		end
@@ -173,6 +201,7 @@ function M.nuevo(op)
 		if seguir then
 			a.estado = 'jugando'
 			a.log('el jugador sigue jugando')
+			playSound(CONTINUE)
 			return 'bloquear'
 		end
 
