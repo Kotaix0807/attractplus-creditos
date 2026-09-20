@@ -9,3 +9,4 @@ __pycache__/
 # el interprete minimo de Squirrel lo compila correr.sh en cada maquina
 sq
 sfx/*.wav
+*.bakup*
