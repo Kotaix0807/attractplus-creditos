@@ -12,6 +12,8 @@
 #   DESTINO    carpeta de snaps del frontend (para convertir_a_mp4)
 #   CALIDAD    crf de x264
 #   AMPLIAR    1 o 0
+#   MAX_LADO   cap del lado largo en px (800 por defecto; 0 lo quita)
+#   FPS_VIDEO  fps de salida (30 por defecto) -- clave para la cabina debil
 #   AUDIO_FFMPEG   argumentos de audio de ffmpeg ('-an' o un codec)
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -189,8 +191,22 @@ convertir_a_mp4() {
 	[ -n "$dura" ] && [ "$dura" != "0" ] && corte=( -t "$dura" )
 	local audio=(); read -ra audio <<< "${AUDIO_FFMPEG:--an}"
 
+	# CAP para el hardware debil de la cabina (i3 + HD 3000, decodificacion por
+	# software): se limita el lado largo a MAX_LADO (800 por defecto) y los fps a
+	# FPS_VIDEO (30). Sin esto los videos salian enormes (hasta 1536x1152@60 para
+	# una pantalla de 1024x768) y AM+ los CONGELABA: su deteccion de suspension
+	# mata el video si el hilo se atrasa >5s, y el pipeline completo se quedaba
+	# sin margen. A 800px/30fps sobra margen y se ven igual en el CRT. MAX_LADO=0
+	# quita el cap. Medido/confirmado en la cabina 2026-09-20.
+	local cap=""
+	if [ "${MAX_LADO:-800}" != "0" ]; then
+		local M="${MAX_LADO:-800}"
+		cap=",scale='min(${M},iw)':'min(${M},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+	fi
+	local vf="scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos${cap},fps=${FPS_VIDEO:-30}"
+
 	if ffmpeg -y -loglevel error -i "$avi" -ss "$salto" "${corte[@]}" \
-		-vf "scale=${entero/x/:}:flags=neighbor,scale=${final/x/:}:flags=lanczos" \
+		-vf "$vf" \
 		-c:v libx264 -preset slow -crf "$CALIDAD" -pix_fmt yuv420p "${audio[@]}" \
 		-movflags +faststart "$avi.mp4" 2>/dev/null \
 		&& [ -s "$avi.mp4" ]
