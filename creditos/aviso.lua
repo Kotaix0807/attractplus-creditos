@@ -48,8 +48,13 @@ local function playSound(soundID)
         return
     end
 
-    -- 2. Ruta formateada: le añadimos las comillas simples y el espacio antes del & para Linux
-    local comando_sfx = "aplay -q '" .. rawPath .. "' &"
+    -- 2. Ruta formateada: comillas simples y el & para no bloquear el frame.
+    -- '-D default': se usa el PCM 'default' de ALSA, que en la cabina es un
+    -- dmix (mezclador software). Es imprescindible para que suene A LA VEZ que
+    -- MAME: si MAME abriera el hw: crudo en exclusiva ('sound sdl'), aplay daria
+    -- "device or resource busy". Por eso mame.ini va con 'sound portaudio', que
+    -- hace que MAME tambien pase por el default/dmix y comparta la tarjeta.
+    local comando_sfx = "aplay -q -D default '" .. rawPath .. "' &"
     os.execute(comando_sfx)
 end
 

@@ -1307,6 +1307,33 @@ tarea_audio() {
 	printf '%s\n' "$nuevo" > "$destino"
 	verde "  ~/.asoundrc -> salida por '$card' (dmix)"
 	aviso "  si el frontend ya estaba abierto, reinicialo para que lo coja"
+
+	# Y que MAME abra el ALSA 'default' (=dmix) en vez del hw: crudo. Con
+	# 'sound sdl' MAME/SDL se apropia de la tarjeta en EXCLUSIVA y se salta el
+	# dmix; entonces aplay -- los sonidos de creditos/aviso.lua -- y cualquier
+	# otro cliente dan "device or resource busy". Con 'sound portaudio' MAME pasa
+	# por el default/dmix y COMPARTE la tarjeta. Verificado en la cabina
+	# 2026-09-20 (MAME al 100% sin xruns y aplay mezclando a la vez).
+	if [ -n "${MAME:-}" ] && [ -x "${MAME:-}" ]; then
+		if "$MAME" -sound portaudio -showconfig >/dev/null 2>&1; then
+			local ini; ini="$( mame_ini )"
+			if [ -n "$ini" ] && [ -f "$ini" ]; then
+				if grep -qE '^sound[[:space:]]+portaudio[[:space:]]*$' "$ini"; then
+					verde "  MAME ya usa 'sound portaudio' (comparte la tarjeta)"
+				elif grep -qE '^sound[[:space:]]' "$ini"; then
+					sed -i -E 's/^(sound[[:space:]]+).*/\1portaudio/' "$ini"
+					verde "  MAME -> 'sound portaudio' en $ini (comparte la tarjeta via dmix)"
+				else
+					printf 'sound                     portaudio\n' >> "$ini"
+					verde "  MAME -> 'sound portaudio' anadido a $ini"
+				fi
+			else
+				aviso "  no encuentro el mame.ini todavia; corre la tarea 'config' y repite"
+			fi
+		else
+			aviso "  este MAME no acepta 'sound portaudio'; dejo el backend de sonido como esta"
+		fi
+	fi
 	return 0
 }
 
