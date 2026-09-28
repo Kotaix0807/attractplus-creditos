@@ -164,6 +164,18 @@ if not BUZON or BUZON == '' then
 	BUZON = casa .. '/.attract/creditos.txt'
 end
 
+-- Fichero de estado del monedero para el demonio del Arduino (moneyBank.py):
+-- un solo byte ASCII, '1' = el boton acepta monedas, '0' = cerrado. Lo escribe
+-- este .lua (via file, la unica IPC del Lua de MAME) y lo lee el demonio.
+-- GA_MONEDERO_SWITCH=off lo desactiva; si no, por defecto va al lado de creditos.txt.
+local SWITCH = os.getenv('GA_MONEDERO_SWITCH')
+if SWITCH == nil or SWITCH == '' then
+	local casa = os.getenv('HOME') or '.'
+	SWITCH = casa .. '/.attract/monedero_switch'
+elseif SWITCH == 'off' then
+	SWITCH = nil
+end
+
 local fin_del_arranque   -- se define mas abajo, cuando ya hay estado
 
 -- Un mensaje mal formateado NO debe tumbar a quien lo escribe: este log se
@@ -509,6 +521,7 @@ GA_ESTADO = {
 	consumido_visto = 0,
 	cerrojo   = nil,   -- limita las monedas del jugador a su monedero
 	bloqueo_start = 0, -- cuenta atras del bloqueo del START durante el aviso
+	switch_ultimo = nil, -- ultimo estado del monedero escrito para el Arduino ('0'/'1')
 	metidos   = 0,     -- creditos que el jugador ha pagado en esta partida
 	deshaceres = {},   -- para dejarlo todo como estaba si la placa se reinicia
 	arranque  = false, -- true mientras la maquina esta arrancando
@@ -983,6 +996,28 @@ local function por_frame()
 	-- El cerrojo se ajusta DESPUES de contar la moneda, para que la ultima que
 	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
 	if e.cerrojo then e.cerrojo.frame() end
+
+	-- Estado del monedero para el demonio del Arduino: '1' = el boton acepta
+	-- monedas (cerrojo.motivo() == nil), '0' = cerrado (arrancando / lleno / sin
+	-- creditos, o sin cerrojo todavia). Se escribe SOLO cuando cambia y de forma
+	-- ATOMICA (temp + os.rename, atomico en POSIX), para que el demonio nunca
+	-- lea el fichero a medias. Es la via file-based del proyecto (como creditos.txt);
+	-- el Lua de MAME no tiene sockets. GA_MONEDERO_SWITCH=off lo desactiva.
+	if SWITCH then
+		local abierto = (e.cerrojo and (e.cerrojo.motivo() == nil)) or false
+		local v = abierto and '1' or '0'
+		if v ~= e.switch_ultimo then
+			local f = io.open(SWITCH .. '.tmp', 'wb')
+			if f then
+				f:write(v)
+				f:close()
+				os.rename(SWITCH .. '.tmp', SWITCH)
+				e.switch_ultimo = v
+				log('monedero switch -> %s (%s)', v,
+					abierto and 'acepta' or (e.cerrojo and e.cerrojo.motivo() or 'sin cerrojo'))
+			end
+		end
+	end
 
 	local s1 = e.pulso_start1 and e.pulso_start1.frame() or false
 	local s2 = e.pulso_start2 and e.pulso_start2.frame() or false
