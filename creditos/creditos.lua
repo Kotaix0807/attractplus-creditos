@@ -176,6 +176,17 @@ elseif SWITCH == 'off' then
 	SWITCH = nil
 end
 
+-- Escribe un byte ('0'/'1') en el fichero del monedero, de forma atomica
+-- (temp + rename). Lo usan el bucle por-frame y el notificador de salida.
+local function escribir_switch(v)
+	if not SWITCH then return end
+	local f = io.open(SWITCH .. '.tmp', 'wb')
+	if not f then return end
+	f:write(v)
+	f:close()
+	os.rename(SWITCH .. '.tmp', SWITCH)
+end
+
 local fin_del_arranque   -- se define mas abajo, cuando ya hay estado
 
 -- Un mensaje mal formateado NO debe tumbar a quien lo escribe: este log se
@@ -997,25 +1008,25 @@ local function por_frame()
 	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
 	if e.cerrojo then e.cerrojo.frame() end
 
-	-- Estado del monedero para el demonio del Arduino: '1' = el boton acepta
-	-- monedas (cerrojo.motivo() == nil), '0' = cerrado (arrancando / lleno / sin
-	-- creditos, o sin cerrojo todavia). Se escribe SOLO cuando cambia y de forma
-	-- ATOMICA (temp + os.rename, atomico en POSIX), para que el demonio nunca
-	-- lea el fichero a medias. Es la via file-based del proyecto (como creditos.txt);
-	-- el Lua de MAME no tiene sockets. GA_MONEDERO_SWITCH=off lo desactiva.
+	-- Estado del monedero para el demonio del Arduino, por CICLO DE VIDA (pedido
+	-- por Eloy 2026-09-28): '0' mientras la placa arranca (y con MAME apagado /
+	-- en el menu, que es el ultimo valor que se dejo), '1' cuando el juego ya
+	-- esta en marcha. El '0' de salir de MAME lo pone el notificador de parada.
+	-- Se escribe SOLO cuando cambia y de forma ATOMICA. GA_MONEDERO_SWITCH=off
+	-- lo desactiva. (El Lua de MAME no tiene sockets: la via es un fichero.)
 	if SWITCH then
-		local abierto = (e.cerrojo and (e.cerrojo.motivo() == nil)) or false
-		local v = abierto and '1' or '0'
+		-- '0' mientras la placa arranca; '1' con el juego en marcha. El '0' de
+		-- "MAME apagado / menu" NO se puede poner desde aqui: al salir, MAME
+		-- detiene el bucle sin darnos un ultimo frame ni disparar el notificador
+		-- de parada (comprobado). Eso lo resuelve el demonio (moneyBank.py):
+		-- si MAME no esta corriendo, el rele va apagado. Aqui solo reflejamos el
+		-- estado MIENTRAS MAME corre.
+		local v = e.arranque and '0' or '1'
 		if v ~= e.switch_ultimo then
-			local f = io.open(SWITCH .. '.tmp', 'wb')
-			if f then
-				f:write(v)
-				f:close()
-				os.rename(SWITCH .. '.tmp', SWITCH)
-				e.switch_ultimo = v
-				log('monedero switch -> %s (%s)', v,
-					abierto and 'acepta' or (e.cerrojo and e.cerrojo.motivo() or 'sin cerrojo'))
-			end
+			escribir_switch(v)
+			e.switch_ultimo = v
+			log('monedero switch -> %s (%s)', v,
+				e.arranque and 'arrancando' or 'juego en marcha')
 		end
 	end
 
@@ -1828,6 +1839,7 @@ if not GA_PINTOR_PUESTO then
 	end)
 	GA_PINTOR_PUESTO = true
 end
+
 
 -- Atajo para los juegos en los que no hay nada que hacer. Los dos modos de
 -- grabacion NO entran aqui: viven en por_frame, asi que salirse antes de
