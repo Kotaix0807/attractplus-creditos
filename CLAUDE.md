@@ -309,10 +309,35 @@ segunda. Diagnóstico que conviene recordar: **el registro del demonio decía la
 verdad** (leía el saldo, escribía sin error); el fallo estaba al otro lado del
 cable.
 
-Pendiente: que el demonio arranque solo con la cabina (servicio de `systemd` de
-usuario) y sustituir el parpadeo del LED por el display de verdad — el parpadeo
+Pendiente: sustituir el parpadeo del LED por el display de verdad — el parpadeo
 bloquea el `loop()` y deja la placa sorda al puerto casi cuatro segundos con 9
 créditos.
+
+## El monedero como servicio: `arduino/moneyBank.py` (2026-10-02)
+
+El demonio NUEVO del monedero (distinto del `contador_arduino.py`): lee
+`~/.attract/monedero_switch` —que escribe `creditos.lua` (`1` juego en marcha,
+`0` menú/arranque)— y enciende o apaga por el puerto serie el **relé del
+monedero**, para que la ranura sólo acepte monedas dentro de una partida. Lo
+escribe Eloy; **no se toca desde aquí**, sólo se lee y se despliega.
+
+Arranca solo con la cabina mediante un **servicio de usuario de systemd**
+(`monedero.service`), que lo instala `instalar.sh` con la tarea **`monedero`**
+(marcada por defecto sólo en GroovyArcade). La tarea: instala `pyserial`, mete al
+usuario en el grupo del puerto serie (`uucp` en Arch, `dialout` en el resto),
+escribe `~/.config/systemd/user/monedero.service` con rutas absolutas de la
+máquina, lo activa y pone `enable-linger` para que viva desde el arranque sin
+login interactivo.
+
+Dos cosas comprobadas que importan:
+
+- **El `pgrep -x mame` del demonio sí acierta en la cabina**: el `.cfg` del
+  emulador lanza `@MAMEDIR@/mame`, o sea un binario de basename `mame`, no
+  `groovymame`. Si algún día se cambiara el ejecutable a `groovymame`, el relé se
+  quedaría apagado durante las partidas y habría que ajustar el demonio.
+- Los logs del demonio (`arduino/logYYYY-MM-DD_HH:MM:SS.txt`) van ignorados por
+  git (`.gitignore`), y el `WorkingDirectory` del servicio es `arduino/`, así que
+  es donde caen.
 
 ## El arranque tapado, y el agujero del jugador pillo
 

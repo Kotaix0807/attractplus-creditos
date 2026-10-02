@@ -20,7 +20,8 @@
 # Se puede fijar por entorno lo que se quiera saltar la deteccion:
 #   MAME=/usr/bin/groovymame ROMS=/ruta CREDITOS=/ruta DESTINO=/ruta
 #   TAREAS="config romlist"   (deps compilar binario config romlist arte crt
-#                              audio salida escritorio teclado descargar mame videos)
+#                              audio monedero salida escritorio teclado descargar
+#                              mame videos)
 #
 # Lo que NO hace, a proposito:
 #   - No toca ~/.attract/config/attract.cfg si ya existe: ahi estan tus teclas.
@@ -1337,6 +1338,82 @@ tarea_audio() {
 	return 0
 }
 
+# El demonio del monedero: moneyBank.py lee ~/.attract/monedero_switch (lo escribe
+# creditos.lua: 1 = juego en marcha, 0 = menu/arranque) y enciende o apaga el rele
+# del monedero por el puerto serie del Arduino. Se deja como servicio de USUARIO de
+# systemd para que arranque solo con la cabina, sin login interactivo (linger).
+tarea_monedero() {
+	paso "Monedero: demonio del Arduino como servicio (arranca con la cabina)"
+
+	local py="$AQUI/arduino/moneyBank.py"
+	[ -f "$py" ] || { rojo "  no encuentro $py"; return 1; }
+
+	# 1) pyserial, lo unico que moneyBank.py importa de fuera de la stdlib.
+	if ! python3 -c 'import serial' 2>/dev/null; then
+		echo "  falta pyserial; lo instalo"
+		case "$GESTOR" in
+			pacman) sudo pacman -S --needed --noconfirm python-pyserial ;;
+			apt)    sudo apt-get install -y python3-serial ;;
+			dnf)    sudo dnf install -y python3-pyserial ;;
+			zypper) sudo zypper --non-interactive install python3-pyserial ;;
+			*) aviso "  no se instalar pyserial en esta distro; hazlo a mano" ;;
+		esac
+	fi
+	if python3 -c 'import serial' 2>/dev/null; then verde "  pyserial OK"
+	else aviso "  pyserial sigue sin estar; el servicio fallara hasta instalarlo"; fi
+
+	# 2) acceso al puerto serie. El grupo cambia por distro: uucp en Arch,
+	#    dialout en Debian/Fedora/openSUSE.
+	local grupo; case "$GESTOR" in pacman) grupo=uucp ;; *) grupo=dialout ;; esac
+	if getent group "$grupo" >/dev/null 2>&1; then
+		if id -nG "$USER" | tr ' ' '\n' | grep -qx "$grupo"; then
+			verde "  $USER ya esta en el grupo $grupo"
+		elif sudo usermod -aG "$grupo" "$USER"; then
+			aviso "  anadido $USER al grupo $grupo (reinicia la sesion para que surta efecto)"
+		fi
+	fi
+
+	# 3) el servicio de usuario. Rutas absolutas de ESTA maquina; el script no
+	#    depende del CWD (lee rutas absolutas), solo deja ahi sus logs.
+	local dir="$HOME/.config/systemd/user"
+	mkdir -p "$dir"
+	local unidad="$dir/monedero.service" python
+	python="$(command -v python3)"
+	cat > "$unidad" <<EOF
+[Unit]
+Description=Monedero de la cabina: rele por puerto serie (moneyBank.py)
+
+[Service]
+Type=simple
+WorkingDirectory=$AQUI/arduino
+ExecStart=$python $py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+	echo "  escrito $unidad"
+
+	# 4) encenderlo. linger para que el servicio de usuario viva desde el
+	#    arranque, sin esperar a un login interactivo.
+	if command -v systemctl >/dev/null; then
+		systemctl --user daemon-reload 2>/dev/null
+		if systemctl --user enable --now monedero.service 2>/dev/null; then
+			verde "  servicio monedero activado (arranca con la cabina)"
+		else
+			aviso "  no pude activarlo ahora (¿sin bus de usuario en esta sesion?)."
+			aviso "  actívalo luego con: systemctl --user enable --now monedero.service"
+		fi
+		loginctl enable-linger "$USER" 2>/dev/null ||
+			sudo loginctl enable-linger "$USER" 2>/dev/null ||
+			aviso "  no pude activar linger; hazlo con: sudo loginctl enable-linger $USER"
+	else
+		aviso "  no hay systemctl; no puedo dejar el servicio (arranca moneyBank.py a mano)"
+	fi
+	return 0
+}
+
 # Pantalla completa SIN bordes (borderless), para que no haya cambio de modo de
 # video (parpadeo/negro) al entrar/salir de un juego. Dos ajustes de config; el
 # binario de GroovyMAME debe llevar ademas el parche opcional (se aplica solo si
@@ -1693,6 +1770,10 @@ teclado_por_defecto=OFF
 audio_por_defecto=OFF
 [ "$ES_GROOVYARCADE" = 1 ] && audio_por_defecto=ON
 
+# El demonio del monedero (Arduino): en la cabina de serie, fuera no.
+monedero_por_defecto=OFF
+[ "$ES_GROOVYARCADE" = 1 ] && monedero_por_defecto=ON
+
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
 # Se puede fijar por entorno, que es como se prueba sin ir tarea por tarea:
 #   TAREAS="config romlist" ./instalar.sh --sin-preguntar
@@ -1701,6 +1782,7 @@ if [ -z "${TAREAS:-}" ]; then
 	[ "$compilar_por_defecto" = ON ] && TAREAS="deps compilar $TAREAS"
 	[ "$binario_por_defecto"  = ON ] && TAREAS="$TAREAS binario"
 	[ "$audio_por_defecto"    = ON ] && TAREAS="$TAREAS audio"
+	[ "$monedero_por_defecto" = ON ] && TAREAS="$TAREAS monedero"
 	FIJADAS=0
 else
 	FIJADAS=1
@@ -1716,6 +1798,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		arte     "Descargar marquesinas y capturas"              ON \
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
 		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
+		monedero "Arrancar el demonio del monedero (Arduino) con la cabina" $monedero_por_defecto \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
 		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
@@ -1766,6 +1849,7 @@ hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
 hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
+hace monedero && { tarea_monedero     || fallos=$((fallos+1)); }
 hace borderless && { tarea_borderless || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }
