@@ -34,3 +34,5 @@ creditos/tira-*.png
 /hiscore/
 /log.txt
 /attractplus-*
+# logs del demonio del monedero (moneyBank.py escribe logYYYY-MM-DD_HH:MM:SS.txt)
+arduino/log*.txt
