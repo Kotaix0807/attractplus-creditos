@@ -1414,6 +1414,88 @@ EOF
 	return 0
 }
 
+tarea_panel() {
+	paso "Panel web: servicio del panel + aviso de Cloudflare (ver docs/panel.md)"
+
+	local serv="$AQUI/panel/servidor.py"
+	[ -f "$serv" ] || { rojo "  no encuentro $serv"; return 1; }
+
+	# 1) Flask, lo unico que el backend importa de fuera de la stdlib.
+	if ! python3 -c 'import flask' 2>/dev/null; then
+		echo "  falta Flask; lo instalo"
+		case "$GESTOR" in
+			pacman) sudo pacman -S --needed --noconfirm python-flask ;;
+			apt)    sudo apt-get install -y python3-flask ;;
+			dnf)    sudo dnf install -y python3-flask ;;
+			zypper) sudo zypper --non-interactive install python3-Flask ;;
+			*) aviso "  no se instalar Flask en esta distro; hazlo a mano (pip install flask)" ;;
+		esac
+	fi
+	if python3 -c 'import flask' 2>/dev/null; then verde "  Flask OK"
+	else aviso "  Flask sigue sin estar; el panel fallara hasta instalarlo"; fi
+
+	# 2) config del panel: se copia la plantilla la primera vez y no se pisa, para
+	#    que la clave y el valor de la moneda sobrevivan a un git pull.
+	mkdir -p "$HOME/.config"
+	if [ -f "$HOME/.config/panel.conf" ]; then
+		verde "  ~/.config/panel.conf ya existe (no lo toco)"
+	else
+		cp "$AQUI/panel/panel.conf" "$HOME/.config/panel.conf"
+		aviso "  escrito ~/.config/panel.conf -- CAMBIA la clave (clave_hash)"
+	fi
+
+	# 3) el servicio de usuario del panel (mismo patron que monedero.service).
+	local dir="$HOME/.config/systemd/user"; mkdir -p "$dir"
+	local python; python="$(command -v python3)"
+	cat > "$dir/panel.service" <<EOF
+[Unit]
+Description=Panel web de control de la cabina (servidor.py)
+
+[Service]
+Type=simple
+WorkingDirectory=$AQUI/panel
+ExecStart=$python $serv
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+	echo "  escrito $dir/panel.service"
+	if command -v systemctl >/dev/null; then
+		systemctl --user daemon-reload 2>/dev/null
+		if systemctl --user enable --now panel.service 2>/dev/null; then
+			verde "  servicio panel activado (escucha en 127.0.0.1)"
+		else
+			aviso "  no pude activarlo ahora; hazlo con: systemctl --user enable --now panel.service"
+		fi
+		loginctl enable-linger "$USER" 2>/dev/null ||
+			sudo loginctl enable-linger "$USER" 2>/dev/null || true
+	fi
+
+	# 4) cloudflared: es lo que saca el panel al mundo sin abrir puertos. No se
+	#    instala solo (suele venir del repo de Cloudflare / AUR) ni se puede crear
+	#    el tunel sin la cuenta de Eloy. Se avisa con los pasos.
+	chmod +x "$AQUI/panel/frontend.sh" 2>/dev/null
+	if command -v cloudflared >/dev/null; then
+		verde "  cloudflared presente"
+	else
+		aviso "  falta cloudflared (lo instala el repo de Cloudflare o AUR)"
+	fi
+	echo
+	echo "  PENDIENTE a mano (necesita tu cuenta Cloudflare y el dominio dsds.uk):"
+	echo "    cloudflared tunnel login"
+	echo "    cloudflared tunnel create cabina"
+	echo "    # enruta arcade.dsds.uk -> http://127.0.0.1:$(sed -n 's/^puerto=//p' "$HOME/.config/panel.conf" 2>/dev/null || echo 8808)"
+	echo "    cloudflared tunnel route dns cabina arcade.dsds.uk"
+	echo "    sudo cloudflared service install   # y protege la ruta con Cloudflare Access"
+	echo
+	echo "  PENDIENTE para 'reiniciar frontend' y 'modo mantenimiento':"
+	echo "    lanzar el frontend a traves de panel/frontend.sh en vez de 'attractplus'"
+	echo "    (ver la cabecera de ese script). No toco la cadena de arranque solo."
+	return 0
+}
+
 # Pantalla completa SIN bordes (borderless), para que no haya cambio de modo de
 # video (parpadeo/negro) al entrar/salir de un juego. Dos ajustes de config; el
 # binario de GroovyMAME debe llevar ademas el parche opcional (se aplica solo si
@@ -1774,6 +1856,10 @@ audio_por_defecto=OFF
 monedero_por_defecto=OFF
 [ "$ES_GROOVYARCADE" = 1 ] && monedero_por_defecto=ON
 
+# El panel web de control remoto: en la cabina de serie, fuera no.
+panel_por_defecto=OFF
+[ "$ES_GROOVYARCADE" = 1 ] && panel_por_defecto=ON
+
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
 # Se puede fijar por entorno, que es como se prueba sin ir tarea por tarea:
 #   TAREAS="config romlist" ./instalar.sh --sin-preguntar
@@ -1783,6 +1869,7 @@ if [ -z "${TAREAS:-}" ]; then
 	[ "$binario_por_defecto"  = ON ] && TAREAS="$TAREAS binario"
 	[ "$audio_por_defecto"    = ON ] && TAREAS="$TAREAS audio"
 	[ "$monedero_por_defecto" = ON ] && TAREAS="$TAREAS monedero"
+	[ "$panel_por_defecto"    = ON ] && TAREAS="$TAREAS panel"
 	FIJADAS=0
 else
 	FIJADAS=1
@@ -1799,6 +1886,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
 		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
 		monedero "Arrancar el demonio del monedero (Arduino) con la cabina" $monedero_por_defecto \
+		panel    "Panel web de control remoto (servicio + Cloudflare)" $panel_por_defecto \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
 		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
@@ -1850,6 +1938,7 @@ hace config   && { tarea_config       || fallos=$((fallos+1)); }
 hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
 hace monedero && { tarea_monedero     || fallos=$((fallos+1)); }
+hace panel    && { tarea_panel        || fallos=$((fallos+1)); }
 hace borderless && { tarea_borderless || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }

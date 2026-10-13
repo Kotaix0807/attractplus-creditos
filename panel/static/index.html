@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de la cabina</title>
+
+<!-- Pico.css: un CSS "sin clases". Con solo enlazarlo, el HTML de abajo ya se
+     ve bien y responsivo. Esto es el atajo para no pelear con CSS al principio.
+     (Version fijada a proposito; cualquiera sirve para empezar.) -->
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/picocss/2.0.6/pico.min.css">
+
+<style>
+  /* Lo poco de CSS propio que hace falta. Asi se ve como se mezcla con Pico. */
+  .oculto { display: none; }
+  .fila { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .tarjeta { flex: 1 1 8rem; text-align: center; }
+  .grande { font-size: 2rem; font-weight: bold; }
+  .peligro { --pico-background-color: #c0392b; --pico-border-color: #c0392b; }
+</style>
+</head>
+
+<body>
+<main class="container">
+
+  <!-- ======================= PANTALLA DE LOGIN ======================= -->
+  <section id="login">
+    <h1>Panel de la cabina</h1>
+    <p>Esta es una pagina de EJEMPLO para empezar. Reemplazala por la tuya.</p>
+    <form id="form-login">
+      <input type="password" id="clave" placeholder="Clave" required>
+      <button type="submit">Entrar</button>
+    </form>
+    <small id="login-error" style="color:#c0392b"></small>
+  </section>
+
+  <!-- ======================= PANEL (tras login) ====================== -->
+  <section id="panel" class="oculto">
+
+    <!-- Estado en vivo: se rellena solo cada 2 s -->
+    <div class="fila">
+      <article class="tarjeta">
+        <small>Temperatura</small>
+        <div class="grande" id="temp">—</div>
+      </article>
+      <article class="tarjeta">
+        <small>CPU</small>
+        <div class="grande" id="cpu">—</div>
+      </article>
+      <article class="tarjeta">
+        <small>Jugando ahora</small>
+        <div class="grande" id="juego">—</div>
+      </article>
+    </div>
+
+    <!-- Botones de accion -->
+    <h3>Acciones</h3>
+    <div class="fila">
+      <button id="btn-credito">+1 crédito</button>
+      <button id="btn-salir">Salir del juego</button>
+      <button id="btn-monedero">Reiniciar monedero</button>
+      <button id="btn-frontend">Reiniciar frontend</button>
+      <button id="btn-reiniciar" class="peligro">Reiniciar cabina</button>
+      <button id="btn-apagar" class="peligro">Apagar</button>
+    </div>
+
+    <!-- Mas jugados: se rellena una vez al entrar -->
+    <h3>Más jugados</h3>
+    <table><tbody id="masjugados"></tbody></table>
+
+  </section>
+</main>
+
+<script>
+// ===========================================================================
+//  TODA la logica de la pagina. Fijate que solo son dos cosas repetidas:
+//    1) pedir datos:   fetch('/api/...')  ->  poner el resultado en el HTML
+//    2) ejecutar algo: fetch('/api/...', { method: 'POST' })
+// ===========================================================================
+
+let TOKEN = "";   // el token CSRF que da el login; va en cada accion
+
+// -- atajo para escribir en un elemento por su id --
+const $ = (id) => document.getElementById(id);
+
+// -- LOGIN -----------------------------------------------------------------
+$("form-login").addEventListener("submit", async (ev) => {
+  ev.preventDefault();                       // que no recargue la pagina
+  const r = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clave: $("clave").value }),
+  });
+  if (!r.ok) { $("login-error").textContent = "Clave incorrecta"; return; }
+  const d = await r.json();
+  TOKEN = d.csrf;                            // lo guardamos para las acciones
+  $("login").classList.add("oculto");
+  $("panel").classList.remove("oculto");
+  arrancarPanel();
+});
+
+// -- helper para ejecutar una accion (POST con el token) -------------------
+async function accion(ruta, cuerpo) {
+  const r = await fetch(ruta, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": TOKEN },
+    body: JSON.stringify(cuerpo || {}),
+  });
+  return r.json();
+}
+
+// -- LEER ESTADO cada 2 s y pintarlo --------------------------------------
+async function refrescarEstado() {
+  const d = await (await fetch("/api/estado")).json();
+  $("temp").textContent = d.temperatura_c + " °C";
+  $("cpu").textContent  = d.cpu.uso_pct + " %";
+  $("juego").textContent = d.juego_actual ? d.juego_actual.titulo : "menú";
+}
+
+// -- LEER la lista de mas jugados (una vez) --------------------------------
+async function cargarMasJugados() {
+  const lista = await (await fetch("/api/masjugados?limite=8")).json();
+  $("masjugados").innerHTML = lista.map(
+    (j) => `<tr><td>${j.titulo}</td><td>${j.partidas} partidas</td></tr>`
+  ).join("");
+}
+
+// -- conectar los botones --------------------------------------------------
+function arrancarPanel() {
+  refrescarEstado();
+  setInterval(refrescarEstado, 2000);        // en vivo
+  cargarMasJugados();
+
+  $("btn-credito").onclick  = () => accion("/api/creditos", { n: 1 });
+  $("btn-salir").onclick    = () => accion("/api/juego/salir");
+  $("btn-monedero").onclick = () => accion("/api/monedero/reiniciar");
+  $("btn-frontend").onclick = () => accion("/api/frontend/reiniciar");
+  $("btn-reiniciar").onclick = () => {
+    if (confirm("¿Reiniciar la cabina?")) accion("/api/accion/reiniciar");
+  };
+  $("btn-apagar").onclick = () => {
+    if (confirm("¿Apagar la cabina?")) accion("/api/accion/apagar");
+  };
+}
+</script>
+</body>
+</html>

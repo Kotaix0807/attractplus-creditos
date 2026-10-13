@@ -18,6 +18,7 @@ historial. Esta carpeta es el **qué** y el **cómo**.
 | [`lua.md`](lua.md) | Funcionamiento **a fondo de cada script Lua** (`creditos.lua` y sus módulos): qué hace, cómo se carga, sus variables `GA_*`, su recorrido frame a frame y la API de MAME que usa. |
 | [`sh.md`](sh.md) | Funcionamiento **a fondo de cada script de shell** (`instalar.sh`, `videos.sh`, `grabar.sh`, `cabina.sh`, `pantalla-auto.sh`, los `comun.sh`, las pruebas…). |
 | [`py.md`](py.md) | Funcionamiento **a fondo de cada script Python** (`puntajes.py`, `hi2txt.py`, `buscar_tabla.py`, `auditar_puntajes.py`, `importar_cheats.py`, el demonio del Arduino, `pantalla.py`, `patron.py`…) y los **formatos de datos** que manejan. |
+| [`panel.md`](panel.md) | El **panel web de control remoto** (teléfono/PC por Cloudflare): el contrato de API entre la GUI y el backend, y una guía para construir la GUI. |
 | [`direcciones-ram.md`](direcciones-ram.md) | **Cómo se localizan las direcciones de RAM** de créditos y de puntajes, con el máximo detalle: el método del buscador de trucos, la prueba funcional, hi2txt-xml, la búsqueda por rejilla de iniciales y las trampas. Empieza por aquí si quieres entender lo más difícil del proyecto. |
 | [`puntajes.md`](puntajes.md) | Informe técnico del rescate y descifrado de puntuaciones (histórico, con la cobertura juego a juego). |
 | [`INFORME-CREDITOS-NVRAM.md`](INFORME-CREDITOS-NVRAM.md) | Informe de qué juegos arrancan con créditos guardados en la NVRAM y cómo se limpian. |
