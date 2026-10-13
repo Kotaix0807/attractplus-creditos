@@ -18,9 +18,12 @@ la que corre.
 | `~/Dev/arcade/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
 | `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
-En `arduino/` va todo lo del contador físico: `Arcade.ino` (el firmware) y
-`sandbox.py` (el banco de pruebas del puerto serie, una versión temprana de
-`contador_arduino.py`).
+En `arduino/` va todo lo del Arduino: `cabina/cabina.ino` (el firmware: relé del
+monedero en el pin 9 y display de 7 segmentos de los créditos en los pines 2-8),
+`moneyBank.py` (el demonio único que lo alimenta, ver la tabla de abajo) y
+`sandbox.py` (el banco de pruebas del puerto serie, una versión temprana del
+`contador_arduino.py` que se fundió en `moneyBank.py`). `Arcade.ino`,
+`moneyBank/` y `credits/` son los sketches de antes de la fusión.
 
 Y un quinto que **no es código pero manda más que el código**:
 
@@ -41,7 +44,7 @@ Y un quinto que **no es código pero manda más que el código**:
        │                                              │
        │ (monedero, hoy APAGADO)                      │ arranque tapado
        v                                              │ cerrojo de la moneda
-  contador_arduino.py ──> puerto serie ──> Arduino               │ aviso al salir
+  arduino/moneyBank.py ─> puerto serie ─> Arduino               │ aviso al salir
 ```
 
 **Hoy la cabina va a monedas de verdad**: el plugin de créditos está
@@ -61,7 +64,8 @@ Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 | `docs/` | **Toda la demás documentación** (2026-09-13): `ESTRUCTURA.md` (este fichero), `lua.md`/`sh.md`/`py.md` (cada script explicado a fondo), `direcciones-ram.md` (cómo se localizan las direcciones de RAM de créditos y puntajes), `README.md` (índice) y los informes (`puntajes.md`, `INFORME-CREDITOS-NVRAM.md`) |
 | `config/plugins/Creditos.nut` | El monedero del frontend. **Desactivado** |
 | `config/plugins/Arranque.nut` | Menú en la cabina para ajustar la carga de cada juego |
-| `contador_arduino.py` | Vigila el monedero y lo manda al Arduino por el puerto serie |
+| `arduino/moneyBank.py` | Demonio único del Arduino: manda por el puerto serie el estado del relé del monedero (`M0`/`M1`, de `monedero_switch`) y el saldo (`C<n>`, de `creditos.txt`). Corre como `monedero.service` |
+| `panel/` | El **panel web de control remoto** (teléfono/PC por Cloudflare). Backend de Claude; la GUI la hace Eloy en `panel/static/`. `servidor.py` (Flask, API JSON), `estado.py`, `acciones.py`, `monedas.py`, `simulador.py` (backend de mentira para desarrollar la GUI sin cabina), `frontend.sh` (supervisor del FE). Corre como `panel.service`. Contrato en `docs/panel.md` |
 | `instalar.sh` | Instalador guiado con whiptail: dependencias, compilación, configuración, artes |
 | `cabina.sh` | Arranca el frontend en el CRT y devuelve el escritorio al salir |
 | `pantalla.py` | Cambia la disposición de monitores (bajo Wayland, `xrandr` no manda) |
@@ -250,6 +254,11 @@ cd ~/Dev/arcade/groovymame_src && PATH=/usr/lib/ccache:$PATH mold -run make -j10
 | `romlists/groovymame.txt` | La lista de juegos | La regenera AM+ |
 | `scraper/groovymame/…` | Marquesinas, capturas, flyers y ruedas | AM+ mira aquí solo, sin configurar rutas. Para un clon, el arte va con el nombre del **padre** |
 | `creditos.txt` | El monedero compartido | Hoy no se usa (monedas de verdad) |
+| `monedero_switch`, `creditos_juego` | Estado para el Arduino (relé, display) | Los escribe `creditos.lua`, los lee `moneyBank.py` |
+| `puntajes.json` | Puntajes descifrados | Lo escribe `puntajes.py`; lo lee el panel |
+| `panel_cmd` | Buzón de órdenes del panel a MAME (`insertar N`, `salir`) | Lo lee y vacía `creditos.lua` por-frame (renombra antes de leer) |
+| `monedas.log` | Registro de monedas (ingresos) | Append; lo agrega el panel. `monedas × $100` |
+| `juego_actual`, `mantenimiento`, `panel_auditoria.log`, `panel_secret` | Estado del panel | `juego_actual` = set+título; `mantenimiento` = centinela que para el FE |
 
 Las copias `*.antes*` son respaldos de cuando algo se rompió. Se pueden borrar.
 

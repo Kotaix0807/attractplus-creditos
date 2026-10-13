@@ -329,6 +329,26 @@ escribe `~/.config/systemd/user/monedero.service` con rutas absolutas de la
 máquina, lo activa y pone `enable-linger` para que viva desde el arranque sin
 login interactivo.
 
+**Fundido con `contador_arduino.py` el 2026-10-05**, a petición de Eloy: un solo
+demonio y un solo sketch (`arduino/cabina/cabina.ino`). Tenía que ser así: el
+puerto lo abre un solo proceso, y abrirlo **reinicia la placa**, así que dos
+demonios se la reiniciarían el uno al otro. Como los dos mandaban un número a
+secas, cada mensaje lleva ahora una letra delante: **`M0`/`M1`** para el relé y
+**`C<n>`** para el saldo de `creditos.txt`, que enseña el display de 7 segmentos
+(un dígito, clavado en 9). Se manda sólo lo que cambia, y todo otra vez al
+reconectar. El relé pasó del **pin 2 al 9**, porque el 2 es ahora el segmento A
+del display (pines 2-8). El display es de ánodo común (`ANODO_COMUN 1`).
+
+**El display enseña los créditos de DENTRO del juego, no el saldo.** El primer
+intento mandaba el `saldo` de `creditos.txt`, y con monedas de verdad ese fichero
+**no existe**: Eloy jugaba con 3 créditos y el display no se movía. Ahora
+`creditos.lua` escribe `~/.attract/creditos_juego` (un número, atómico, sólo al
+cambiar; `GA_CREDITOS_JUEGO=off` lo apaga) con `e.aviso.dentro()` — el mismo
+número del cuadro de salida: exacto en los juegos de `creditos.dat`, estimado por
+monedas y START en el resto. El demonio lo manda mientras MAME corre; en el menú
+manda el `saldo` si hay monedero, y si no, 0. Verificado en Pac-Man metiendo tres
+monedas desde Lua: el fichero sube 0→1→2→3.
+
 Dos cosas comprobadas que importan:
 
 - **El `pgrep -x mame` del demonio sí acierta en la cabina**: el `.cfg` del
@@ -5040,6 +5060,86 @@ La primera tanda de medidas **no valia**, y por dos motivos distintos:
 > **Regla:** toda medida sobre una placa se hace con SUS ficheros -- `.cfg` y
 > NVRAM --, copiados a un temporal. Partir de vacio no es un entorno limpio, es
 > un entorno **distinto**.
+
+## El panel web de control remoto (2026-10-13)
+
+Pedido por Eloy: administrar la cabina **desde el navegador del teléfono o del PC,
+desde cualquier lado y sin abrir puertos**. Reparto acordado: **Claude hace el
+backend, Eloy hace la GUI** (la página web). El plano está en `docs/panel.md`, que
+es además el **contrato de API** entre los dos.
+
+**Decisiones de Eloy (2026-10-13):**
+- Acceso remoto: **Cloudflare Tunnel** (URL HTTPS, cualquier navegador sin app,
+  auth con Cloudflare Access). La cabina va por 4G/CGNAT, así que un túnel saliente
+  es la única vía de todas formas. Dominio: **dsds.uk** (suyo, hoy sin usar) →
+  `arcade.dsds.uk`.
+- "Encender" en remoto se **omite** por ahora (software no puede encender una
+  máquina apagada; haría falta un enchufe inteligente + BIOS "restore on AC").
+  Se mantienen apagar y reiniciar.
+- "Créditos por juego" = **tarifa en pesos**, en pasos de **$100** (la moneda es
+  de $100): $100/jugada = 1 moneda/crédito (lo actual), $200 = 2 monedas/crédito…
+- "Reiniciar monedero" = **reiniciar el demonio/relé** (`systemctl --user restart
+  monedero.service`), no poner a cero el conteo.
+
+**Arquitectura** (toda en `panel/`, servicio de usuario `panel.service`, corre como
+`arcade`, escucha SOLO en `127.0.0.1`; lo saca al mundo `cloudflared`):
+- `panel/servidor.py` — Flask, API JSON + login/sesión + CSRF + SSE. **Probado**
+  end-to-end con Flask en un venv: 401 sin login, CSRF obligatorio, estado real.
+- `panel/estado.py` — lee cpu/temp/ram/disco/uptime/juego-actual/servicios/arduino
+  de `/proc`, `/sys`, `systemctl`, `git`. **Probado** contra el sistema real.
+- `panel/acciones.py` — reboot/poweroff (`sudo -n systemctl`), reiniciar FE y
+  monedero, mantenimiento, pantalla, volumen, gestión de juegos, tarifa, update.
+- `panel/monedas.py` — agrega `~/.attract/monedas.log` → ingresos = monedas × $100.
+- `panel/simulador.py` — backend DE MENTIRA, **stdlib puro (sin Flask)**, con las
+  mismas rutas `/api/...`: es para que Eloy construya la GUI con la cabina apagada.
+  **Probado**. La GUI pasa al backend real sin cambios.
+- `panel/static/index.html` — página de arranque mínima de ejemplo (la GUI final
+  la hace Eloy); `panel/frontend.sh` — supervisor del frontend.
+
+**Dos canales de orden, a propósito.** El Lua de MAME no tiene sockets, y solo
+`creditos.lua` puede tocar el ioport COIN1 o cerrar la máquina. Así que:
+- acciones de **sistema** las ejecuta el panel directo (sudo NOPASSWD / systemctl);
+- acciones de **MAME** (meter créditos, salir del juego) el panel las deja en
+  `~/.attract/panel_cmd` y `creditos.lua` las aplica en su bucle por-frame.
+
+**Cambios en `creditos.lua`** (verificados en MAME real sobre Pac-Man, con
+`luac -p` y `correr.sh` en verde):
+- Sondeo de `panel_cmd` (atómico: renombra antes de leer). `insertar N` reutiliza
+  la máquina de `insertar()` (fija `restantes`+`fase`) y mete N créditos con
+  `set_value` — que es un OR con la secuencia física, así que **NO lo ve el
+  detector de monedas**: son créditos gratis, no se cobran. Verificado: el byte de
+  créditos de la RAM subió 0→1. `salir` → `machine:exit()` (cierre limpio).
+- `monedas.log`: una línea por **moneda de verdad** del jugador (evento `moneda`,
+  cantidad 1) en el gancho de la moneda, y los comps del panel como evento `panel`.
+  Los ingresos son monedas × valor; por eso se apunta 1 (moneda), no los créditos.
+- `juego_actual`: el set + descripción, para que el panel sepa qué corre.
+- Todo con su `GA_*=off`, y el atajo de "nada que vigilar" ya **no** se toma si el
+  buzón del panel está activo (si no, dejaría el sondeo muerto, como pasó con los
+  modos de grabación).
+
+**La tarifa por juego**: `creditos/fijar_tarifa.lua` + `.sh` generalizan
+`poner_1c1c` (que no se toca): fijan el DIP a "N monedas/1 crédito" (N = pesos/100)
+lanzando el juego 2 s; MAME guarda el `.cfg`. **Probado** en Pac-Man ($200→"2
+Coins/1 Credit", $100→vuelve, $500→sin-opcion). **Aviso:** para que una tarifa
+distinta de $100 PERSISTA, la cabina tiene que lanzar `creditos.lua` con
+`GA_TARIFA=auto`; con el `1c1c` por defecto se vuelve a forzar 1 moneda/crédito en
+cada arranque. Eso es un cambio pendiente en `groovymame.cfg` cuando se use.
+
+**El instalador**: `tarea_panel` (patrón de `tarea_monedero`) instala Flask, copia
+`~/.config/panel.conf` (sin pisarlo), escribe y activa `panel.service`, y **avisa**
+de los pasos de Cloudflare (login/create/route/service) y de enganchar
+`panel/frontend.sh` — no reescribe la cadena de arranque de GroovyArcade por su
+cuenta, que es delicada y hay que probarla con la cabina delante. Marcada por
+defecto solo en GroovyArcade.
+
+**Ficheros nuevos en `~/.attract/`**: `panel_cmd` (buzón de órdenes), `monedas.log`
+(ingresos), `juego_actual`, `mantenimiento` (centinela), `panel_auditoria.log`,
+`panel_secret` (clave de sesión), `puntajes.json` (ya existía, de `puntajes.py`).
+
+**Pendiente (necesita la cabina encendida, Eloy avisa):** desplegar (pull + tarea
+`panel`), dar de alta el túnel Cloudflare + Access con su cuenta, enganchar
+`frontend.sh`, y probar en vivo las acciones. La GUI la construye Eloy contra el
+simulador mientras tanto.
 
 ## Próximos pasos
 

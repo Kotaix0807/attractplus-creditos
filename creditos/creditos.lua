@@ -187,6 +187,98 @@ local function escribir_switch(v)
 	os.rename(SWITCH .. '.tmp', SWITCH)
 end
 
+-- Creditos que hay DENTRO de la maquina, para el display del Arduino: un
+-- numero en ASCII. Exacto si el juego esta en creditos.dat (y ya comprobado),
+-- estimado por las monedas y los START si no -- el mismo numero que usa el
+-- cuadro de aviso al salir. GA_CREDITOS_JUEGO=off lo desactiva.
+local CREDITOS_JUEGO = os.getenv('GA_CREDITOS_JUEGO')
+if CREDITOS_JUEGO == nil or CREDITOS_JUEGO == '' then
+	local casa = os.getenv('HOME') or '.'
+	CREDITOS_JUEGO = casa .. '/.attract/creditos_juego'
+elseif CREDITOS_JUEGO == 'off' then
+	CREDITOS_JUEGO = nil
+end
+
+local function escribir_creditos_juego(n)
+	if not CREDITOS_JUEGO then return end
+	local f = io.open(CREDITOS_JUEGO .. '.tmp', 'wb')
+	if not f then return end
+	f:write(tostring(n))
+	f:close()
+	os.rename(CREDITOS_JUEGO .. '.tmp', CREDITOS_JUEGO)
+end
+
+-- ---------------------------------------------------------------
+-- El panel web (ver docs/panel.md). Tres piezas, todas por fichero porque el
+-- Lua de MAME no tiene sockets:
+--   * panel_cmd     ordenes que deja el panel y que SOLO este .lua puede cumplir
+--                   (meter creditos en la partida, salir del juego).
+--   * monedas.log   registro de monedas de verdad, para los ingresos del panel.
+--   * juego_actual  el set y el titulo en marcha, para que el panel los muestre.
+-- Cada una se puede apagar con su GA_*=off.
+-- ---------------------------------------------------------------
+local function ruta_attract(defecto_rel, var)
+	local v = os.getenv(var)
+	if v == 'off' then return nil end
+	if v and v ~= '' then return v end
+	local casa = os.getenv('HOME') or '.'
+	return casa .. '/.attract/' .. defecto_rel
+end
+
+local PANEL_CMD    = ruta_attract('panel_cmd', 'GA_PANEL_CMD')
+local MONEDAS_LOG  = ruta_attract('monedas.log', 'GA_MONEDAS_LOG')
+local JUEGO_ACTUAL = ruta_attract('juego_actual', 'GA_JUEGO_ACTUAL')
+
+-- Apunta una moneda (evento 'moneda') o un credito gratis del panel (evento
+-- 'panel') en el log de ingresos. Append, formato <epoch>\t<rom>\t<evento>\t<n>.
+-- Nunca revienta: se llama desde el callback de frame.
+local function registrar_moneda(evento, cantidad)
+	if not MONEDAS_LOG then return end
+	local rom = (emu.romname and emu.romname()) or '?'
+	local ok, f = pcall(io.open, MONEDAS_LOG, 'a')
+	if ok and f then
+		pcall(function()
+			f:write(string.format('%d\t%s\t%s\t%d\n', os.time(), rom, evento, cantidad))
+		end)
+		f:close()
+	end
+end
+
+-- Lee y VACIA el buzon de ordenes del panel. Se renombra antes de leer
+-- (atomico), asi no se pierde una orden que llegue mientras se procesa.
+-- Devuelve una lista de lineas, o nil si no habia nada.
+local function leer_panel_cmd()
+	if not PANEL_CMD then return nil end
+	local proc = PANEL_CMD .. '.proc'
+	if not os.rename(PANEL_CMD, proc) then return nil end  -- no existia: nada
+	local f = io.open(proc, 'r')
+	if not f then os.remove(proc); return nil end
+	local lineas = {}
+	for linea in f:lines() do
+		-- OJO Lua 5.5: no se puede reasignar la variable del for (es const), asi
+		-- que la pelada va a un local nuevo.
+		local t = linea:gsub('^%s+', ''):gsub('%s+$', '')
+		if t ~= '' then lineas[#lineas + 1] = t end
+	end
+	f:close()
+	os.remove(proc)
+	return (#lineas > 0) and lineas or nil
+end
+
+-- Deja el set y el titulo del juego en marcha, para el panel. Una sola vez.
+local function escribir_juego_actual()
+	if not JUEGO_ACTUAL then return end
+	local rom = (emu.romname and emu.romname()) or ''
+	local titulo = ''
+	local ok, desc = pcall(function() return manager.machine.system.description end)
+	if ok and desc then titulo = desc end
+	local f = io.open(JUEGO_ACTUAL .. '.tmp', 'wb')
+	if not f then return end
+	f:write(rom .. '\t' .. titulo)
+	f:close()
+	os.rename(JUEGO_ACTUAL .. '.tmp', JUEGO_ACTUAL)
+end
+
 local fin_del_arranque   -- se define mas abajo, cuando ya hay estado
 
 -- Un mensaje mal formateado NO debe tumbar a quien lo escribe: este log se
@@ -833,6 +925,42 @@ local function por_frame()
 	if GRABAR then paso_grabacion() end
 	if TECLA then paso_tecla() end
 
+	-- Ordenes del panel web (ver docs/panel.md). 'salir' cierra la maquina igual
+	-- que el aviso; 'insertar N' reutiliza la maquina de insertar() -- fija
+	-- restantes y arranca el pulso -- para meter N creditos en la partida en
+	-- curso. Se hace con set_value (un OR con la secuencia fisica), asi que NO lo
+	-- ve el detector de monedas de la linea de abajo: son creditos gratis, no se
+	-- cobran al monedero. Por eso se apuntan aparte, como evento 'panel'.
+	if PANEL_CMD then
+		local ordenes = leer_panel_cmd()
+		if ordenes then
+			for _, orden in ipairs(ordenes) do
+				if orden == 'salir' then
+					log('panel: salir del juego')
+					manager.machine:exit()
+					return
+				else
+					local n = tonumber(orden:match('^insertar%s+(%d+)$') or '')
+					if n and n > 0 and e.campo then
+						if e.arranque then
+							log('panel: "insertar %d" ignorado, la placa aun arranca', n)
+						else
+							e.restantes = (e.restantes or 0) + n
+							if e.fase == 'fin' or e.fase == 'inactivo' then
+								e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+								e.reloj = 0
+							end
+							registrar_moneda('panel', n)
+							log('panel: inyectar %d credito(s) en la partida', n)
+						end
+					else
+						log('panel: orden ignorada: %s', orden)
+					end
+				end
+			end
+		end
+	end
+
 	if e.arranque then
 		e.arranque_frames = e.arranque_frames + 1
 
@@ -955,6 +1083,9 @@ local function por_frame()
 			-- acumulando creditos para otros juegos.
 			if e.aviso then e.aviso.entra(CREDITOS_POR) end
 			e.metidos = e.metidos + CREDITOS_POR
+			-- Una moneda de verdad = un ingreso. Se apunta 1 (monedas, no
+			-- creditos): los ingresos del panel son monedas * valor_moneda.
+			registrar_moneda('moneda', 1)
 
 			-- Direccion importada todavia sin comprobar: esta es la moneda
 			-- con la que se prueba. Con monedas de verdad no insertamos
@@ -1027,6 +1158,25 @@ local function por_frame()
 			e.switch_ultimo = v
 			log('monedero switch -> %s (%s)', v,
 				e.arranque and 'arrancando' or 'juego en marcha')
+		end
+	end
+
+	-- Creditos dentro de la maquina, para el display del Arduino. Mientras la
+	-- placa arranca son 0 (la moneda esta cerrada y la RAM aun no es de fiar).
+	-- Sin aviso (GA_AVISO=0) solo queda la lectura exacta de la RAM.
+	if CREDITOS_JUEGO then
+		local n = 0
+		if not e.arranque then
+			if e.aviso then
+				n = e.aviso.dentro() or 0
+			elseif e.memoria and not e.a_prueba then
+				n = e.memoria.dentro() or 0
+			end
+		end
+		if n ~= e.creditos_juego_ultimo then
+			escribir_creditos_juego(n)
+			e.creditos_juego_ultimo = n
+			log('creditos dentro -> %d', n)
 		end
 	end
 
@@ -1841,12 +1991,17 @@ if not GA_PINTOR_PUESTO then
 end
 
 
+-- El panel necesita saber que juego corre: se deja aqui, antes del atajo, para
+-- que se escriba tambien cuando no haya nada mas que vigilar.
+escribir_juego_actual()
+
 -- Atajo para los juegos en los que no hay nada que hacer. Los dos modos de
 -- grabacion NO entran aqui: viven en por_frame, asi que salirse antes de
 -- suscribirlo los dejaria muertos sin decir nada (y un juego que no esta en
--- creditos.dat es justo el caso probable).
+-- creditos.dat es justo el caso probable). El buzon del panel tambien vive en
+-- por_frame, asi que si esta activo tampoco hay que tomar el atajo.
 if (GA_ESTADO.fase == 'fin') and not GA_ESTADO.cuenta and not GA_ESTADO.aviso
-		and not GA_ESTADO.memoria and not GRABAR and not TECLA then
+		and not GA_ESTADO.memoria and not GRABAR and not TECLA and not PANEL_CMD then
 	log('nada que insertar y nada que vigilar')
 	return
 end
