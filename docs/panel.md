@@ -176,11 +176,14 @@ subconjunto de `/api/estado` (cpu, temperatura, juego actual). Para un principia
 es opcional: se puede lograr lo mismo llamando a `/api/estado` con `setInterval`.
 
 ### `GET /api/botones` (SSE)
-Para la pantalla "Test botones". Flujo de eventos: cada pulsación de un mando o del
-teclado llega como un `data:` con
+Para la pantalla "Test botones". Flujo de eventos: cada pulsación de un **mando**
+(joystick/gamepad) llega como un `data:` con
 `{"dispositivo": "Xinmotek Dual Controller", "codigo": 307, "pulsado": true}`
-(`pulsado:false` al soltar). Manda `{"latido": true}` cada 30 s de silencio, y
-`{"error": "..."}` si el panel no puede leer `/dev/input` (falta el grupo `input`).
+(`pulsado:false` al soltar). El **teclado se excluye a propósito** (leerlo sería
+registrar lo que se teclea en la cabina), así que no se testea por aquí.
+También puede mandar `{"latido": true}` (silencio, mantiene viva la conexión),
+`{"fin": "..."}` (se acabó el límite de tiempo de la sesión; vuelve a abrir para
+seguir) y `{"error": "..."}` si no hay mandos legibles (falta el grupo `input`).
 
 ### `GET /api/puntajes`
 Puntajes más altos (de `~/.attract/puntajes.json`, sin las filas de fábrica).

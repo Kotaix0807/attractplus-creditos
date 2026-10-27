@@ -233,7 +233,8 @@ def api_eventos():
 @app.get("/api/botones")
 @requiere_login
 def api_botones():
-    """SSE: cada pulsacion de los mandos/teclado, para la pantalla 'Test botones'."""
+    """SSE: cada pulsacion de los mandos (no del teclado), para 'Test botones'."""
+    auditar("test_botones")
     def flujo():
         for ev in botones.eventos_botones():
             yield "data: " + json.dumps(ev) + "\n\n"

@@ -13,6 +13,7 @@ import glob
 import os
 import select
 import struct
+import time
 
 # struct input_event = { struct timeval time; __u16 type, code; __s32 value; }.
 # En 64 bits timeval son dos 'long' (16 bytes); luego H H i.  Total 24 bytes.
@@ -31,9 +32,27 @@ def _nombre(ev):
         return base
 
 
+def _es_teclado(ev):
+    """True si el dispositivo tiene teclas alfanumericas (KEY_A..KEY_Z): es un
+    teclado, no un mando.  NO lo abrimos: 'Test botones' es para los controles del
+    mueble (joysticks, que emiten BTN_*), y leer el teclado seria registrar lo que
+    se teclee en la cabina (keylogging).  Ante la duda, no se abre."""
+    base = os.path.basename(ev)
+    try:
+        with open("/sys/class/input/%s/device/capabilities/key" % base) as f:
+            palabras = f.read().split()
+        bajo = int(palabras[-1], 16)          # ultima palabra = bits 0-63
+    except (OSError, ValueError, IndexError):
+        return True
+    mascara = ((1 << 15) - 1) << 30           # KEY_A (30) .. KEY_Z (44)
+    return bool(bajo & mascara)
+
+
 def _abrir_todos():
     fds = {}
     for ev in sorted(glob.glob("/dev/input/event*")):
+        if _es_teclado(ev):
+            continue
         try:
             fds[os.open(ev, os.O_RDONLY | os.O_NONBLOCK)] = _nombre(ev)
         except OSError:
@@ -41,18 +60,21 @@ def _abrir_todos():
     return fds
 
 
-def eventos_botones():
-    """Generador: cede un dict por cada tecla/boton pulsado o soltado:
+def eventos_botones(limite_seg=300):
+    """Generador: cede un dict por cada boton de mando pulsado o soltado:
         { 'dispositivo': str, 'codigo': int, 'pulsado': bool }
-    Cede { 'latido': True } cada 30 s de silencio (mantiene viva la conexion), y
-    { 'error': ... } y termina si no hay ningun dispositivo legible."""
+    Cede { 'latido': True } en los silencios, { 'fin': ... } al pasar el limite de
+    tiempo (la sesion de test no se queda abierta para siempre leyendo mandos), y
+    { 'error': ... } y termina si no hay ningun dispositivo de mando legible."""
     fds = _abrir_todos()
     if not fds:
-        yield {"error": "no puedo leer /dev/input (falta permiso: grupo 'input')"}
+        yield {"error": "no hay mandos legibles en /dev/input (permiso del grupo "
+                        "'input', o solo hay teclado, que no se lee)"}
         return
+    fin = time.monotonic() + limite_seg
     try:
-        while True:
-            listos, _, _ = select.select(list(fds), [], [], 30)
+        while time.monotonic() < fin:
+            listos, _, _ = select.select(list(fds), [], [], 15)
             if not listos:
                 yield {"latido": True}
                 continue
@@ -66,6 +88,7 @@ def eventos_botones():
                     if tipo == EV_KEY and valor in (0, 1):
                         yield {"dispositivo": fds[fd], "codigo": codigo,
                                "pulsado": valor == 1}
+        yield {"fin": "limite de %d s; recarga para seguir" % limite_seg}
     finally:
         for fd in fds:
             try:
