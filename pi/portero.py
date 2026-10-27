@@ -31,7 +31,16 @@ CABINA = os.environ.get("CABINA", "10.55.0.2:8808")
 CABINA_MAC = os.environ.get("CABINA_MAC", "")
 BROADCAST = os.environ.get("BROADCAST", "10.55.0.255")
 PUERTO = int(os.environ.get("PUERTO", "8080"))
+# La GUI la sirve el PROPIO Pi (siempre encendido), para que la pagina cargue
+# aunque la cabina este apagada y se pueda pulsar "Encender".  Solo las llamadas
+# /api/* se reenvian a la cabina.
+WEB = os.environ.get("WEB", os.path.expanduser("~/web"))
 BASE = "http://" + CABINA
+
+TIPOS = {".html": "text/html; charset=utf-8", ".css": "text/css",
+         ".js": "application/javascript", ".png": "image/png",
+         ".jpg": "image/jpeg", ".svg": "image/svg+xml",
+         ".json": "application/json", ".ico": "image/x-icon"}
 
 # Cabeceras salto-a-salto: no se reenvian (RFC 7230).  Content-Length SI se copia.
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -100,10 +109,31 @@ class Portero(BaseHTTPRequestHandler):
         if self.path == "/api/puerta":
             return self._json({"cabina_online": cabina_viva(),
                                "wol": bool(CABINA_MAC)})
-        if not cabina_viva():
-            return self._json({"ok": False, "cabina_online": False,
-                               "error": "la cabina esta apagada"}, 503)
-        return self._proxy()
+        # Las llamadas a la API van a la cabina; si esta apagada, 503 claro.
+        if self.path.startswith("/api/"):
+            if not cabina_viva():
+                return self._json({"ok": False, "cabina_online": False,
+                                   "error": "la cabina esta apagada"}, 503)
+            return self._proxy()
+        # Todo lo demas es la GUI: la sirve el propio Pi (haya cabina o no).
+        return self._static(self.path)
+
+    def _static(self, ruta):
+        if ruta in ("/", ""):
+            ruta = "/index.html"
+        destino = os.path.normpath(os.path.join(WEB, ruta.lstrip("/")))
+        if not destino.startswith(WEB) or not os.path.isfile(destino):
+            return self._json({"error": "no encontrado (pon la GUI en %s)" % WEB}, 404)
+        datos = open(destino, "rb").read()
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         TIPOS.get(os.path.splitext(destino)[1].lower(),
+                                   "application/octet-stream"))
+        self.send_header("Content-Length", str(len(datos)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(datos)
 
     def _proxy(self):
         """Reenvia la peticion a la cabina y devuelve su respuesta, en streaming

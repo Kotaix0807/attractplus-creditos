@@ -6,7 +6,8 @@ local: latencia 0). El Pi **no** es el backend; es la **puerta**: un aparato
 barato y siempre encendido que:
 
 1. saca el panel a internet con `cloudflared` (sin abrir puertos);
-2. reenvía cada petición a la cabina por un cable LAN directo (`portero.py`);
+2. **sirve la GUI él mismo** (desde `~/web`), así carga aunque la cabina esté
+   apagada (para poder pulsar "Encender"); y reenvía solo las `/api/*` a la cabina;
 3. si la cabina está apagada, lo dice con un `503` claro y la puede **encender**
    por Wake-on-LAN (`POST /api/accion/encender`).
 
