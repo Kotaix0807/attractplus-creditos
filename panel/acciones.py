@@ -98,6 +98,16 @@ def apagar():
     return _ok() if rc == 0 else _err(err or "fallo al apagar")
 
 
+def suspender():
+    """Suspende la cabina (S3).  A diferencia de apagar (S5), de aqui SI se puede
+    volver a encender por Wake-on-LAN: este VAIO corta la corriente de la tarjeta
+    de red en apagado total, pero la mantiene en suspension con el cargador puesto.
+    Por eso el 'apagar remoto' util es este."""
+    auditar("suspender")
+    rc, _, err = ejecutar(["sudo", "-n", "systemctl", "suspend"], timeout=10)
+    return _ok() if rc == 0 else _err(err or "fallo al suspender")
+
+
 def _matar_frontend():
     for nombre in ("attractplus", "attractplus-x11", "attractplus-kms"):
         ejecutar(["pkill", "-x", nombre], timeout=5)

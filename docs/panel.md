@@ -260,7 +260,8 @@ registradas en `~/.attract/panel_auditoria.log`.
 | Ruta | Body | Qué hace |
 |---|---|---|
 | `POST /api/accion/reiniciar` | — | `sudo systemctl reboot` |
-| `POST /api/accion/apagar` | — | `sudo systemctl poweroff` |
+| `POST /api/accion/apagar` | — | `sudo systemctl poweroff` (apagado total; en el VAIO **no** se puede encender luego por WoL) |
+| `POST /api/accion/suspender` | — | `sudo systemctl suspend` (S3); de aquí **sí** se enciende por WoL (con el cargador puesto) — es el "apagar" útil para remoto |
 | `POST /api/accion/mantenimiento` | `{"activo": true}` | entra/sale de modo mantención (para el frontend, relé off, banner) |
 | `POST /api/frontend/reiniciar` | — | `pkill -x attractplus` (el wrapper lo relanza) |
 | `POST /api/frontend/detener` | — | para el frontend y lo deja parado (centinela aparte; **no** abre la ventana de gestión de juegos) |

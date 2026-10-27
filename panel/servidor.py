@@ -257,6 +257,12 @@ def api_apagar():
     return jsonify(acciones.apagar())
 
 
+@app.post("/api/accion/suspender")
+@requiere_csrf
+def api_suspender():
+    return jsonify(acciones.suspender())
+
+
 @app.post("/api/accion/mantenimiento")
 @requiere_csrf
 def api_mantenimiento():

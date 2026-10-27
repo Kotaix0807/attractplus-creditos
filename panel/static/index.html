@@ -69,8 +69,9 @@
       <button id="btn-salir">Salir del juego</button>
       <button id="btn-monedero">Reiniciar monedero</button>
       <button id="btn-frontend">Reiniciar frontend</button>
+      <button id="btn-suspender">Suspender (se puede encender por red)</button>
       <button id="btn-reiniciar" class="peligro">Reiniciar cabina</button>
-      <button id="btn-apagar" class="peligro">Apagar</button>
+      <button id="btn-apagar" class="peligro">Apagar (no se podrá encender)</button>
     </div>
 
     <!-- Volumen: lee el nivel actual al entrar y lo manda al soltar el slider -->
@@ -188,8 +189,13 @@ function arrancarPanel() {
   $("btn-reiniciar").onclick = () => {
     if (confirm("¿Reiniciar la cabina?")) accion("/api/accion/reiniciar");
   };
+  $("btn-suspender").onclick = () => {
+    if (confirm("¿Suspender la cabina? (luego se puede encender por red)"))
+      accion("/api/accion/suspender");
+  };
   $("btn-apagar").onclick = () => {
-    if (confirm("¿Apagar la cabina?")) accion("/api/accion/apagar");
+    if (confirm("¿Apagar del todo? OJO: así NO se podrá encender por red."))
+      accion("/api/accion/apagar");
   };
 }
 
