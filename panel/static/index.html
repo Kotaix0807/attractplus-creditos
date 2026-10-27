@@ -65,6 +65,10 @@
       <button id="btn-apagar" class="peligro">Apagar</button>
     </div>
 
+    <!-- Volumen: lee el nivel actual al entrar y lo manda al soltar el slider -->
+    <h3>Volumen: <span id="volumen-val">—</span></h3>
+    <input type="range" id="volumen" min="0" max="100" value="80">
+
     <!-- Mas jugados: se rellena una vez al entrar -->
     <h3>Más jugados</h3>
     <table><tbody id="masjugados"></tbody></table>
@@ -131,6 +135,15 @@ function arrancarPanel() {
   refrescarEstado();
   setInterval(refrescarEstado, 2000);        // en vivo
   cargarMasJugados();
+
+  // volumen: leer el nivel actual, actualizar la etiqueta al arrastrar, y
+  // mandarlo al soltar (onchange) para no saturar amixer en cada pixel.
+  fetch("/api/volumen").then((r) => r.json()).then((d) => {
+    if (d.nivel != null) { $("volumen").value = d.nivel; }
+    $("volumen-val").textContent = (d.nivel != null ? d.nivel : "?") + " %";
+  });
+  $("volumen").oninput  = () => { $("volumen-val").textContent = $("volumen").value + " %"; };
+  $("volumen").onchange = () => accion("/api/volumen", { nivel: Number($("volumen").value) });
 
   $("btn-credito").onclick  = () => accion("/api/creditos", { n: 1 });
   $("btn-salir").onclick    = () => accion("/api/juego/salir");
