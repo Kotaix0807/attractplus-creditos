@@ -31,6 +31,9 @@ CABINA = os.environ.get("CABINA", "10.55.0.2:8808")
 CABINA_MAC = os.environ.get("CABINA_MAC", "")
 BROADCAST = os.environ.get("BROADCAST", "10.55.0.255")
 PUERTO = int(os.environ.get("PUERTO", "8080"))
+# IP en que escucha el portero.  127.0.0.1 = solo cloudflared local (lo normal
+# con tunel).  Para acceso LOCAL por la red (sin tunel), ponlo a 0.0.0.0.
+ESCUCHA = os.environ.get("ESCUCHA", "127.0.0.1")
 # La GUI la sirve el PROPIO Pi (siempre encendido), para que la pagina cargue
 # aunque la cabina este apagada y se pueda pulsar "Encender".  Solo las llamadas
 # /api/* se reenvian a la cabina.
@@ -119,10 +122,14 @@ class Portero(BaseHTTPRequestHandler):
         return self._static(self.path)
 
     def _static(self, ruta):
+        ruta = ruta.split("?", 1)[0]          # fuera la query
         if ruta in ("/", ""):
             ruta = "/index.html"
-        destino = os.path.normpath(os.path.join(WEB, ruta.lstrip("/")))
-        if not destino.startswith(WEB) or not os.path.isfile(destino):
+        # realpath + commonpath: cierra el path traversal (y los symlinks que
+        # salgan de WEB), que un startswith a secas no pilla (p.ej. 'web2').
+        base = os.path.realpath(WEB)
+        destino = os.path.realpath(os.path.join(base, ruta.lstrip("/")))
+        if os.path.commonpath([base, destino]) != base or not os.path.isfile(destino):
             return self._json({"error": "no encontrado (pon la GUI en %s)" % WEB}, 404)
         datos = open(destino, "rb").read()
         self.close_connection = True
@@ -185,9 +192,9 @@ class Portero(BaseHTTPRequestHandler):
 
 
 def main():
-    srv = ThreadingHTTPServer(("127.0.0.1", PUERTO), Portero)
-    print("portero en 127.0.0.1:%d -> cabina %s  (WoL: %s, difusion %s)"
-          % (PUERTO, CABINA, CABINA_MAC or "sin MAC", BROADCAST))
+    srv = ThreadingHTTPServer((ESCUCHA, PUERTO), Portero)
+    print("portero en %s:%d -> cabina %s  (WoL: %s, difusion %s)"
+          % (ESCUCHA, PUERTO, CABINA, CABINA_MAC or "sin MAC", BROADCAST))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -206,6 +213,9 @@ if __name__ == "__main__":
             pass
         else:
             raise AssertionError("deberia rechazar MAC invalida")
+        base = os.path.realpath(".")
+        fuera = os.path.realpath(os.path.join(base, "../etc/passwd"))
+        assert os.path.commonpath([base, fuera]) != base, "guard de traversal roto"
         print("self-check OK")
     else:
         main()
