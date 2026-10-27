@@ -96,6 +96,14 @@ curl -s localhost:8080/api/puerta                     # {"cabina_online": true/f
 Apunta el túnel **al portero** (`127.0.0.1:8080`), no directo a la cabina, o el
 caso "apagada" y el "Encender" no funcionarían.
 
+**Cloudflare Access es obligatorio, no opcional.** El portero escucha solo en
+`127.0.0.1` (nadie de la LAN del Pi lo alcanza, solo `cloudflared`), y **no tiene
+clave propia**: `POST /api/accion/encender` y `GET /api/puerta` los sirve él
+directamente (la cabina puede estar apagada, así que no hay sesión que validar).
+Su única barrera es Access. Sin Access, cualquiera con la URL podría encender la
+cabina por Wake-on-LAN (impacto bajo: solo la prende) y ver si está encendida.
+Todo lo demás pasa a la cabina, que sí pide la clave de la app.
+
 ```bash
 cloudflared tunnel login
 cloudflared tunnel create cabina
