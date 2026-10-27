@@ -20,9 +20,10 @@ from flask import (Flask, Response, abort, jsonify, request, send_from_directory
                    session)
 
 import acciones
+import botones
 import estado
 import monedas
-from comun import ATTRACT, auditar, clave_correcta, entero
+from comun import ATTRACT, auditar, clave_correcta, entero, usuario_correcto
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 ESTATICO = os.path.join(AQUI, "static")
@@ -49,6 +50,10 @@ def _secreto():
 
 app.secret_key = _secreto()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# "Mantener sesion iniciada": una sesion permanente dura esto en vez de cerrarse
+# al cerrar el navegador.
+from datetime import timedelta  # noqa: E402
+app.permanent_session_lifetime = timedelta(days=30)
 
 # Freno sencillo de fuerza bruta en el login (un solo usuario).
 _fallos = {"n": 0, "hasta": 0}
@@ -92,13 +97,16 @@ def login():
     ahora = time.time()
     if _fallos["n"] >= 5 and ahora < _fallos["hasta"]:
         return jsonify({"ok": False, "error": "demasiados intentos, espera"}), 429
-    clave = cuerpo().get("clave", "")
-    if not clave_correcta(clave):
+    datos = cuerpo()
+    clave = datos.get("clave", "")
+    usuario = datos.get("usuario", "")
+    if not (usuario_correcto(usuario) and clave_correcta(clave)):
         _fallos["n"] += 1
         _fallos["hasta"] = ahora + 30
         auditar("login_fallido")
-        return jsonify({"ok": False, "error": "clave incorrecta"}), 401
+        return jsonify({"ok": False, "error": "usuario o clave incorrectos"}), 401
     _fallos["n"] = 0
+    session.permanent = bool(datos.get("recordar"))   # "mantener sesion iniciada"
     session["auth"] = True
     session["csrf"] = secrets.token_hex(16)
     auditar("login")
@@ -125,6 +133,25 @@ def sesion():
 @requiere_login
 def api_estado():
     return jsonify(estado.completo())
+
+
+@app.get("/api/sistema")
+@requiere_login
+def api_sistema():
+    return jsonify(estado.sistema())
+
+
+@app.get("/api/volumen")
+@requiere_login
+def api_volumen_get():
+    return jsonify(acciones.volumen_actual())
+
+
+@app.get("/api/tiradas")
+@requiere_login
+def api_tiradas():
+    return jsonify(monedas.tiradas(request.args.get("desde"),
+                                   request.args.get("hasta")))
 
 
 @app.get("/api/puntajes")
@@ -160,10 +187,24 @@ def api_juegos():
     for rom in sorted(set(list(vistos) + list(_roms_romlist()))):
         j = vistos.get(rom, {"rom": rom, "titulo": estado._titulo_rom(rom),
                              "partidas": 0})
+        t = acciones.tarifa_actual(rom)
         salida.append({"rom": rom, "titulo": j["titulo"],
                        "partidas": j.get("partidas", 0),
-                       "visible": rom not in ocultos, "tarifa": None})
+                       "visible": rom not in ocultos,
+                       "tarifa": {"pesos": t["pesos"], "texto": t["texto"]}})
     return jsonify(salida)
+
+
+@app.get("/api/juegos/<rom>/tarifa")
+@requiere_login
+def api_juego_tarifa_get(rom):
+    return jsonify(acciones.tarifa_actual(rom))
+
+
+@app.get("/api/logs/retencion")
+@requiere_login
+def api_retencion_get():
+    return jsonify(acciones.logs_retencion())
 
 
 @app.get("/api/logs")
@@ -172,6 +213,7 @@ def api_logs():
     fuente = request.args.get("fuente", "panel")
     n = request.args.get("lineas", "200")
     n = int(n) if n.isdigit() else 200
+    acciones.limpiar_logs()   # aprovecha para aplicar la retencion configurada
     return jsonify({"fuente": fuente, "lineas": _leer_log(fuente, n)})
 
 
@@ -185,6 +227,16 @@ def api_eventos():
                      "juego_actual": d["juego_actual"], "hora": d["hora"]}
             yield "data: " + json.dumps(chico) + "\n\n"
             time.sleep(2)
+    return Response(flujo(), mimetype="text/event-stream")
+
+
+@app.get("/api/botones")
+@requiere_login
+def api_botones():
+    """SSE: cada pulsacion de los mandos/teclado, para la pantalla 'Test botones'."""
+    def flujo():
+        for ev in botones.eventos_botones():
+            yield "data: " + json.dumps(ev) + "\n\n"
     return Response(flujo(), mimetype="text/event-stream")
 
 
@@ -214,6 +266,18 @@ def api_mantenimiento():
 @requiere_csrf
 def api_frontend():
     return jsonify(acciones.frontend_reiniciar())
+
+
+@app.post("/api/frontend/detener")
+@requiere_csrf
+def api_frontend_detener():
+    return jsonify(acciones.frontend_detener())
+
+
+@app.post("/api/frontend/iniciar")
+@requiere_csrf
+def api_frontend_iniciar():
+    return jsonify(acciones.frontend_iniciar())
 
 
 @app.post("/api/monedero/reiniciar")
@@ -313,6 +377,22 @@ def api_actualizar():
     return jsonify(acciones.actualizar())
 
 
+@app.post("/api/restaurar-fabrica")
+@requiere_csrf
+def api_restaurar():
+    d = cuerpo()
+    return jsonify(acciones.restaurar_fabrica(bool(d.get("records", True)),
+                                              bool(d.get("stats", True))))
+
+
+@app.post("/api/logs/retencion")
+@requiere_csrf
+def api_retencion_set():
+    d = cuerpo()
+    return jsonify(acciones.fijar_retencion(d.get("cada", 12),
+                                            d.get("unidad", "horas")))
+
+
 # ---------------------------------------------------------------------------
 # Ficheros estaticos (la GUI de Eloy)
 # ---------------------------------------------------------------------------
@@ -384,9 +464,14 @@ def _roms_romlist():
 
 
 def main():
+    from comun import CONF
     puerto = entero("puerto", 8808)
+    # 127.0.0.1 por defecto (solo cloudflared local).  Si hay un Pi delante por
+    # cable LAN, se pone en panel.conf la IP de ESE enlace punto-a-punto
+    # (p.ej. escucha=10.55.0.2), nunca una LAN compartida sin confianza.
+    escucha = CONF.get("escucha", "127.0.0.1").strip() or "127.0.0.1"
     # threaded=True para que el SSE de /api/eventos no bloquee al resto.
-    app.run(host="127.0.0.1", port=puerto, threaded=True)
+    app.run(host=escucha, port=puerto, threaded=True)
 
 
 if __name__ == "__main__":

@@ -1434,6 +1434,15 @@ tarea_panel() {
 	if python3 -c 'import flask' 2>/dev/null; then verde "  Flask OK"
 	else aviso "  Flask sigue sin estar; el panel fallara hasta instalarlo"; fi
 
+	# 1b) 'Test botones' lee /dev/input, que suele ser del grupo 'input'.
+	if id -nG "$USER" | grep -qw input; then
+		verde "  ya estas en el grupo 'input' (Test botones podra leer los mandos)"
+	elif getent group input >/dev/null && sudo usermod -aG input "$USER"; then
+		aviso "  te anadi al grupo 'input'; cierra sesion y entra para que surta efecto"
+	else
+		aviso "  no pude anadirte al grupo 'input'; 'Test botones' no leera los mandos"
+	fi
+
 	# 2) config del panel: se copia la plantilla la primera vez y no se pisa, para
 	#    que la clave y el valor de la moneda sobrevivan a un git pull.
 	mkdir -p "$HOME/.config"

@@ -16,6 +16,20 @@ Teléfono/PC ──HTTPS──> Cloudflare (login) ──túnel──> cloudflar
                          llama a /api/... con fetch()                    └─ ejecuta acciones (sudo, systemctl)
 ```
 
+**Con Raspberry Pi de puerta (ver `pi/README.md`).** El backend NO se mueve al Pi:
+se queda en la cabina, pegado a sus datos (latencia 0). El Pi es solo la puerta
+siempre encendida — reenvía a la cabina y, si está apagada, lo dice y la puede
+encender por Wake-on-LAN:
+
+```
+Cloudflare ──túnel──> cloudflared (Pi) ──> portero (Pi) ──cable LAN──> panel (cabina, escucha=IP-del-cable)
+                                             │                           lee/ejecuta en LOCAL (0 latencia)
+                                             └─ cabina apagada: 503 + POST /api/accion/encender = Wake-on-LAN
+```
+
+La GUI no cambia entre los dos montajes: habla con las mismas rutas. Lo único que
+el Pi añade al contrato es `GET /api/puerta` y `POST /api/accion/encender`.
+
 ---
 
 ## Para Eloy: cómo construir la GUI (lo más simple posible)
@@ -85,8 +99,13 @@ Design"), MDN (para consultar).
 Dos capas: **Cloudflare Access** delante (login por correo/Google antes de llegar
 a la cabina) y una **sesión con contraseña** en el propio panel.
 
-- `POST /api/login` — body `{"clave": "..."}`. Si acierta: pone cookie de sesión
-  y devuelve `{"ok": true, "csrf": "<token>"}`. Si falla: `401`.
+- `POST /api/login` — body `{"usuario": "...", "clave": "...", "recordar": true}`.
+  Si acierta: pone cookie de sesión y devuelve `{"ok": true, "csrf": "<token>"}`.
+  Si falla: `401`.
+  - `usuario` es opcional: si en `panel.conf` no hay `usuario`, no se exige (basta
+    la clave; la primera barrera es Cloudflare Access). Si lo hay, tiene que coincidir.
+  - `recordar` = "mantener sesión iniciada": `true` deja la sesión viva ~30 días
+    aunque se cierre el navegador; `false`/ausente, la sesión caduca al cerrarlo.
 - `POST /api/logout` — cierra la sesión.
 - `GET /api/sesion` — `{"autenticado": true|false}`.
 
@@ -129,10 +148,39 @@ El panel entero de un vistazo.
 juego no tiene dirección de créditos conocida. Cada servicio es
 `"activo" | "inactivo" | "desconocido"`.
 
+### `GET /api/sistema`
+Datos fijos para la tarjeta "Información del sistema" (pantalla Ajustes).
+```json
+{ "equipo": "Sony VAIO", "cpu_modelo": "Intel(R) Core(TM) i5-2430M",
+  "ram_total_mb": 8192, "disco_total_gb": 250, "so": "GroovyArcade 2.0",
+  "mame": "0.264", "attractplus": "3.2.3" }
+```
+
+### `GET /api/volumen`
+Nivel actual (0-100) para arrancar el slider donde toca. `{"ok": true, "nivel": 45}`
+(`nivel` es `null` si no se pudo leer).
+
+### `GET /api/puerta` (solo con Pi)
+Lo contesta el portero del Pi, no la cabina. Dice si la cabina está viva y si hay
+Wake-on-LAN disponible: `{"cabina_online": true, "wol": true}`. Úsalo en la pantalla
+de login para, si `cabina_online` es `false`, mostrar el botón "Encender". Sin Pi,
+esta ruta no existe (la GUI debe tratar su ausencia como "cabina online").
+
+Además, cuando hay Pi y la cabina está apagada, **cualquier** ruta de la cabina
+responde `503` con `{"ok": false, "cabina_online": false, "error": "la cabina
+esta apagada"}`. La GUI debe leer ese `503` como "apagada" y ofrecer Encender.
+
 ### `GET /api/eventos` (SSE)
 Flujo de métricas en vivo (Server-Sent Events). Cada ~2 s manda un `data:` con un
 subconjunto de `/api/estado` (cpu, temperatura, juego actual). Para un principiante
 es opcional: se puede lograr lo mismo llamando a `/api/estado` con `setInterval`.
+
+### `GET /api/botones` (SSE)
+Para la pantalla "Test botones". Flujo de eventos: cada pulsación de un mando o del
+teclado llega como un `data:` con
+`{"dispositivo": "Xinmotek Dual Controller", "codigo": 307, "pulsado": true}`
+(`pulsado:false` al soltar). Manda `{"latido": true}` cada 30 s de silencio, y
+`{"error": "..."}` si el panel no puede leer `/dev/input` (falta el grupo `input`).
 
 ### `GET /api/puntajes`
 Puntajes más altos (de `~/.attract/puntajes.json`, sin las filas de fábrica).
@@ -153,11 +201,25 @@ De las estadísticas nativas de AM+ (`~/.attract/stats/groovymame/*.stat`).
 
 ### `GET /api/monedas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`
 Monedas e ingresos (de `~/.attract/monedas.log`). Ingresos = monedas × valor de la
-moneda (`$100 CLP` por defecto, en `panel.conf`).
+moneda (`$100 CLP` por defecto, en `panel.conf`). Para las pestañas Hoy/Sem/Mes/Año,
+pasa el rango de fechas que quieras; `por_hora` sirve para el desglose de "Hoy".
 ```json
 { "valor_moneda": 100, "total_monedas": 318, "ingresos": 31800,
   "por_juego": [ { "rom": "pacman", "titulo": "Pac-Man", "monedas": 92, "ingresos": 9200 } ],
-  "por_dia":  [ { "fecha": "2026-10-12", "monedas": 40, "ingresos": 4000 } ] }
+  "por_dia":  [ { "fecha": "2026-10-12", "monedas": 40, "ingresos": 4000 } ],
+  "por_hora": [ { "hora": "2026-10-12 13:00", "monedas": 10, "ingresos": 1000 } ] }
+```
+
+### `GET /api/tiradas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`
+Partidas jugadas por período (para la sección "Juegos" de Estadísticas). Cuenta los
+créditos que el juego se llevó (evento `consumido` del log), que **no** es lo mismo
+que los ingresos: una partida pagada con un comp del panel cuenta como tirada pero
+no como ingreso.
+```json
+{ "total": 12,
+  "por_juego": [ { "rom": "mslug", "titulo": "Metal Slug", "tiradas": 5 } ],
+  "por_dia":  [ { "fecha": "2026-10-12", "tiradas": 12 } ],
+  "por_hora": [ { "hora": "2026-10-12 13:00", "tiradas": 3 } ] }
 ```
 
 ### `GET /api/juegos`
@@ -166,7 +228,16 @@ Lista de juegos para gestionar.
 [ { "rom": "pacman", "titulo": "Pac-Man", "visible": true,
     "partidas": 142, "tarifa": { "pesos": 100, "texto": "1 moneda / 1 crédito" } } ]
 ```
-`tarifa` es `null` si la placa no tiene DIP de tarifa.
+`tarifa` es la última fijada desde el panel; si nunca se cambió, el valor base
+($100 = 1 moneda/crédito, que es lo que la cabina fuerza por defecto).
+
+### `GET /api/juegos/<rom>/tarifa`
+La tarifa de un solo juego, para refrescar el campo al elegirlo en el desplegable.
+`{ "rom": "pacman", "pesos": 100, "texto": "1 moneda / 1 crédito" }`.
+
+### `GET /api/logs/retencion`
+Cuánto se guardan los logs antes de limpiarse (pantalla Ajustes → "Tiempo de vida
+logs"). `{ "cada": 12, "unidad": "horas" }` (unidad: `horas`|`dias`|`meses`).
 
 ### `GET /api/logs?fuente=panel|monedero|attract|auditoria&lineas=200`
 ```json
@@ -189,6 +260,8 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/accion/apagar` | — | `sudo systemctl poweroff` |
 | `POST /api/accion/mantenimiento` | `{"activo": true}` | entra/sale de modo mantención (para el frontend, relé off, banner) |
 | `POST /api/frontend/reiniciar` | — | `pkill -x attractplus` (el wrapper lo relanza) |
+| `POST /api/frontend/detener` | — | para el frontend y lo deja parado (centinela aparte; **no** abre la ventana de gestión de juegos) |
+| `POST /api/frontend/iniciar` | — | quita ese centinela: el frontend vuelve a arrancar |
 | `POST /api/monedero/reiniciar` | — | `systemctl --user restart monedero.service` (resetea serie + relé) |
 | `POST /api/juego/salir` | — | sale limpio del juego en curso (orden a `creditos.lua`) |
 | `POST /api/creditos` | `{"n": 1}` | inyecta N créditos en la partida en curso |
@@ -202,10 +275,15 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/juegos/<rom>/reset-nvram` | — | borra la NVRAM del juego |
 | `POST /api/juegos/<rom>/reset-puntajes` | — | borra el `.hi` del juego |
 | `POST /api/actualizar` | — | actualiza el repo (guardando `arranque.dat`) |
+| `POST /api/restaurar-fabrica` | `{"records": true, "stats": true}` | borra récords/puntajes y/o estadísticas e ingresos (**no** toca config ni NVRAM de los juegos) |
+| `POST /api/logs/retencion` | `{"cada": 12, "unidad": "horas"}` | fija cada cuánto se limpian los logs (unidad: `horas`/`dias`/`meses`) |
+| `POST /api/accion/encender` | — | (solo con Pi) enciende la cabina por Wake-on-LAN. Lo sirve el portero del Pi, **sin** CSRF de la app (la cabina puede estar apagada; la barrera es Cloudflare Access). Si ya está encendida, `{"ok": true, "nota": "..."}` |
 
 Las acciones que necesitan el frontend parado (ocultar/mostrar, subir/eliminar,
-tarifa, actualizar) solo deben lanzarse en **modo mantención**; el backend las
-rechaza con un error claro si el frontend está vivo.
+tarifa, actualizar, restaurar de fábrica) solo deben lanzarse en **modo
+mantención**; el backend las rechaza con un error claro si no está activo.
+"Detener Attract-Plus" (frontend parado) es **distinto** de "Modo mantención":
+sólo apaga el frontend; la gestión de juegos sigue exigiendo modo mantención.
 
 ---
 

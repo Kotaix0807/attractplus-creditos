@@ -47,20 +47,17 @@ def _epoch_de_fecha(s, fin=False):
         return None
 
 
-def agregar(desde=None, hasta=None):
-    """Resumen de monedas e ingresos, opcionalmente filtrado por rango de fechas.
-    'desde'/'hasta' son 'YYYY-MM-DD' (inclusive)."""
-    from estado import _titulo_rom
-
+def _resumen(evento, desde, hasta):
+    """Agrega un tipo de evento del log por juego, por dia y por hora, dentro de
+    un rango de fechas opcional ('YYYY-MM-DD', inclusive)."""
     e_desde = _epoch_de_fecha(desde)
     e_hasta = _epoch_de_fecha(hasta, fin=True)
-
     por_juego = {}
     por_dia = {}
+    por_hora = {}
     total = 0
-
-    for epoch, rom, evento, cant in _lineas():
-        if evento != "moneda":
+    for epoch, rom, ev, cant in _lineas():
+        if ev != evento:
             continue
         if e_desde is not None and epoch < e_desde:
             continue
@@ -68,19 +65,46 @@ def agregar(desde=None, hasta=None):
             continue
         total += cant
         por_juego[rom] = por_juego.get(rom, 0) + cant
-        dia = time.strftime("%Y-%m-%d", time.localtime(epoch))
-        por_dia[dia] = por_dia.get(dia, 0) + cant
+        loc = time.localtime(epoch)
+        por_dia[time.strftime("%Y-%m-%d", loc)] = \
+            por_dia.get(time.strftime("%Y-%m-%d", loc), 0) + cant
+        por_hora[time.strftime("%Y-%m-%d %H:00", loc)] = \
+            por_hora.get(time.strftime("%Y-%m-%d %H:00", loc), 0) + cant
+    return total, por_juego, por_dia, por_hora
 
-    lista_juego = [{"rom": r, "titulo": _titulo_rom(r), "monedas": m,
-                    "ingresos": m * VALOR}
-                   for r, m in sorted(por_juego.items(),
-                                      key=lambda x: x[1], reverse=True)]
-    lista_dia = [{"fecha": d, "monedas": m, "ingresos": m * VALOR}
-                 for d, m in sorted(por_dia.items())]
 
-    return {"valor_moneda": VALOR, "total_monedas": total,
-            "ingresos": total * VALOR,
-            "por_juego": lista_juego, "por_dia": lista_dia}
+def agregar(desde=None, hasta=None):
+    """Resumen de monedas e ingresos (evento 'moneda'), opcionalmente filtrado
+    por rango de fechas.  Ingresos = monedas * valor_moneda."""
+    from estado import _titulo_rom
+    total, por_juego, por_dia, por_hora = _resumen("moneda", desde, hasta)
+    return {
+        "valor_moneda": VALOR, "total_monedas": total, "ingresos": total * VALOR,
+        "por_juego": [{"rom": r, "titulo": _titulo_rom(r), "monedas": m,
+                       "ingresos": m * VALOR}
+                      for r, m in sorted(por_juego.items(),
+                                         key=lambda x: x[1], reverse=True)],
+        "por_dia": [{"fecha": d, "monedas": m, "ingresos": m * VALOR}
+                    for d, m in sorted(por_dia.items())],
+        "por_hora": [{"hora": h, "monedas": m, "ingresos": m * VALOR}
+                     for h, m in sorted(por_hora.items())],
+    }
+
+
+def tiradas(desde=None, hasta=None):
+    """Partidas jugadas (evento 'consumido': creditos que el juego se llevo), por
+    juego/dia/hora.  No es dinero: una partida pagada con comp del panel cuenta
+    como tirada pero no como ingreso."""
+    from estado import _titulo_rom
+    total, por_juego, por_dia, por_hora = _resumen("consumido", desde, hasta)
+    return {
+        "total": total,
+        "por_juego": [{"rom": r, "titulo": _titulo_rom(r), "tiradas": n}
+                      for r, n in sorted(por_juego.items(),
+                                         key=lambda x: x[1], reverse=True)],
+        "por_dia": [{"fecha": d, "tiradas": n} for d, n in sorted(por_dia.items())],
+        "por_hora": [{"hora": h, "tiradas": n} for h, n in sorted(por_hora.items())],
+    }
 
 
 def poner_a_cero():

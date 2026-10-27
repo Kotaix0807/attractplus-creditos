@@ -16,8 +16,10 @@ import glob
 import os
 import shutil
 
-from comun import (ATTRACT, F_MANTENIMIENTO, F_PANEL_CMD, RAIZ_REPO,
-                   auditar, ejecutar)
+from comun import (ATTRACT, DIR_STATS, F_AUDITORIA, F_FRONTEND_DETENIDO,
+                   F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD, F_PUNTAJES,
+                   RAIZ_REPO, auditar, ejecutar, entero, leer_ajustes,
+                   guardar_ajustes)
 
 DIR_MAME = os.path.expanduser("~/.mame")
 
@@ -104,10 +106,36 @@ def _matar_frontend():
 def frontend_reiniciar():
     """Mata el frontend; el wrapper de ~/.xinitrc lo relanza solo."""
     auditar("frontend_reiniciar")
-    if _en_mantenimiento():
-        return _err("hay modo mantenimiento activo: el frontend esta parado a proposito")
+    if _en_mantenimiento() or os.path.exists(F_FRONTEND_DETENIDO):
+        return _err("el frontend esta parado a proposito (mantenimiento o 'detener')")
     _matar_frontend()
     return _ok()
+
+
+def frontend_detener():
+    """Para el frontend y lo DEJA parado (centinela aparte del de mantenimiento).
+    A diferencia de modo mantenimiento, NO abre la ventana de gestion de juegos."""
+    auditar("frontend_detener")
+    try:
+        open(F_FRONTEND_DETENIDO, "w").close()
+    except OSError as ex:
+        return _err(str(ex))
+    _matar_frontend()   # el wrapper vera el centinela y no lo relanzara
+    return _ok(detenido=True)
+
+
+def frontend_iniciar():
+    """Quita el centinela de 'detener'; el wrapper vuelve a lanzar el frontend."""
+    auditar("frontend_iniciar")
+    try:
+        if os.path.exists(F_FRONTEND_DETENIDO):
+            os.remove(F_FRONTEND_DETENIDO)
+    except OSError as ex:
+        return _err(str(ex))
+    if _en_mantenimiento():
+        return _ok(detenido=False,
+                   nota="sigue parado por modo mantenimiento; sal de mantenimiento")
+    return _ok(detenido=False)
 
 
 def monedero_reiniciar():
@@ -167,6 +195,18 @@ def volumen(nivel):
     rc, _, err = ejecutar(["amixer", "-q", "sset", "Master", "%d%%" % nivel, "unmute"],
                          timeout=10)
     return _ok(nivel=nivel) if rc == 0 else _err(err or "fallo al cambiar el volumen")
+
+
+def volumen_actual():
+    """Lee el nivel actual de 'Master' (para que el slider arranque donde toca)."""
+    rc, out, _ = ejecutar(["amixer", "sget", "Master"], timeout=10)
+    nivel = None
+    if rc == 0:
+        import re
+        m = re.search(r"\[(\d+)%\]", out)
+        if m:
+            nivel = int(m.group(1))
+    return {"ok": nivel is not None, "nivel": nivel}
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +372,24 @@ def juego_tarifa(rom, pesos):
         return _err("no encuentro creditos/fijar_tarifa.sh")
     auditar("juego_tarifa", "%s=%d" % (rom, pesos))
     rc, out, err = ejecutar(["bash", script, rom, str(pesos)], timeout=60)
-    return _ok(salida=out[-1500:]) if rc == 0 else _err((err or out)[-1500:])
+    if rc != 0:
+        return _err((err or out)[-1500:])
+    # Recuerda el valor fijado, para enseñarlo sin relanzar MAME (leer el DIP del
+    # .cfg y traducirlo a pesos exigiria arrancar el juego).
+    aj = leer_ajustes()
+    aj.setdefault("tarifas", {})[rom] = pesos
+    guardar_ajustes(aj)
+    return _ok(salida=out[-1500:], pesos=pesos)
+
+
+def tarifa_actual(rom):
+    """Tarifa en pesos de un juego.  Es la ultima fijada desde el panel; si nunca
+    se cambio, el valor base (la cabina fuerza 1 moneda/credito = un paso)."""
+    base = entero("paso_tarifa", 100)
+    pesos = leer_ajustes().get("tarifas", {}).get(rom, base)
+    monedas = max(1, pesos // base) if base else 1
+    return {"rom": rom, "pesos": pesos,
+            "texto": "%d moneda%s / 1 crédito" % (monedas, "" if monedas == 1 else "s")}
 
 
 def juego_reset_nvram(rom):
@@ -412,3 +469,107 @@ def actualizar():
     return _ok(respaldo=resp if modificados else None, salida=salida,
                nota="revisa arranque.dat y vuelve a correr instalar.sh tarea config "
                     "para los ficheros que son copias")
+
+
+# ---------------------------------------------------------------------------
+# Restaurar de fabrica (solo records y estadisticas; NUNCA la config de juegos
+# ni la NVRAM, que guardan calibracion medida)
+# ---------------------------------------------------------------------------
+
+def restaurar_fabrica(records=True, stats=True):
+    """Borra puntajes/records y/o estadisticas e ingresos.  Exige mantenimiento:
+    con el frontend y MAME vivos, volverian a escribir esos ficheros enseguida."""
+    g = _exige_mantenimiento()
+    if g:
+        return g
+    borrados = []
+    if records:
+        if os.path.exists(F_PUNTAJES):
+            os.remove(F_PUNTAJES)
+            borrados.append("puntajes.json")
+        for hi in glob.glob(os.path.join(DIR_MAME, "hiscore", "*.hi")):
+            try:
+                os.remove(hi)
+            except OSError:
+                pass
+        borrados.append("*.hi")
+    if stats:
+        for st in glob.glob(os.path.join(DIR_STATS, "*.stat")):
+            try:
+                os.remove(st)
+            except OSError:
+                pass
+        borrados.append("*.stat")
+        if os.path.exists(F_MONEDAS):
+            import time
+            try:
+                os.rename(F_MONEDAS, F_MONEDAS + time.strftime(".%Y%m%d_%H%M%S"))
+            except OSError:
+                pass
+        borrados.append("monedas.log")
+    auditar("restaurar_fabrica", "records=%s stats=%s" % (records, stats))
+    # Reinicia el monedero (el resto de servicios no guardan estado que borrar).
+    ejecutar(["systemctl", "--user", "restart", "monedero.service"], timeout=15)
+    return _ok(borrados=borrados)
+
+
+# ---------------------------------------------------------------------------
+# Tiempo de vida de los logs (retencion + limpieza)
+# ---------------------------------------------------------------------------
+
+_UNIDADES = {"horas": 3600, "dias": 86400, "meses": 2592000}  # mes = 30 dias
+
+
+def logs_retencion():
+    aj = leer_ajustes().get("retencion_logs", {})
+    return {"cada": int(aj.get("cada", 12)), "unidad": aj.get("unidad", "horas")}
+
+
+def fijar_retencion(cada, unidad):
+    try:
+        cada = int(cada)
+    except (TypeError, ValueError):
+        return _err("'cada' no es un numero")
+    if cada < 1 or unidad not in _UNIDADES:
+        return _err("unidad debe ser horas/dias/meses y 'cada' >= 1")
+    aj = leer_ajustes()
+    aj["retencion_logs"] = {"cada": cada, "unidad": unidad}
+    guardar_ajustes(aj)
+    auditar("retencion_logs", "%d %s" % (cada, unidad))
+    limpiar_logs()
+    return _ok(cada=cada, unidad=unidad)
+
+
+def limpiar_logs():
+    """Borra los ficheros de log mas viejos que la retencion configurada.  Solo
+    toca LOGS (no datos): los log del demonio, la auditoria del panel y los
+    respaldos de monedas/update.  shortcut: se corre al pedir logs o al fijar la
+    retencion, no por temporizador; basta para una cabina de un solo usuario."""
+    import time
+    r = logs_retencion()
+    corte = time.time() - r["cada"] * _UNIDADES[r["unidad"]]
+    patrones = [
+        os.path.join(RAIZ_REPO, "arduino", "log*.txt"),
+        os.path.join(ATTRACT, "monedas.log.*"),
+        os.path.join(ATTRACT, "respaldo_update_*"),
+    ]
+    borrados = 0
+    for pat in patrones:
+        for ruta in glob.glob(pat):
+            try:
+                if os.path.getmtime(ruta) < corte:
+                    if os.path.isdir(ruta):
+                        shutil.rmtree(ruta, ignore_errors=True)
+                    else:
+                        os.remove(ruta)
+                    borrados += 1
+            except OSError:
+                pass
+    # La auditoria es un solo fichero que crece: si pasa el corte, se trunca.
+    try:
+        if os.path.exists(F_AUDITORIA) and os.path.getmtime(F_AUDITORIA) < corte:
+            open(F_AUDITORIA, "w").close()
+            borrados += 1
+    except OSError:
+        pass
+    return borrados

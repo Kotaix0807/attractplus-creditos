@@ -28,6 +28,8 @@ F_JUEGO_ACTUAL = os.path.join(ATTRACT, "juego_actual")
 F_MANTENIMIENTO = os.path.join(ATTRACT, "mantenimiento")
 F_AUDITORIA = os.path.join(ATTRACT, "panel_auditoria.log")
 F_PUNTAJES = os.path.join(ATTRACT, "puntajes.json")
+F_FRONTEND_DETENIDO = os.path.join(ATTRACT, "frontend_detenido")
+F_AJUSTES = os.path.join(ATTRACT, "panel_ajustes.json")
 DIR_STATS = os.path.join(ATTRACT, "stats", "groovymame")
 
 
@@ -37,9 +39,11 @@ DIR_STATS = os.path.join(ATTRACT, "stats", "groovymame")
 
 _DEFECTOS = {
     "puerto": "8808",
+    "escucha": "127.0.0.1",   # IP en que escucha el panel; la LAN del Pi si lo hay
     "valor_moneda": "100",
     "paso_tarifa": "100",
     "temp_aviso": "80",
+    "usuario": "",        # vacio = no se exige usuario, solo la clave
     "clave_hash": "",
 }
 
@@ -90,6 +94,30 @@ def clave_correcta(clave):
     if not h:
         return clave == "arcade"
     return hashlib.sha256(clave.encode("utf-8")).hexdigest() == h
+
+
+def usuario_correcto(usuario):
+    """True si el usuario vale.  Si no hay 'usuario' configurado, no se exige
+    (cualquiera, incluso vacio, vale: la seguridad la da la clave + Cloudflare)."""
+    esperado = CONF.get("usuario", "").strip()
+    return not esperado or (usuario or "").strip() == esperado
+
+
+def leer_ajustes():
+    """Ajustes que el propio panel escribe (retencion de logs, tarifa fijada por
+    juego...).  Van en panel_ajustes.json, aparte de panel.conf (que es plantilla
+    del repo y no se reescribe)."""
+    import json
+    try:
+        with open(F_AJUSTES, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def guardar_ajustes(d):
+    import json
+    escribir_atomico(F_AJUSTES, json.dumps(d, ensure_ascii=False, indent=2))
 
 
 # ---------------------------------------------------------------------------

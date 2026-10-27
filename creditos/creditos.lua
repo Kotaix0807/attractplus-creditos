@@ -1240,6 +1240,7 @@ local function por_frame()
 			-- En modo 'meter' el credito ya se cobro al entrar la moneda:
 			-- cobrarlo otra vez al gastarlo seria cobrar dos veces.
 			if e.cuenta and (COBRO == 'jugar') then e.cuenta.consume(n) end
+			registrar_moneda('consumido', n)   -- una partida jugada (exacto)
 		end
 
 	elseif s1 or s2 then
@@ -1247,6 +1248,7 @@ local function por_frame()
 		-- dos jugadores gasta dos.
 		local n = (s1 and 1 or 0) + (s2 and 2 or 0)
 		if e.cuenta and (COBRO == 'jugar') then e.cuenta.consume(n) end
+		registrar_moneda('consumido', n)   -- partida jugada (estimada por START)
 		if e.aviso then e.aviso.consume(n) end
 	end
 

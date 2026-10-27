@@ -57,8 +57,15 @@ ESTADO = {
     "monedas_total": 0,
     "ocultos": set(),           # roms ocultadas desde la GUI
     "tarifas": {},              # rom -> pesos
+    "volumen": 45,
+    "detenido": False,
     "ultimo_cambio": INICIO,
 }
+
+RETENCION = {"cada": 12, "unidad": "horas"}
+
+# Tiradas (partidas) de mentira, por juego.
+TIRADAS_JUEGO = {rom: random.randint(1, 8) for rom, _ in JUEGOS}
 
 # Un historico de monedas de mentira, por juego y por dia.
 MONEDAS_JUEGO = {rom: random.randint(10, 120) for rom, _ in JUEGOS}
@@ -178,9 +185,12 @@ def dato_monedas():
     por_dia = [{"fecha": d, "monedas": m, "ingresos": m * VALOR_MONEDA}
                for d, m in sorted(MONEDAS_DIA.items())]
     total = sum(MONEDAS_JUEGO.values())
+    hoy_total = MONEDAS_DIA.get(time.strftime("%Y-%m-%d"), 0)
+    por_hora = [{"hora": h, "monedas": m, "ingresos": m * VALOR_MONEDA}
+                for h, m in _por_hora(hoy_total)]
     return {"valor_moneda": VALOR_MONEDA, "total_monedas": total,
             "ingresos": total * VALOR_MONEDA,
-            "por_juego": por_juego, "por_dia": por_dia}
+            "por_juego": por_juego, "por_dia": por_dia, "por_hora": por_hora}
 
 
 def dato_juegos():
@@ -188,6 +198,35 @@ def dato_juegos():
              "visible": rom not in ESTADO["ocultos"],
              "partidas": PARTIDAS[rom], "tarifa": tarifa_de(rom)}
             for rom, titulo in JUEGOS]
+
+
+def _por_hora(total):
+    """Reparte 'total' en unas horas de hoy, para las pestanas 'Hoy'."""
+    hoy = time.strftime("%Y-%m-%d")
+    horas = []
+    restante = total
+    for h in (13, 14, 15, 16):
+        v = random.randint(0, max(0, restante))
+        restante -= v
+        horas.append((("%s %02d:00") % (hoy, h), v))
+    return horas
+
+
+def dato_tiradas():
+    titulos = dict(JUEGOS)
+    por_juego = [{"rom": r, "titulo": titulos[r], "tiradas": n}
+                 for r, n in sorted(TIRADAS_JUEGO.items(),
+                                    key=lambda x: x[1], reverse=True)]
+    total = sum(TIRADAS_JUEGO.values())
+    return {"total": total, "por_juego": por_juego,
+            "por_dia": [{"fecha": time.strftime("%Y-%m-%d"), "tiradas": total}],
+            "por_hora": [{"hora": h, "tiradas": n} for h, n in _por_hora(total)]}
+
+
+def dato_sistema():
+    return {"equipo": "Sony VAIO", "cpu_modelo": "Intel(R) Core(TM) i5-2430M",
+            "ram_total_mb": 8192, "disco_total_gb": 250, "so": "GroovyArcade 2.0",
+            "mame": "0.264", "attractplus": "3.2.3"}
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +271,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"autenticado": True})
         if p == "/api/estado":
             return self._json(dato_estado())
+        if p == "/api/sistema":
+            return self._json(dato_sistema())
+        if p == "/api/volumen":
+            return self._json({"ok": True, "nivel": ESTADO["volumen"]})
+        if p == "/api/tiradas":
+            return self._json(dato_tiradas())
+        if p == "/api/logs/retencion":
+            return self._json(RETENCION)
+        if p == "/api/puerta":
+            # En produccion lo contesta el portero del Pi, no la cabina.
+            return self._json({"cabina_online": True, "wol": True})
         if p == "/api/puntajes":
             return self._json(dato_puntajes())
         if p == "/api/masjugados":
@@ -242,6 +292,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(dato_monedas())
         if p == "/api/juegos":
             return self._json(dato_juegos())
+        if p.startswith("/api/juegos/") and p.endswith("/tarifa"):
+            rom = p.split("/")[3]
+            t = tarifa_de(rom)
+            return self._json({"rom": rom, "pesos": t["pesos"], "texto": t["texto"]})
+        if p == "/api/botones":
+            return self._sse_botones()
         if p == "/api/logs":
             fuente = (q.get("fuente") or ["panel"])[0]
             lineas = ["[%s] linea de ejemplo %d del log '%s'"
@@ -266,6 +322,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": "clave incorrecta"}, 401)
         if p == "/api/logout":
             return self._json({"ok": True})
+        if p == "/api/accion/encender":
+            # Lo sirve el portero del Pi (la cabina puede estar apagada), asi que
+            # NO exige la sesion/CSRF de la app: la barrera es Cloudflare Access.
+            print("  [accion simulada] /api/accion/encender (Wake-on-LAN)")
+            return self._json({"ok": True, "nota": "magic packet enviado (simulado)"})
 
         # El resto son acciones: exigen token CSRF.
         if not self._csrf_ok():
@@ -276,6 +337,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/accion/mantenimiento":
             ESTADO["mantenimiento"] = bool(cuerpo.get("activo"))
+        elif p == "/api/frontend/detener":
+            ESTADO["detenido"] = True
+        elif p == "/api/frontend/iniciar":
+            ESTADO["detenido"] = False
+        elif p == "/api/volumen":
+            ESTADO["volumen"] = int(cuerpo.get("nivel", 45))
+        elif p == "/api/logs/retencion":
+            RETENCION["cada"] = int(cuerpo.get("cada", 12))
+            RETENCION["unidad"] = cuerpo.get("unidad", "horas")
         elif p.startswith("/api/juegos/") and p.endswith("/visible"):
             rom = p.split("/")[3]
             if cuerpo.get("visible"):
@@ -309,6 +379,23 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(2)
         except (BrokenPipeError, ConnectionResetError):
             pass  # el navegador cerro la pestana; normal
+
+    def _sse_botones(self):
+        """Pulsaciones de mentira para probar la pantalla 'Test botones'."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        codigos = [304, 305, 307, 308, 310, 311]   # botones tipicos de mando
+        try:
+            while True:
+                ev = {"dispositivo": "Xinmotek Dual Controller",
+                      "codigo": random.choice(codigos), "pulsado": True}
+                self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+                self.wfile.flush()
+                time.sleep(1.2)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     # -- ficheros estaticos ------------------------------------------------
     def _estatico(self, p):

@@ -269,9 +269,42 @@ def versiones():
     if am_bin and os.path.exists(am_bin):
         rc, out, _ = ejecutar([am_bin, "--version"], timeout=8)
         if rc == 0 and out.strip():
-            am_v = out.strip().split("\n")[0]
+            import re
+            # "Attract-Mode Plus v3.2.3 (Linux, ...)" -> "3.2.3"
+            m = re.search(r"v?(\d+\.\d+\.\d+)", out)
+            am_v = m.group(1) if m else out.strip().split("\n")[0]
     _versiones_cache = {"mame": mame_v, "attractplus": am_v}
     return _versiones_cache
+
+
+_sistema_cache = None
+
+
+def sistema():
+    """Hardware + software para la tarjeta 'Informacion del sistema'.  Se cachea:
+    nada de esto cambia mientras la cabina esta encendida."""
+    global _sistema_cache
+    if _sistema_cache is not None:
+        return _sistema_cache
+    equipo = (_leer("/sys/class/dmi/id/product_name").strip()
+              or _leer("/sys/class/dmi/id/board_name").strip() or "?")
+    cpu_modelo = "?"
+    for l in _leer("/proc/cpuinfo").splitlines():
+        if l.lower().startswith("model name"):
+            cpu_modelo = l.split(":", 1)[1].strip()
+            break
+    so = "?"
+    for l in _leer("/etc/os-release").splitlines():
+        if l.startswith("PRETTY_NAME="):
+            so = l.split("=", 1)[1].strip().strip('"')
+            break
+    v = versiones()
+    _sistema_cache = {
+        "equipo": equipo, "cpu_modelo": cpu_modelo,
+        "ram_total_mb": ram()["total_mb"], "disco_total_gb": disco()["total_gb"],
+        "so": so, "mame": v["mame"], "attractplus": v["attractplus"],
+    }
+    return _sistema_cache
 
 
 def juegos_total():
