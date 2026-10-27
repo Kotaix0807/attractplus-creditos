@@ -33,6 +33,14 @@
       <button type="submit">Entrar</button>
     </form>
     <small id="login-error" style="color:#c0392b"></small>
+
+    <!-- Solo con la Pi delante: si la cabina esta apagada, se puede encender por
+         Wake-on-LAN SIN iniciar sesion (el login no funciona con la cabina caida). -->
+    <div id="apagada" class="oculto">
+      <p><strong>La cabina está apagada.</strong></p>
+      <button id="btn-encender">Encender cabina</button>
+      <small id="encender-msg"></small>
+    </div>
   </section>
 
   <!-- ======================= PANEL (tras login) ====================== -->
@@ -87,6 +95,34 @@ let TOKEN = "";   // el token CSRF que da el login; va en cada accion
 
 // -- atajo para escribir en un elemento por su id --
 const $ = (id) => document.getElementById(id);
+
+// -- ¿La cabina esta encendida? (solo responde si hay Pi/portero delante) ------
+// Si esta apagada, muestra el boton Encender en vez del login.
+async function comprobarPuerta() {
+  try {
+    const r = await fetch("/api/puerta");
+    if (!r.ok) return;                 // sin portero (acceso directo): asume encendida
+    const d = await r.json();
+    const apagada = d.cabina_online === false;
+    $("form-login").classList.toggle("oculto", apagada);
+    $("apagada").classList.toggle("oculto", !apagada);
+  } catch (e) { /* sin /api/puerta: login normal */ }
+}
+
+// -- ENCENDER (Wake-on-LAN): no necesita sesion, lo atiende la Pi -------------
+async function encender() {
+  $("encender-msg").textContent = " encendiendo…";
+  await fetch("/api/accion/encender", { method: "POST" });
+  // espera a que la cabina conteste y entonces muestra el login
+  const esperar = setInterval(async () => {
+    const r = await fetch("/api/puerta").then((x) => x.json()).catch(() => ({}));
+    if (r.cabina_online) {
+      clearInterval(esperar);
+      $("encender-msg").textContent = " ¡encendida!";
+      comprobarPuerta();
+    }
+  }, 3000);
+}
 
 // -- LOGIN -----------------------------------------------------------------
 $("form-login").addEventListener("submit", async (ev) => {
@@ -156,6 +192,10 @@ function arrancarPanel() {
     if (confirm("¿Apagar la cabina?")) accion("/api/accion/apagar");
   };
 }
+
+// -- al cargar: conectar Encender y ver si la cabina esta apagada --
+$("btn-encender").onclick = encender;
+comprobarPuerta();
 </script>
 </body>
 </html>
