@@ -153,10 +153,20 @@ async function accion(ruta, cuerpo) {
 
 // -- LEER ESTADO cada 2 s y pintarlo --------------------------------------
 async function refrescarEstado() {
-  const d = await (await fetch("/api/estado")).json();
-  $("temp").textContent = d.temperatura_c + " °C";
-  $("cpu").textContent  = d.cpu.uso_pct + " %";
-  $("juego").textContent = d.juego_actual ? d.juego_actual.titulo : "menú";
+  try {
+    const r = await fetch("/api/estado");
+    if (!r.ok) throw 0;              // 503 = cabina apagada/suspendida (via portero)
+    const d = await r.json();
+    $("temp").textContent = d.temperatura_c + " °C";
+    $("cpu").textContent  = d.cpu.uso_pct + " %";
+    $("juego").textContent = d.juego_actual ? d.juego_actual.titulo : "menú";
+  } catch (e) {
+    // La cabina dejó de responder (p.ej. tras Suspender): mostrar Encender.
+    $("panel").classList.add("oculto");
+    $("form-login").classList.add("oculto");
+    $("apagada").classList.remove("oculto");
+    $("login").classList.remove("oculto");
+  }
 }
 
 // -- LEER la lista de mas jugados (una vez) --------------------------------
