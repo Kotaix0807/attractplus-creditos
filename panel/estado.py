@@ -335,6 +335,23 @@ def mantenimiento():
 # El estado completo (lo que pide GET /api/estado)
 # ---------------------------------------------------------------------------
 
+_cache_ttl = {}
+
+
+def _con_cache(clave, ttl, fn):
+    """Cachea lo que cuesta un subproceso (systemctl/git/ip): la GUI pide
+    /api/estado cada 2 s y forkear eso en cada llamada, en un i3 con MAME
+    corriendo, provoca tirones ('pegotes') en el juego.  Lo barato (/proc:
+    cpu/temp/ram/disco/juego) se deja en vivo."""
+    ahora = time.time()
+    hit = _cache_ttl.get(clave)
+    if hit and ahora - hit[0] < ttl:
+        return hit[1]
+    v = fn()
+    _cache_ttl[clave] = (ahora, v)
+    return v
+
+
 def completo():
     from comun import entero
     return {
@@ -347,12 +364,13 @@ def completo():
         "ram": ram(),
         "disco": disco(),
         "juego_actual": juego_actual(),
-        "red": red(),
-        "servicios": servicios(),
+        # Lo que forkea (systemctl/ip/git) se cachea: no hace falta en cada sondeo.
+        "red": _con_cache("red", 30, red),
+        "servicios": _con_cache("servicios", 15, servicios),
         "arduino": arduino(),
         "versiones": versiones(),
-        "juegos_total": juegos_total(),
-        "commit": commit(),
+        "juegos_total": _con_cache("juegos_total", 60, juegos_total),
+        "commit": _con_cache("commit", 300, commit),
     }
 
 
