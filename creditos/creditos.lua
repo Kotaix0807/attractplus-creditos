@@ -944,6 +944,20 @@ local function por_frame()
 					if n and n > 0 and e.campo then
 						if e.arranque then
 							log('panel: "insertar %d" ignorado, la placa aun arranca', n)
+						elseif emu.romname() == 'mwalk' and e.leer_ram and e.escribir_ram then
+							-- Moonwalker (Sega System 18) IGNORA set_value en su COIN1: la
+							-- moneda simulada no acredita (medido: el bit del puerto no se
+							-- mueve y no cambia ni un byte de RAM, mientras START1 si).
+							-- La fisica entra por la secuencia real, irreproducible desde
+							-- Lua. Aqui el credito se ESCRIBE en su contador verificado
+							-- (ff2000, creditos.dat): probado que pega y que START lo
+							-- consume. Caso unico y a mano a proposito.
+							local ok, v = pcall(e.leer_ram)
+							local base = (ok and type(v) == 'number') and v or 0
+							local nuevo = math.min(base + n, TOPE)
+							pcall(e.escribir_ram, nuevo)
+							registrar_moneda('panel', n)
+							log('panel: %d credito(s) escritos en ff2000 (mwalk, coin no simulable): %d -> %d', n, base, nuevo)
 						else
 							e.restantes = (e.restantes or 0) + n
 							if e.fase == 'fin' or e.fase == 'inactivo' then
