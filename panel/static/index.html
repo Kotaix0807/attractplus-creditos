@@ -66,6 +66,7 @@
     <h3>Acciones</h3>
     <div class="fila">
       <button id="btn-credito">+1 crédito</button>
+      <button id="btn-menu">Menú MAME</button>
       <button id="btn-salir">Salir del juego</button>
       <button id="btn-monedero">Reiniciar monedero</button>
       <button id="btn-frontend">Reiniciar frontend</button>
@@ -133,7 +134,11 @@ $("form-login").addEventListener("submit", async (ev) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clave: $("clave").value }),
   });
-  if (!r.ok) { $("login-error").textContent = "Clave incorrecta"; return; }
+  if (!r.ok)
+  {
+    $("login-error").textContent = "Clave incorrecta";
+    return;
+  }
   const d = await r.json();
   TOKEN = d.csrf;                            // lo guardamos para las acciones
   $("login").classList.add("oculto");
@@ -193,6 +198,7 @@ function arrancarPanel() {
   $("volumen").onchange = () => accion("/api/volumen", { nivel: Number($("volumen").value) });
 
   $("btn-credito").onclick  = () => accion("/api/creditos", { n: 1 });
+  $("btn-menu").onclick      = () => accion("/api/juego/menu");   // abre/cierra el menú de MAME (TAB)
   $("btn-salir").onclick    = () => accion("/api/juego/salir");
   $("btn-monedero").onclick = () => accion("/api/monedero/reiniciar");
   $("btn-frontend").onclick = () => accion("/api/frontend/reiniciar");

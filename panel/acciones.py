@@ -82,6 +82,64 @@ def juego_salir():
     return _ok()
 
 
+# El menu de MAME se abre con su tecla UI_MENU (TAB por defecto).  No va por
+# panel_cmd porque no toca el ioport ni cierra la maquina: es una pulsacion a
+# nivel de X, que mandamos con XTEST (como un teclado de verdad).  Verificado en
+# la cabina: TAB abre/cierra el menu -- con el menu abierto MAME ignora las
+# monedas, y al cerrarlo vuelven a entrar.  Corremos como 'arcade', dueno de la
+# sesion X, asi que :0 se abre con ~/.Xauthority.
+_XK_TAB = 0xff09
+
+
+def _tecla_x(keysym):
+    """Manda una pulsacion (down+up) de una tecla a la pantalla :0 con XTEST.
+    Devuelve True si se envio."""
+    import ctypes
+    import ctypes.util
+    os.environ.setdefault("DISPLAY", ":0")
+    os.environ.setdefault("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
+    nx, nt = ctypes.util.find_library("X11"), ctypes.util.find_library("Xtst")
+    if not nx or not nt:
+        return False
+    try:
+        X, T = ctypes.CDLL(nx), ctypes.CDLL(nt)
+        X.XOpenDisplay.restype = ctypes.c_void_p            # punteros de 64 bits:
+        X.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]  # hay que
+        X.XKeysymToKeycode.restype = ctypes.c_ubyte         # declararlos o ctypes
+        X.XFlush.argtypes = [ctypes.c_void_p]               # los trunca a int y
+        X.XCloseDisplay.argtypes = [ctypes.c_void_p]        # revienta.
+        T.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                        ctypes.c_int, ctypes.c_ulong]
+        d = X.XOpenDisplay(os.environ["DISPLAY"].encode())
+        if not d:
+            return False
+        try:
+            kc = X.XKeysymToKeycode(d, keysym)
+            if not kc:
+                return False
+            T.XTestFakeKeyEvent(d, kc, 1, 0)
+            T.XTestFakeKeyEvent(d, kc, 0, 0)
+            X.XFlush(d)
+            return True
+        finally:
+            X.XCloseDisplay(d)
+    except OSError:
+        return False
+
+
+def juego_menu():
+    """Abre (o cierra) el menu de MAME con TAB.  Solo con un juego en marcha:
+    sin el, la tecla iria al frontend.  Se navega con los controles de la
+    cabina."""
+    auditar("juego_menu")
+    rc, _, _ = ejecutar(["pgrep", "-x", "mame"], timeout=5)
+    if rc != 0:
+        return _err("no hay ningun juego en marcha")
+    if _tecla_x(_XK_TAB):
+        return _ok(nota="menu de MAME (TAB); navega con los controles de la cabina")
+    return _err("no se pudo enviar la tecla a la pantalla")
+
+
 # ---------------------------------------------------------------------------
 # Sistema
 # ---------------------------------------------------------------------------

@@ -299,6 +299,12 @@ def api_salir():
     return jsonify(acciones.juego_salir())
 
 
+@app.post("/api/juego/menu")
+@requiere_csrf
+def api_juego_menu():
+    return jsonify(acciones.juego_menu())
+
+
 @app.post("/api/creditos")
 @requiere_csrf
 def api_creditos():
