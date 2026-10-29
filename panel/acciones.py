@@ -134,16 +134,33 @@ def _tecla_x(keysym):
         return False
 
 
+def _mame_corriendo():
+    rc, _, _ = ejecutar(["pgrep", "-x", "mame"], timeout=5)
+    return rc == 0
+
+
 def juego_menu():
     """Abre (o cierra) el menu de MAME con TAB.  Solo con un juego en marcha:
     sin el, la tecla iria al frontend.  Se navega con los controles de la
     cabina."""
     auditar("juego_menu")
-    rc, _, _ = ejecutar(["pgrep", "-x", "mame"], timeout=5)
-    if rc != 0:
+    if not _mame_corriendo():
         return _err("no hay ningun juego en marcha")
     if _tecla_x(_XK_TAB):
         return _ok(nota="menu de MAME (TAB); navega con los controles de la cabina")
+    return _err("no se pudo enviar la tecla a la pantalla")
+
+
+def frontend_menu():
+    """Abre el menu de configuracion de Attract-Mode Plus.  Su accion
+    'configure' es TAB, la misma tecla -- pero al frente esta AM+ (no hay
+    juego), asi que TAB abre SU menu, no el de MAME.  Por eso va al reves que
+    juego_menu: solo sin juego en marcha."""
+    auditar("frontend_menu")
+    if _mame_corriendo():
+        return _err("hay un juego en marcha; el menu de AM+ es para el frontend")
+    if _tecla_x(_XK_TAB):
+        return _ok(nota="menu de Attract-Mode (TAB); navega con los controles de la cabina")
     return _err("no se pudo enviar la tecla a la pantalla")
 
 

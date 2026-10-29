@@ -269,6 +269,7 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/monedero/reiniciar` | — | `systemctl --user restart monedero.service` (resetea serie + relé) |
 | `POST /api/juego/salir` | — | sale limpio del juego en curso (orden a `creditos.lua`) |
 | `POST /api/juego/menu` | — | abre/cierra el menú de MAME (manda TAB por XTEST a `:0`); solo con un juego en marcha, se navega con los controles de la cabina |
+| `POST /api/frontend/menu` | — | abre el menú de configuración de Attract-Mode (también TAB, pero gated a que NO haya juego: al frente está AM+); para configurar emuladores, controles, etc. |
 | `POST /api/creditos` | `{"n": 1}` | inyecta N créditos en la partida en curso |
 | `POST /api/pantalla` | `{"destino": "crt"}` | `"crt"` o `"panel"` (`pantalla-auto.sh`) |
 | `POST /api/volumen` | `{"nivel": 80}` | 0-100 (`amixer`) |

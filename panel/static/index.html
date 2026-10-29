@@ -67,6 +67,7 @@
     <div class="fila">
       <button id="btn-credito">+1 crédito</button>
       <button id="btn-menu">Menú MAME</button>
+      <button id="btn-menu-fe">Menú Attract</button>
       <button id="btn-salir">Salir del juego</button>
       <button id="btn-monedero">Reiniciar monedero</button>
       <button id="btn-frontend">Reiniciar frontend</button>
@@ -198,7 +199,8 @@ function arrancarPanel() {
   $("volumen").onchange = () => accion("/api/volumen", { nivel: Number($("volumen").value) });
 
   $("btn-credito").onclick  = () => accion("/api/creditos", { n: 1 });
-  $("btn-menu").onclick      = () => accion("/api/juego/menu");   // abre/cierra el menú de MAME (TAB)
+  $("btn-menu").onclick      = () => accion("/api/juego/menu");    // menú de MAME (en juego)
+  $("btn-menu-fe").onclick   = () => accion("/api/frontend/menu"); // menú de Attract (en el frontend)
   $("btn-salir").onclick    = () => accion("/api/juego/salir");
   $("btn-monedero").onclick = () => accion("/api/monedero/reiniciar");
   $("btn-frontend").onclick = () => accion("/api/frontend/reiniciar");
