@@ -117,7 +117,14 @@ def _tecla_x(keysym):
             kc = X.XKeysymToKeycode(d, keysym)
             if not kc:
                 return False
+            # Hay que MANTENER la tecla pulsada un momento: MAME sondea el
+            # teclado a ~60 Hz, asi que un down+up instantaneo cae entre dos
+            # sondeos y no lo registra (medido: con 0 ms el menu no se abre, con
+            # ~80 ms si).  Es lo que dura una pulsacion humana.
+            import time
             T.XTestFakeKeyEvent(d, kc, 1, 0)
+            X.XFlush(d)
+            time.sleep(0.08)
             T.XTestFakeKeyEvent(d, kc, 0, 0)
             X.XFlush(d)
             return True
