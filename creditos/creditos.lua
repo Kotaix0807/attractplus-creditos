@@ -2006,16 +2006,27 @@ GA_ESTADO.pintor = function()
 	-- (arriba abajo izquierda derecha). Es lo que pidio Eloy: claro, sin
 	-- hacer pensar, con las flechas destacadas.
 	if a.combo_on then
-		local resumen = a.lineas(saldo)[2]   -- la linea de "quedan N creditos"
+		-- Advertencia de lo que se pierde al salir. Con direccion conocida se
+		-- afirma el numero; estimando, no.
+		local n = a.dentro()
+		local perdida
+		if a.seguro() then
+			perdida = (n == 1) and 'SI SALES DEL JUEGO PIERDES TU CREDITO'
+				or string.format('SI SALES DEL JUEGO PIERDES TUS %d CREDITOS', n)
+		else
+			perdida = 'SI SALES DEL JUEGO PUEDES PERDER TUS CREDITOS'
+		end
 		local CW, CH, G = 0.12, 0.10, 0.025
 		local filaw = 4 * CW + 3 * G
 		local xi = (1.0 - filaw) / 2
-		local H = PASO * 2.4 + CH + 0.04
+		local H = PASO * 4.9 + CH + 0.04
 		local y0 = (1.0 - H) / 2
 		contenedor:draw_box(0.06, y0, 0.94, y0 + H, con_alfa(COLOR_BORDE), con_alfa(COLOR_FONDO))
 
 		local y = y0 + PASO * 0.45
-		contenedor:draw_text('center', y, resumen, con_alfa(COLOR_TITULO))
+		contenedor:draw_text('center', y, 'ADVERTENCIA', con_alfa(COLOR_TITULO))
+		y = y + PASO
+		contenedor:draw_text('center', y, perdida, con_alfa(COLOR_TEXTO))
 		y = y + PASO + 0.02
 
 		-- Orden de la combinacion: arriba, abajo, izquierda, derecha.
@@ -2034,7 +2045,9 @@ GA_ESTADO.pintor = function()
 				con_alfa(hecho and 0xffffffff or 0xffaaaaaa))
 		end
 		y = y + CH + 0.02
-		contenedor:draw_text('center', y, 'Y PULSA SALIR', con_alfa(COLOR_TEXTO))
+		contenedor:draw_text('center', y, 'REALIZA LA COMBINACION Y PULSA SALIR', con_alfa(COLOR_TEXTO))
+		y = y + PASO
+		contenedor:draw_text('center', y, 'START PARA VOLVER AL JUEGO', con_alfa(0xffaaaaaa))
 		return
 	end
 
