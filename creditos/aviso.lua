@@ -90,6 +90,10 @@ function M.nuevo(op)
 		combo     = 0,
 		combo_on  = false,
 		dir_antes = {},
+		-- Frames sin tocar ninguna direccion. El cuadro se rinde por INACTIVIDAD,
+		-- no por tiempo total: mientras el jugador avanza la combinacion el cuadro
+		-- se queda (si no, se iba antes de que llegara a pulsar salir).
+		inactivo  = 0,
 		log       = op.log or function() end,
 	}
 
@@ -171,11 +175,14 @@ function M.nuevo(op)
 	-- paso; cualquier otra direccion reinicia (a 1 si es el inicio, 'arriba').
 	local function avanzar_combo(dirs)
 		local flanco = {}
+		local alguno = false
 		for _, d in ipairs(ORDEN) do
 			local p = dirs[d] and true or false
 			flanco[d] = p and not a.dir_antes[d]
+			if flanco[d] then alguno = true end
 			a.dir_antes[d] = p
 		end
+		if alguno then a.inactivo = 0 end   -- sigue activo: no se rinde el cuadro
 		local esperado = ORDEN[a.combo + 1]
 		if esperado and flanco[esperado] then
 			a.combo = a.combo + 1
@@ -204,6 +211,7 @@ function M.nuevo(op)
 				a.estado = 'avisando'
 				a.reloj = 0
 				a.combo = 0
+				a.inactivo = 0
 				-- Si el jugador tiene una direccion pulsada al aparecer el cuadro
 				-- (venia jugando), no debe contar como el primer paso: se guarda
 				-- el estado actual para que solo cuenten pulsaciones NUEVAS.
@@ -229,6 +237,7 @@ function M.nuevo(op)
 
 		-- avisando
 		a.reloj = a.reloj + 1
+		a.inactivo = a.inactivo + 1
 
 		if dirs then avanzar_combo(dirs) end
 
@@ -265,7 +274,7 @@ function M.nuevo(op)
 			return 'bloquear'
 		end
 
-		if a.reloj >= a.espera then
+		if a.inactivo >= a.espera then
 			a.estado = 'jugando'
 			a.log('nadie contesta, quito el cuadro')
 			return 'bloquear'
@@ -319,25 +328,9 @@ function M.nuevo(op)
 			segunda = 'PUEDEN QUEDAR CREDITOS DENTRO DE ESTA MAQUINA'
 		end
 
-		if a.combo_on then
-			-- Progreso de la combinacion: los pasos hechos van entre corchetes.
-			local nombres = { 'ARRIBA', 'ABAJO', 'IZQUIERDA', 'DERECHA' }
-			local pasos = {}
-			for i, nm in ipairs(nombres) do
-				pasos[i] = (i <= a.combo) and ('[' .. nm .. ']') or nm
-			end
-			return {
-				'OJO',
-				segunda,
-				tercera,
-				'',
-				'PARA SALIR HAZ LA COMBINACION:',
-				table.concat(pasos, ' '),
-				'Y PULSA SALIR',
-				'START para seguir jugando',
-			}
-		end
-
+		-- La combinacion (arriba-abajo-izq-der) la dibuja el pintor como flechas
+		-- de colores, no como texto. En modo combinacion el pintor reusa la
+		-- segunda linea (los creditos en juego) y dibuja el resto el mismo.
 		return {
 			'OJO',
 			segunda,

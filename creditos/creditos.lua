@@ -1994,21 +1994,55 @@ GA_ESTADO.pintor = function()
 	local a = e.aviso
 	if not a or not a.visible() then return end
 
-	local lineas = a.lineas(e.cuenta and e.cuenta.saldo() or nil)
+	local saldo = e.cuenta and e.cuenta.saldo() or nil
+
+	-- Fade de entrada (~0.08 s): el alfa sube con los primeros frames.
+	local frame_actual = math.min(a.reloj or 0, 5)
+	local alfa = math.floor((frame_actual / 5) * 0xFF)
+	local function con_alfa(c) return (alfa << 24) | (c & 0x00FFFFFF) end
+
+	-- Modo combinacion: menos texto y, en el centro, las cuatro flechas en
+	-- cajas que se encienden en verde segun el jugador acierta la secuencia
+	-- (arriba abajo izquierda derecha). Es lo que pidio Eloy: claro, sin
+	-- hacer pensar, con las flechas destacadas.
+	if a.combo_on then
+		local resumen = a.lineas(saldo)[2]   -- la linea de "quedan N creditos"
+		local CW, CH, G = 0.12, 0.10, 0.025
+		local filaw = 4 * CW + 3 * G
+		local xi = (1.0 - filaw) / 2
+		local H = PASO * 2.4 + CH + 0.04
+		local y0 = (1.0 - H) / 2
+		contenedor:draw_box(0.06, y0, 0.94, y0 + H, con_alfa(COLOR_BORDE), con_alfa(COLOR_FONDO))
+
+		local y = y0 + PASO * 0.45
+		contenedor:draw_text('center', y, resumen, con_alfa(COLOR_TITULO))
+		y = y + PASO + 0.02
+
+		-- Orden de la combinacion: arriba, abajo, izquierda, derecha.
+		local glifos = { '\u{2191}', '\u{2193}', '\u{2190}', '\u{2192}' }
+		for i = 1, 4 do
+			local x = xi + (i - 1) * (CW + G)
+			local hecho = i <= a.combo
+			local fondo = hecho and 0xff1a7a1a or 0xff262626   -- verde encendido / gris apagado
+			local borde = hecho and 0xff40ff40 or 0xff555555
+			contenedor:draw_box(x, y, x + CW, y + CH, con_alfa(borde), con_alfa(fondo))
+			local g = glifos[i]
+			local w = 0.03
+			local okw, ww = pcall(function() return manager.ui:get_string_width(g) end)
+			if okw and type(ww) == 'number' and ww > 0 then w = ww end
+			contenedor:draw_text(x + (CW - w) / 2, y + (CH - PASO) / 2 + 0.012, g,
+				con_alfa(hecho and 0xffffffff or 0xffaaaaaa))
+		end
+		y = y + CH + 0.02
+		contenedor:draw_text('center', y, 'Y PULSA SALIR', con_alfa(COLOR_TEXTO))
+		return
+	end
+
+	local lineas = a.lineas(saldo)
 	local alto = PASO * (#lineas + 1)
 	local y0 = (1.0 - alto) / 2
 
-	local duracion_fade = 5 -- frames que dura el fade de entrada (~0.08 s a 60 fps)
-	local alfa_objetivo = 0xFF -- alfa final del cuadro (0xFF = opaco)
-	
-	local frame_actual = math.min(a.reloj or 0, duracion_fade)
-	
-	local alfa_calculado = math.floor((frame_actual / duracion_fade) * alfa_objetivo)
-	
-	local fondo_fade = (alfa_calculado << 24) | (COLOR_FONDO & 0x00FFFFFF)
-	local borde_fade = (alfa_calculado << 24) | (COLOR_BORDE & 0x00FFFFFF)
-
-	contenedor:draw_box(0.06, y0, 0.94, y0 + alto, borde_fade, fondo_fade)
+	contenedor:draw_box(0.06, y0, 0.94, y0 + alto, con_alfa(COLOR_BORDE), con_alfa(COLOR_FONDO))
 
 	for i, texto in ipairs(lineas) do
 		if texto ~= '' then

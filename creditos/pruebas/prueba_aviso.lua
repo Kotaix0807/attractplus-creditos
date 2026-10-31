@@ -308,19 +308,36 @@ do
 	igual('solo cuenta la pulsacion nueva', a.frame(true, false, dir(nil)), 'salir')
 end
 
-print('\n13d. el cuadro ensena la combinacion y su progreso')
+print('\n13d. el progreso (a.combo) avanza y el pintor lo lee')
 do
-	local a = A.nuevo{ dentro = function() return 1 end }
+	-- El dibujo de las flechas lo hace el pintor (con MAME), aqui solo se
+	-- comprueba el contador de progreso que el pintor colorea.
+	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1 }
 	a.entra(1)
 	a.frame(true, false, dir(nil))
-	ok('linea de la combinacion', a.lineas(nil)[5] == 'PARA SALIR HAZ LA COMBINACION:')
-	ok('sin pasos hechos', a.lineas(nil)[6] == 'ARRIBA ABAJO IZQUIERDA DERECHA')
+	igual('empieza en 0', a.combo, 0)
 	a.frame(false, false, dir(nil))
-	pulsa_dir(a, 'arriba')
-	ok('primer paso marcado', a.lineas(nil)[6] == '[ARRIBA] ABAJO IZQUIERDA DERECHA')
+	pulsa_dir(a, 'arriba');  igual('un paso', a.combo, 1)
+	pulsa_dir(a, 'abajo');   igual('dos pasos', a.combo, 2)
+	pulsa_dir(a, 'derecha'); igual('paso equivocado reinicia', a.combo, 0)
 end
 
-print('\n13e. sin direcciones (GA_AVISO_COMBO=0) sigue valiendo salir dos veces')
+print('\n13e. el cuadro NO se rinde mientras se hace la combinacion despacio')
+do
+	-- El bug que reporto Eloy: se iba antes de pulsar salir. El cuadro cuenta
+	-- INACTIVIDAD, asi que tocar una direccion lo mantiene vivo.
+	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1, espera = 30 }
+	a.entra(1)
+	a.frame(true, false, dir(nil))
+	for _ = 1, 25 do a.frame(false, false, dir(nil)) end   -- casi se rinde
+	pulsa_dir(a, 'arriba')                                 -- toca: revive
+	for _ = 1, 25 do a.frame(false, false, dir(nil)) end
+	ok('sigue visible tras tocar una direccion', a.visible())
+	pulsa_dir(a, 'abajo'); pulsa_dir(a, 'izquierda'); pulsa_dir(a, 'derecha')
+	igual('y se puede salir', a.frame(true, false, dir(nil)), 'salir')
+end
+
+print('\n13f. sin direcciones (GA_AVISO_COMBO=0) sigue valiendo salir dos veces')
 do
 	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1 }
 	a.entra(1)
