@@ -80,6 +80,16 @@
     <h3>Volumen: <span id="volumen-val">—</span></h3>
     <input type="range" id="volumen" min="0" max="100" value="80">
 
+    <!-- Tarifa global: aplica a TODOS los juegos. Free play o N monedas/credito -->
+    <h3>Tarifa (todos los juegos)</h3>
+    <select id="tarifa-global">
+      <option value="defecto">Normal — 1 moneda / crédito</option>
+      <option value="freeplay">Free Play (gratis)</option>
+      <option value="200">$200 — 2 monedas / crédito</option>
+      <option value="300">$300 — 3 monedas / crédito</option>
+      <option value="400">$400 — 4 monedas / crédito</option>
+    </select>
+
     <!-- Mas jugados: se rellena una vez al entrar -->
     <h3>Más jugados</h3>
     <table><tbody id="masjugados"></tbody></table>
@@ -197,6 +207,13 @@ function arrancarPanel() {
   });
   $("volumen").oninput  = () => { $("volumen-val").textContent = $("volumen").value + " %"; };
   $("volumen").onchange = () => accion("/api/volumen", { nivel: Number($("volumen").value) });
+
+  // tarifa global: leer la actual y mandarla al cambiar el desplegable.
+  fetch("/api/tarifa-global").then((r) => r.json()).then((d) => {
+    $("tarifa-global").value = d.modo === "pesos" ? String(d.pesos)
+      : (d.modo === "freeplay" ? "freeplay" : "defecto");
+  });
+  $("tarifa-global").onchange = () => accion("/api/tarifa-global", { valor: $("tarifa-global").value });
 
   $("btn-credito").onclick  = () => accion("/api/creditos", { n: 1 });
   $("btn-menu").onclick      = () => accion("/api/juego/menu");    // menú de MAME (en juego)

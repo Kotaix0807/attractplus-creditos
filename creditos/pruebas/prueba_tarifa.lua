@@ -53,5 +53,25 @@ for _, c in ipairs(premios) do
 	end
 end
 
+-- valor_freeplay / valor_monedas / valor_1c1c sobre un DIP tipo Pac-Man
+local dip = { campo = { settings = {
+	[0] = 'Free Play',
+	[1] = '1 Coin/1 Credit',
+	[2] = '1 Coin/2 Credits',
+	[3] = '2 Coins/1 Credit',
+} } }
+local function chk(titulo, got, exp)
+	if got ~= exp then
+		fallos = fallos + 1
+		print(string.format('FALLO %s -> %s (esperaba %s)', titulo, tostring(got), tostring(exp)))
+	else
+		print(string.format('ok    %s -> %s', titulo, tostring(got)))
+	end
+end
+chk('valor free play', (T.valor_freeplay(dip)), 0)
+chk('valor 1c1c', (T.valor_1c1c(dip)), 1)
+chk('valor 2 monedas/credito', (T.valor_monedas(dip, 2)), 3)
+chk('tarifa que no existe', (T.valor_monedas(dip, 5)), nil)
+
 print(fallos == 0 and '=== analizador de tarifas: todo bien ===' or ('=== ' .. fallos .. ' fallos ==='))
 os.exit(fallos == 0 and 0 or 1)

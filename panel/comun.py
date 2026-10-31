@@ -30,6 +30,7 @@ F_AUDITORIA = os.path.join(ATTRACT, "panel_auditoria.log")
 F_PUNTAJES = os.path.join(ATTRACT, "puntajes.json")
 F_FRONTEND_DETENIDO = os.path.join(ATTRACT, "frontend_detenido")
 F_AJUSTES = os.path.join(ATTRACT, "panel_ajustes.json")
+F_TARIFA_GLOBAL = os.path.join(ATTRACT, "tarifa_global")  # 'freeplay' o pesos; lo lee creditos.lua
 DIR_STATS = os.path.join(ATTRACT, "stats", "groovymame")
 
 

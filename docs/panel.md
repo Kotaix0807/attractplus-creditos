@@ -276,6 +276,8 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/puntajes/actualizar` | — | re-ejecuta `puntajes.py` |
 | `POST /api/juegos/<rom>/visible` | `{"visible": false}` | oculta/muestra el juego (`global_filter`) |
 | `POST /api/juegos/<rom>/tarifa` | `{"pesos": 200}` | fija la tarifa; pasos de $100 (una moneda) |
+| `GET /api/tarifa-global` | — | tarifa global para TODOS los juegos: `{"modo":"freeplay"\|"pesos"\|"defecto","pesos":N?}` |
+| `POST /api/tarifa-global` | `{"valor":"freeplay"\|200\|"defecto"}` | fija/quita la tarifa global (la aplica `creditos.lua` al lanzar: free play por DIP + créditos infinitos por RAM, o N monedas/crédito) |
 | `POST /api/juegos/subir` | multipart `archivo` (.zip/.7z) | añade un juego y reconstruye la lista |
 | `POST /api/juegos/<rom>/eliminar` | — | quita el ROM y reconstruye la lista |
 | `POST /api/juegos/<rom>/reset-nvram` | — | borra la NVRAM del juego |

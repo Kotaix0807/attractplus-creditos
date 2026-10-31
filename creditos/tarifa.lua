@@ -97,17 +97,18 @@ function M.con_premio(texto)
 	return type(texto) == 'string' and texto:find(',', 1, true) ~= nil
 end
 
--- Valor que hay que escribir en el DIP para 1 moneda = 1 credito, o nil si
--- este juego no ofrece esa tarifa. Devuelve valor, texto, sin_premio.
+-- Valor que hay que escribir en el DIP para "monedas moneda(s) = creditos
+-- credito(s)", o nil si este juego no ofrece esa tarifa. Devuelve valor, texto,
+-- sin_premio.
 --
 -- Elige la tarifa sin premio si existe y, a igualdad, el valor mas bajo:
 -- pairs() no garantiza orden y sin esto cada pasada podia elegir otro ajuste.
-function M.valor_1c1c(dip)
+function M.valor_tarifa(dip, monedas, creditos)
 	local mejor, mejor_texto, mejor_limpia = nil, nil, false
 
 	for valor, texto in pairs(dip.campo.settings) do
 		local m, c, gratis = M.partir(texto)
-		if not gratis and m == 1 and c == 1 then
+		if not gratis and m == monedas and c == creditos then
 			local limpia = not M.con_premio(texto)
 			if mejor == nil
 					or (limpia and not mejor_limpia)
@@ -118,6 +119,26 @@ function M.valor_1c1c(dip)
 	end
 
 	return mejor, mejor_texto, mejor_limpia
+end
+
+-- 1 moneda = 1 credito (lo mas comun). Atajo del de arriba.
+function M.valor_1c1c(dip)
+	return M.valor_tarifa(dip, 1, 1)
+end
+
+-- N monedas = 1 credito, para la tarifa global en pesos (N = pesos / 100).
+function M.valor_monedas(dip, n)
+	return M.valor_tarifa(dip, n, 1)
+end
+
+-- Valor del ajuste "Free Play" del DIP de tarifa, o nil si este juego no lo
+-- ofrece. Muchas placas lo traen como una opcion mas del propio Coinage.
+function M.valor_freeplay(dip)
+	for valor, texto in pairs(dip.campo.settings) do
+		local _, _, gratis = M.partir(texto)
+		if gratis then return valor, texto end
+	end
+	return nil
 end
 
 return M

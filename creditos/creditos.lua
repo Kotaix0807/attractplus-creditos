@@ -33,6 +33,9 @@
 --   GA_CREDITOS  creditos a insertar. Si no esta, se lee del fichero
 --   GA_ARCHIVO   fichero del monedero        ($HOME/.attract/creditos.txt)
 --   GA_TARIFA    1c1c | auto | off           (por defecto 1c1c)
+--   GA_TARIFA_GLOBAL  fichero con la tarifa global (~/.attract/tarifa_global):
+--                'freeplay' o pesos (100=1 moneda/credito, 200=2...). Manda
+--                sobre GA_TARIFA. 'off' lo ignora. Lo escribe el panel web.
 --   GA_VIGILAR   0 para no descontar las monedas del jugador
 --   GA_AVISO     0 para no avisar de creditos perdidos al salir
 --   GA_AVISO_ESPERA  frames que el cuadro aguanta en pantalla (por defecto 300)
@@ -555,6 +558,32 @@ local function fijar_1c1c(dip, gratis)
 		tostring(valor))
 end
 
+-- Tarifa GLOBAL (opcion del panel, para TODOS los juegos a la vez): fichero
+-- ~/.attract/tarifa_global con 'freeplay' o un numero de PESOS (100 = 1
+-- moneda/credito, 200 = 2 monedas/credito...). Vacio o ausente = sin tarifa
+-- global, manda GA_TARIFA de siempre. GA_TARIFA_GLOBAL='off' lo apaga.
+local function leer_tarifa_global()
+	local ruta = ruta_attract('tarifa_global', 'GA_TARIFA_GLOBAL')
+	if not ruta then return nil end
+	local f = io.open(ruta, 'r')
+	if not f then return nil end
+	local t = (f:read('l') or ''):gsub('%s+', ''):lower()
+	f:close()
+	if t == '' then return nil end
+	if t == 'freeplay' or t == 'free' then return 'freeplay' end
+	local pesos = tonumber(t)
+	if pesos and pesos >= 100 then
+		return math.max(1, math.floor(pesos / 100))   -- monedas por credito
+	end
+	log('tarifa_global no se entiende: %s (espero freeplay o pesos >=100)', t)
+	return nil
+end
+
+local GLOBAL_TARIFA = leer_tarifa_global()
+-- Upvalue que ve el bucle por-frame: en free play se mantiene un credito escrito
+-- en la RAM (la via para los juegos sin DIP de free play).
+local FREEPLAY = (GLOBAL_TARIFA == 'freeplay')
+
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
 	if (TARIFA == 'off') or not T then
@@ -562,6 +591,34 @@ local function tarifa_vigente()
 	end
 
 	local dip = T.buscar_dip()
+
+	-- La tarifa GLOBAL manda sobre el DIP guardado y sobre GA_TARIFA.
+	if GLOBAL_TARIFA == 'freeplay' then
+		if dip then
+			local v = T.valor_freeplay(dip)
+			if v then
+				dip.campo.user_value = v
+				log('tarifa global FREE PLAY: DIP a partida gratis (valor %s)', tostring(v))
+			else
+				log('tarifa global FREE PLAY: sin DIP; mantengo el credito por RAM si se puede')
+			end
+		end
+		return 1, 1, true
+	elseif type(GLOBAL_TARIFA) == 'number' then
+		if dip then
+			local v = T.valor_monedas(dip, GLOBAL_TARIFA)
+			if v then
+				dip.campo.user_value = v
+				log('tarifa global: %d moneda(s)/credito por DIP (valor %s)', GLOBAL_TARIFA, tostring(v))
+			else
+				log('tarifa global: este juego no ofrece %d moneda(s)/credito, solo compenso', GLOBAL_TARIFA)
+			end
+		else
+			log('tarifa global: sin DIP, compenso %d moneda(s)/credito', GLOBAL_TARIFA)
+		end
+		return GLOBAL_TARIFA, 1, false
+	end
+
 	if not dip then
 		log('no encuentro DIP de tarifa, una moneda por credito')
 		return 1, 1, false
@@ -1258,6 +1315,16 @@ local function por_frame()
 		-- es lo que el juego se ha llevado de verdad. Nada de estimar.
 		e.memoria.frame()
 
+		-- Free play por RAM: si el jugador gasto el credito (START), se le
+		-- repone. Asi siempre hay con que jugar sin meter monedas. Solo en
+		-- direcciones comprobadas y una vez pasado el arranque.
+		if e.freeplay_ram and not e.arranque then
+			local okf, v = pcall(e.leer_ram)
+			if okf and type(v) == 'number' and v < 1 then
+				pcall(e.escribir_ram, 1)
+			end
+		end
+
 		if e.memoria.consumido > e.consumido_visto then
 			local n = e.memoria.consumido - e.consumido_visto
 			e.consumido_visto = e.memoria.consumido
@@ -1667,7 +1734,8 @@ if MEM then
 			-- coleccion de cheats NUNCA se escribe.
 			local limpiar = nil
 
-			if LIMPIAR and entrada.comprobada then
+			-- En free play NO se barre: queremos que siempre haya credito.
+			if LIMPIAR and entrada.comprobada and not FREEPLAY then
 				limpiar = function(v)
 					-- Lo que el jugador haya metido mientras la placa se
 					-- asentaba es SUYO, ya se lo hemos cobrado: solo se quita
@@ -1685,6 +1753,16 @@ if MEM then
 
 			-- por_frame lo necesita para poder adelantarlo (barrido=N)
 			GA_ESTADO.limpiar = limpiar
+
+			-- Free play "por RAM": en los juegos con direccion comprobada (no en
+			-- las importadas) mantenemos un credito escrito. Es la via para los
+			-- que no tienen DIP de free play. Lo aplica por_frame.
+			GA_ESTADO.freeplay_ram = FREEPLAY and entrada.comprobada and true or false
+			if GA_ESTADO.freeplay_ram then
+				log('free play: mantendre un credito en la RAM de este juego')
+			elseif FREEPLAY and not entrada.comprobada then
+				log('free play: sin DIP ni direccion comprobada en este juego -- REVISAR')
+			end
 
 			-- Con arranque tapado, quien decide cuando la RAM es de fiar es
 			-- el fin del arranque (llama a asentar_ya). El contador de frames

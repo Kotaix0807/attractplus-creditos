@@ -18,8 +18,8 @@ import shutil
 
 from comun import (ATTRACT, DIR_STATS, F_AUDITORIA, F_FRONTEND_DETENIDO,
                    F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD, F_PUNTAJES,
-                   RAIZ_REPO, auditar, ejecutar, entero, leer_ajustes,
-                   guardar_ajustes)
+                   F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
+                   leer_ajustes, guardar_ajustes)
 
 DIR_MAME = os.path.expanduser("~/.mame")
 
@@ -482,6 +482,57 @@ def tarifa_actual(rom):
     monedas = max(1, pesos // base) if base else 1
     return {"rom": rom, "pesos": pesos,
             "texto": "%d moneda%s / 1 crédito" % (monedas, "" if monedas == 1 else "s")}
+
+
+def tarifa_global_actual():
+    """La tarifa GLOBAL que aplica a TODOS los juegos (la lee creditos.lua al
+    lanzar): 'freeplay', N pesos, o 'defecto' (sin fichero = cada juego como
+    venga / 1 moneda por credito)."""
+    try:
+        with open(F_TARIFA_GLOBAL, encoding="utf-8") as f:
+            t = f.read().strip().lower()
+    except OSError:
+        t = ""
+    if t == "freeplay":
+        return {"modo": "freeplay"}
+    try:
+        pesos = int(t)
+    except ValueError:
+        pesos = 0
+    if pesos >= 100:
+        return {"modo": "pesos", "pesos": pesos}
+    return {"modo": "defecto"}
+
+
+def fijar_tarifa_global(valor):
+    """Fija la tarifa global.  valor: 'freeplay', un numero de pesos (>=100, en
+    pasos de 100) o 'defecto'/'' para quitarla."""
+    v = str(valor if valor is not None else "").strip().lower()
+    if v in ("", "defecto", "default"):
+        try:
+            os.remove(F_TARIFA_GLOBAL)
+        except OSError:
+            pass
+        auditar("tarifa_global", "defecto")
+        return _ok(**tarifa_global_actual())
+    if v in ("freeplay", "free"):
+        contenido = "freeplay"
+    else:
+        try:
+            pesos = int(float(v))
+        except ValueError:
+            return _err("valor no valido (freeplay, pesos o defecto)")
+        if pesos < 100 or pesos % 100 != 0:
+            return _err("los pesos van en pasos de 100, minimo 100")
+        contenido = str(pesos)
+    try:
+        os.makedirs(ATTRACT, exist_ok=True)
+        with open(F_TARIFA_GLOBAL, "w", encoding="utf-8") as f:
+            f.write(contenido + "\n")
+    except OSError as e:
+        return _err("no se pudo escribir: %s" % e)
+    auditar("tarifa_global", contenido)
+    return _ok(**tarifa_global_actual())
 
 
 def juego_reset_nvram(rom):

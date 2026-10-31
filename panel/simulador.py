@@ -57,6 +57,7 @@ ESTADO = {
     "monedas_total": 0,
     "ocultos": set(),           # roms ocultadas desde la GUI
     "tarifas": {},              # rom -> pesos
+    "tarifa_global": "defecto", # 'defecto' | 'freeplay' | pesos (str)
     "volumen": 45,
     "detenido": False,
     "ultimo_cambio": INICIO,
@@ -296,6 +297,13 @@ class Handler(BaseHTTPRequestHandler):
             rom = p.split("/")[3]
             t = tarifa_de(rom)
             return self._json({"rom": rom, "pesos": t["pesos"], "texto": t["texto"]})
+        if p == "/api/tarifa-global":
+            tg = ESTADO["tarifa_global"]
+            if tg == "freeplay":
+                return self._json({"modo": "freeplay"})
+            if tg != "defecto":
+                return self._json({"modo": "pesos", "pesos": int(tg)})
+            return self._json({"modo": "defecto"})
         if p == "/api/botones":
             return self._sse_botones()
         if p == "/api/logs":
@@ -343,6 +351,8 @@ class Handler(BaseHTTPRequestHandler):
             ESTADO["detenido"] = False
         elif p == "/api/volumen":
             ESTADO["volumen"] = int(cuerpo.get("nivel", 45))
+        elif p == "/api/tarifa-global":
+            ESTADO["tarifa_global"] = str(cuerpo.get("valor", "defecto"))
         elif p == "/api/logs/retencion":
             RETENCION["cada"] = int(cuerpo.get("cada", 12))
             RETENCION["unidad"] = cuerpo.get("unidad", "horas")

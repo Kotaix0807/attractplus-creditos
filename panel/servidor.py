@@ -201,6 +201,12 @@ def api_juego_tarifa_get(rom):
     return jsonify(acciones.tarifa_actual(rom))
 
 
+@app.get("/api/tarifa-global")
+@requiere_login
+def api_tarifa_global_get():
+    return jsonify(acciones.tarifa_global_actual())
+
+
 @app.get("/api/logs/retencion")
 @requiere_login
 def api_retencion_get():
@@ -345,6 +351,12 @@ def api_juego_visible(rom):
 @requiere_csrf
 def api_juego_tarifa(rom):
     return jsonify(acciones.juego_tarifa(rom, cuerpo().get("pesos", 100)))
+
+
+@app.post("/api/tarifa-global")
+@requiere_csrf
+def api_tarifa_global():
+    return jsonify(acciones.fijar_tarifa_global(cuerpo().get("valor")))
 
 
 @app.post("/api/juegos/<rom>/eliminar")
