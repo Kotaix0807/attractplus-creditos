@@ -55,7 +55,11 @@ correr() {  # $1 = nombre, resto = variables
 	# GA_MONEDERO=1 porque estos escenarios prueban el monedero compartido,
 	# que desde el 2026-08-29 ya no es el modo por defecto (ver el escenario 9
 	# para el modo de monedas de verdad).
-	( cd "$MAME_DIR" && env GA_MONEDERO=1 GA_ARCHIVO="$T/$n.txt" "$@" GA_VERBOSO=1 GA_SNAP="$T/$n.png" GA_SNAP_FRAMES=$FRAME_CORTE \
+	# GA_AVISO_COMBO=0: estos escenarios confirman la salida con dos pulsaciones
+	# de salir (GA_PRUEBA_SALIR), no con la combinacion arriba-abajo-izq-der (que
+	# se prueba aparte, sin MAME, en prueba_aviso.lua). Aqui se mide la
+	# integracion con MAME: frenar, comerse la tecla, leer la RAM.
+	( cd "$MAME_DIR" && env GA_MONEDERO=1 GA_AVISO_COMBO=0 GA_ARCHIVO="$T/$n.txt" "$@" GA_VERBOSO=1 GA_SNAP="$T/$n.png" GA_SNAP_FRAMES=$FRAME_CORTE \
 		xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 		-snapshot_directory "$T" -video soft -sound none -nothrottle -noswitchres \
 		-window -resolution 640x480 -seconds_to_run 16 \

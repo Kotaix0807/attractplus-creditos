@@ -36,6 +36,8 @@
 --   GA_VIGILAR   0 para no descontar las monedas del jugador
 --   GA_AVISO     0 para no avisar de creditos perdidos al salir
 --   GA_AVISO_ESPERA  frames que el cuadro aguanta en pantalla (por defecto 300)
+--   GA_AVISO_COMBO   0 para confirmar la salida con salir x2 en vez de la
+--                    combinacion arriba-abajo-izquierda-derecha + salir
 --   GA_SINCRONIZAR   0 para no escribir los creditos en la RAM del juego
 --   GA_TOPE          maximo que se escribe en el contador (por defecto 9)
 --   GA_TABLA         fichero de direcciones (por defecto creditos.dat de al lado)
@@ -103,6 +105,9 @@ local ESPERA_AVISO = math.max(30, num('GA_AVISO_ESPERA', 300))
 -- Frames que se ignora un segundo flanco de la tecla de salir: es el rebote de
 -- contactos de la primera pulsacion, no una confirmacion. Ver aviso.lua.
 local GUARDA_AVISO = math.max(0, num('GA_AVISO_GUARDA', 15))
+-- Para confirmar la salida hay que hacer ARRIBA ABAJO IZQUIERDA DERECHA y luego
+-- el boton de salir. GA_AVISO_COMBO=0 vuelve al modo viejo (salir dos veces).
+local COMBO_AVISO = os.getenv('GA_AVISO_COMBO') ~= '0'
 -- Frames que se bloquea el START del juego mientras el aviso esta en pantalla
 -- (y despues de cerrarlo con START), para que ese START no se cuele tambien en
 -- la partida. 0 lo desactiva.
@@ -957,6 +962,10 @@ local function por_frame()
 							local nuevo = math.min(base + n, TOPE)
 							pcall(e.escribir_ram, nuevo)
 							registrar_moneda('panel', n)
+							-- Que el aviso de salida tambien cuente estos: el jugador
+							-- no debe irse dejando creditos, los metiera con moneda o
+							-- con el +1 del panel (decision de Eloy 2026-10-31).
+							if e.aviso then e.aviso.entra(n) end
 							log('panel: %d credito(s) escritos en ff2000 (mwalk, coin no simulable): %d -> %d', n, base, nuevo)
 						else
 							e.restantes = (e.restantes or 0) + n
@@ -965,6 +974,7 @@ local function por_frame()
 								e.reloj = 0
 							end
 							registrar_moneda('panel', n)
+							if e.aviso then e.aviso.entra(n) end   -- cuenta para el aviso de salida
 							log('panel: inyectar %d credito(s) en la partida', n)
 						end
 					else
@@ -1279,7 +1289,8 @@ local function por_frame()
 		-- que el jugador cierra el aviso.
 		local seguir = (GA_ESTADO.leer_start_fisico and GA_ESTADO.leer_start_fisico())
 			or s1 or s2
-		local accion = e.aviso.frame(e.leer_salir(), seguir)
+		local dirs = GA_ESTADO.leer_dirs and GA_ESTADO.leer_dirs() or nil
+		local accion = e.aviso.frame(e.leer_salir(), seguir, dirs)
 
 		if accion == 'bloquear' then
 			-- Esto es lo que frena la salida sin tocar ningun mapeo de
@@ -1437,6 +1448,17 @@ do
 	GA_ESTADO.leer_salir  = lector('UI_CANCEL')
 	GA_ESTADO.leer_start1 = lector('START1')
 	GA_ESTADO.leer_start2 = lector('START2')
+
+	-- Direcciones para la combinacion de confirmacion del aviso (arriba abajo
+	-- izquierda derecha). Se leen por tipo UI, igual que salir, asi que siguen el
+	-- mapeo del mando que el jugador tenga puesto.
+	if COMBO_AVISO then
+		local arr, aba = lector('UI_UP'), lector('UI_DOWN')
+		local izq, der = lector('UI_LEFT'), lector('UI_RIGHT')
+		GA_ESTADO.leer_dirs = function()
+			return { arriba = arr(), abajo = aba(), izquierda = izq(), derecha = der() }
+		end
+	end
 
 	-- Bloqueo del START del juego mientras el aviso esta en pantalla. Sin esto,
 	-- el START con el que el jugador cierra el aviso ("seguir jugando") se cuela

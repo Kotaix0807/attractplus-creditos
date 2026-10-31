@@ -255,5 +255,80 @@ do
 	ok('el mismo numero de lineas en los dos casos', #l == #m)
 end
 
+-- Combinacion de confirmacion: ARRIBA ABAJO IZQUIERDA DERECHA + salir.
+local function dir(d)
+	local t = { arriba = false, abajo = false, izquierda = false, derecha = false }
+	if d then t[d] = true end
+	return t
+end
+-- pulsa una direccion (flanco): un frame pulsada, otro soltada
+local function pulsa_dir(a, d)
+	a.frame(false, false, dir(d))
+	a.frame(false, false, dir(nil))
+end
+
+print('\n13. la combinacion ARRIBA ABAJO IZQUIERDA DERECHA abre la salida')
+do
+	local a = A.nuevo{ dentro = function() return 2 end, guarda = 2 }
+	a.entra(1)
+	igual('se abre el cuadro', a.frame(true, false, dir(nil)), 'bloquear')
+	a.frame(false, false, dir(nil))
+	for _ = 1, 3 do a.frame(false, false, dir(nil)) end   -- pasar la guarda
+	igual('salir sin la combinacion NO sale', a.frame(true, false, dir(nil)), 'bloquear')
+	a.frame(false, false, dir(nil))
+	pulsa_dir(a, 'arriba'); pulsa_dir(a, 'abajo')
+	pulsa_dir(a, 'izquierda'); pulsa_dir(a, 'derecha')
+	igual('con la combinacion completa, salir SI sale', a.frame(true, false, dir(nil)), 'salir')
+end
+
+print('\n13b. una direccion equivocada reinicia la combinacion')
+do
+	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1 }
+	a.entra(1)
+	a.frame(true, false, dir(nil)); a.frame(false, false, dir(nil))
+	a.frame(false, false, dir(nil))
+	pulsa_dir(a, 'arriba')      -- paso 1
+	pulsa_dir(a, 'derecha')     -- equivocada -> reinicia
+	igual('salir no sale tras equivocarse', a.frame(true, false, dir(nil)), 'bloquear')
+	a.frame(false, false, dir(nil))
+	pulsa_dir(a, 'arriba'); pulsa_dir(a, 'abajo')
+	pulsa_dir(a, 'izquierda'); pulsa_dir(a, 'derecha')
+	igual('y sale al hacerla bien', a.frame(true, false, dir(nil)), 'salir')
+end
+
+print('\n13c. una direccion ya pulsada al abrir el cuadro no cuenta como paso')
+do
+	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1 }
+	a.entra(1)
+	a.frame(true, false, dir('arriba'))     -- abre con ARRIBA ya pulsado
+	a.frame(false, false, dir('arriba'))    -- sigue pulsado: no es flanco
+	a.frame(false, false, dir(nil))
+	pulsa_dir(a, 'arriba')                   -- esta pulsacion NUEVA si cuenta
+	pulsa_dir(a, 'abajo'); pulsa_dir(a, 'izquierda'); pulsa_dir(a, 'derecha')
+	igual('solo cuenta la pulsacion nueva', a.frame(true, false, dir(nil)), 'salir')
+end
+
+print('\n13d. el cuadro ensena la combinacion y su progreso')
+do
+	local a = A.nuevo{ dentro = function() return 1 end }
+	a.entra(1)
+	a.frame(true, false, dir(nil))
+	ok('linea de la combinacion', a.lineas(nil)[5] == 'PARA SALIR HAZ LA COMBINACION:')
+	ok('sin pasos hechos', a.lineas(nil)[6] == 'ARRIBA ABAJO IZQUIERDA DERECHA')
+	a.frame(false, false, dir(nil))
+	pulsa_dir(a, 'arriba')
+	ok('primer paso marcado', a.lineas(nil)[6] == '[ARRIBA] ABAJO IZQUIERDA DERECHA')
+end
+
+print('\n13e. sin direcciones (GA_AVISO_COMBO=0) sigue valiendo salir dos veces')
+do
+	local a = A.nuevo{ dentro = function() return 1 end, guarda = 1 }
+	a.entra(1)
+	igual('abre', a.frame(true, false), 'bloquear')
+	a.frame(false, false)
+	a.frame(false, false)
+	igual('y la segunda pulsacion sale', a.frame(true, false), 'salir')
+end
+
 print(string.format('\n=== aviso: %d ok, %d fallos ===', pasadas, fallos))
 os.exit(fallos == 0 and 0 or 1)

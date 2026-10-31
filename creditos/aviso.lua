@@ -83,8 +83,18 @@ function M.nuevo(op)
 		estado    = 'jugando',
 		reloj     = 0,
 		salir_antes = false,
+		-- Combinacion de confirmacion para salir (ARRIBA ABAJO IZQUIERDA DERECHA
+		-- y luego el boton de salir). combo = cuantos pasos lleva hechos; combo_on
+		-- = si este frame nos pasaron las direcciones (si no, se exige salir dos
+		-- veces, como antes). dir_antes guarda el estado anterior para ver flancos.
+		combo     = 0,
+		combo_on  = false,
+		dir_antes = {},
 		log       = op.log or function() end,
 	}
+
+	-- El orden de la combinacion. Cambiarlo aqui lo cambia todo (logica y cuadro).
+	local ORDEN = { 'arriba', 'abajo', 'izquierda', 'derecha' }
 
 	-- Creditos que mete el jugador durante la partida
 	function a.entra(n)
@@ -156,10 +166,36 @@ function M.nuevo(op)
 	--   nil          no hacer nada, dejar que MAME siga a lo suyo
 	--   'bloquear'   comerse las teclas de UI y pintar el cuadro
 	--   'salir'      el jugador ha confirmado: salir de verdad
-	function a.frame(salir, seguir)
+	-- Avanza la combinacion segun las direcciones de ESTE frame (flancos: solo
+	-- cuenta pasar de no-pulsado a pulsado). La direccion esperada avanza un
+	-- paso; cualquier otra direccion reinicia (a 1 si es el inicio, 'arriba').
+	local function avanzar_combo(dirs)
+		local flanco = {}
+		for _, d in ipairs(ORDEN) do
+			local p = dirs[d] and true or false
+			flanco[d] = p and not a.dir_antes[d]
+			a.dir_antes[d] = p
+		end
+		local esperado = ORDEN[a.combo + 1]
+		if esperado and flanco[esperado] then
+			a.combo = a.combo + 1
+			return
+		end
+		for _, d in ipairs(ORDEN) do
+			if flanco[d] then
+				a.combo = (d == 'arriba') and 1 or 0
+				return
+			end
+		end
+	end
+
+	--   dirs  tabla {arriba,abajo,izquierda,derecha} de booleanos, o nil para
+	--         volver al modo viejo (salir dos veces, sin combinacion).
+	function a.frame(salir, seguir, dirs)
 		salir = salir and true or false
 		local flanco_salir = salir and not a.salir_antes
 		a.salir_antes = salir
+		a.combo_on = dirs ~= nil
 
 		if a.estado == 'jugando' then
 			-- Solo molesta si el jugador ha metido monedas aqui dentro y le
@@ -167,6 +203,14 @@ function M.nuevo(op)
 			if flanco_salir and (a.metido > 0) and a.puede_quedar() then
 				a.estado = 'avisando'
 				a.reloj = 0
+				a.combo = 0
+				-- Si el jugador tiene una direccion pulsada al aparecer el cuadro
+				-- (venia jugando), no debe contar como el primer paso: se guarda
+				-- el estado actual para que solo cuenten pulsaciones NUEVAS.
+				a.dir_antes = {}
+				if dirs then
+					for _, d in ipairs(ORDEN) do a.dir_antes[d] = dirs[d] and true or false end
+				end
 
 				playSound(WARN_EXIT_SFX_2)
 
@@ -186,13 +230,18 @@ function M.nuevo(op)
 		-- avisando
 		a.reloj = a.reloj + 1
 
-		-- Segunda pulsacion de salir: adelante, es su decision. Pero no en los
-		-- primeros frames: ahi no es una segunda pulsacion, es el rebote de la
-		-- primera. Una persona que lee el cuadro tarda mucho mas que esto.
+		if dirs then avanzar_combo(dirs) end
+
+		-- Confirmacion de salida. Con combinacion: hay que haber hecho los 4 pasos
+		-- (ARRIBA ABAJO IZQUIERDA DERECHA) y ADEMAS pulsar salir. Sin ella, basta
+		-- con pulsar salir otra vez. En ambos casos se ignoran los primeros frames:
+		-- ahi no es una confirmacion, es el rebote de la primera pulsacion.
 		if flanco_salir then
 			if a.reloj <= a.guarda then
 				a.log('rebote de la tecla de salir (%d frames), no lo tomo por confirmacion',
 					a.reloj)
+			elseif dirs and (a.combo < #ORDEN) then
+				a.log('salir pulsado, pero la combinacion va por %d/%d', a.combo, #ORDEN)
 			else
 				a.estado = 'jugando'
 				a.log('salida confirmada')
@@ -268,6 +317,25 @@ function M.nuevo(op)
 			segunda = string.format('PUEDEN QUEDAR %d CREDITOS DENTRO DE ESTA MAQUINA', n)
 		else
 			segunda = 'PUEDEN QUEDAR CREDITOS DENTRO DE ESTA MAQUINA'
+		end
+
+		if a.combo_on then
+			-- Progreso de la combinacion: los pasos hechos van entre corchetes.
+			local nombres = { 'ARRIBA', 'ABAJO', 'IZQUIERDA', 'DERECHA' }
+			local pasos = {}
+			for i, nm in ipairs(nombres) do
+				pasos[i] = (i <= a.combo) and ('[' .. nm .. ']') or nm
+			end
+			return {
+				'OJO',
+				segunda,
+				tercera,
+				'',
+				'PARA SALIR HAZ LA COMBINACION:',
+				table.concat(pasos, ' '),
+				'Y PULSA SALIR',
+				'START para seguir jugando',
+			}
 		end
 
 		return {
