@@ -1345,7 +1345,7 @@ dietgoea @:maincpu,program,380064   # (cheat)
 dietgoeb @:maincpu,program,380064   # (cheat)
 dietgoj @:maincpu,program,380064   # (cheat)
 dietgou @:maincpu,program,380064   # (cheat)
-digdug @:maincpu,program,85a7 bcd   # (cheat) espejo de solo lectura del chip de E/S de Namco
+digdug @:51xx:mcu,data,19   # (cheat) contador REAL del chip de E/S Namco 51xx (MB8843, data 0x19), confirmado por Eloy 2026-11. OJO: SOLO incrementar; decrementarlo rompe el juego (por eso se deja (cheat): barrido/sincro apagados, y el free play solo sube)
 diggerc @:maincpu,program,1da5   # (cheat)
 dirtfoxj @:maincpu,program,1033fd   # (cheat)
 discoboy @:maincpu,program,f88c   # (cheat)
