@@ -583,6 +583,13 @@ local GLOBAL_TARIFA = leer_tarifa_global()
 -- Upvalue que ve el bucle por-frame: en free play se mantiene un credito escrito
 -- en la RAM (la via para los juegos sin DIP de free play).
 local FREEPLAY = (GLOBAL_TARIFA == 'freeplay')
+-- Si el juego tiene DIP de free play y se lo ponemos, NO hay que escribirle
+-- ademas un credito: el credito hace que muestre "CREDIT 1" en vez de "FREE
+-- PLAY" (lo que le pasaba a Megaman). Con DIP, el DIP manda y no se toca la RAM.
+local FREEPLAY_DIP = false
+-- Cuantos creditos se mantienen en free play por la via RAM. freeplay=2 en
+-- arranque.dat para los juegos donde conviene dejar jugar a 2 gratis.
+local FREEPLAY_N = math.max(1, ajuste('freeplay', 'GA_FREEPLAY', 1))
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
@@ -598,6 +605,7 @@ local function tarifa_vigente()
 			local v = T.valor_freeplay(dip)
 			if v then
 				dip.campo.user_value = v
+				FREEPLAY_DIP = true   -- el DIP manda: NO escribir credito (taparia el FREE PLAY)
 				log('tarifa global FREE PLAY: DIP a partida gratis (valor %s)', tostring(v))
 			else
 				log('tarifa global FREE PLAY: sin DIP; mantengo el credito por RAM si se puede')
@@ -1319,9 +1327,10 @@ local function por_frame()
 		-- repone. Asi siempre hay con que jugar sin meter monedas. Solo en
 		-- direcciones comprobadas y una vez pasado el arranque.
 		if e.freeplay_ram and not e.arranque then
+			local objetivo = e.freeplay_n or 1
 			local okf, v = pcall(e.leer_ram)
-			if okf and type(v) == 'number' and v < 1 then
-				pcall(e.escribir_ram, 1)
+			if okf and type(v) == 'number' and v < objetivo then
+				pcall(e.escribir_ram, objetivo)
 			end
 		end
 
@@ -1757,11 +1766,16 @@ if MEM then
 			-- Free play "por RAM": en los juegos con direccion comprobada (no en
 			-- las importadas) mantenemos un credito escrito. Es la via para los
 			-- que no tienen DIP de free play. Lo aplica por_frame.
-			GA_ESTADO.freeplay_ram = FREEPLAY and entrada.comprobada and true or false
+			-- Credito infinito por RAM solo si NO hay DIP de free play (con DIP,
+			-- escribirlo taparia el "FREE PLAY") y la direccion esta comprobada.
+			GA_ESTADO.freeplay_ram = FREEPLAY and entrada.comprobada and not FREEPLAY_DIP
+			GA_ESTADO.freeplay_n = FREEPLAY_N
 			if GA_ESTADO.freeplay_ram then
-				log('free play: mantendre un credito en la RAM de este juego')
+				log('free play: mantendre %d credito(s) en la RAM de este juego', FREEPLAY_N)
+			elseif FREEPLAY and FREEPLAY_DIP then
+				log('free play: por DIP; no escribo la RAM para que se vea FREE PLAY')
 			elseif FREEPLAY and not entrada.comprobada then
-				log('free play: sin DIP ni direccion comprobada en este juego -- REVISAR')
+				log('free play: direccion importada (no se escribe) y sin DIP -- REVISAR')
 			end
 
 			-- Con arranque tapado, quien decide cuando la RAM es de fiar es
@@ -2033,10 +2047,15 @@ GA_ESTADO.pintor = function()
 	--
 	-- Durante el arranque tapado no se pinta: ahi la moneda esta cerrada y
 	-- ademas el sitio lo ocupa el indicador de carga.
-	if CONTADOR and not e.arranque and e.memoria and not e.a_prueba then
-		local n = e.memoria.dentro()
-		if n and n > 0 then
-			rotulo_derecha(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR)
+	if CONTADOR and not e.arranque then
+		if FREEPLAY then
+			-- En free play el rotulo lo dice claro, para TODOS los juegos.
+			rotulo_derecha(contenedor, 'JUEGO GRATIS', COLOR_INDICADOR)
+		elseif e.memoria and not e.a_prueba then
+			local n = e.memoria.dentro()
+			if n and n > 0 then
+				rotulo_derecha(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR)
+			end
 		end
 	end
 
