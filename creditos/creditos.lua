@@ -1331,6 +1331,24 @@ local function por_frame()
 			local okf, v = pcall(e.leer_ram)
 			if okf and type(v) == 'number' and v < objetivo then
 				pcall(e.escribir_ram, objetivo)
+				-- Red de seguridad para las direcciones importadas: si la
+				-- escritura no se queda puesta, la direccion no sirve y se desiste
+				-- (antes de insistir y arriesgar mas). En las comprobadas siempre
+				-- pega, asi que esto no les afecta.
+				if e.freeplay_prueba then
+					local okv, v2 = pcall(e.leer_ram)
+					if okv and type(v2) == 'number' and v2 >= objetivo then
+						e.freeplay_prueba = nil   -- pego: a partir de aqui, de fiar
+						log('free play: la escritura pega en %s, la mantengo', emu.romname())
+					else
+						e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
+						if e.freeplay_fallos >= 10 then
+							e.freeplay_ram = false
+							log('free play: la escritura NO pega en %s, lo dejo -- REVISAR '
+								.. '(toca el plan B)', emu.romname())
+						end
+					end
+				end
 			end
 		end
 
@@ -1766,16 +1784,24 @@ if MEM then
 			-- Free play "por RAM": en los juegos con direccion comprobada (no en
 			-- las importadas) mantenemos un credito escrito. Es la via para los
 			-- que no tienen DIP de free play. Lo aplica por_frame.
-			-- Credito infinito por RAM solo si NO hay DIP de free play (con DIP,
-			-- escribirlo taparia el "FREE PLAY") y la direccion esta comprobada.
-			GA_ESTADO.freeplay_ram = FREEPLAY and entrada.comprobada and not FREEPLAY_DIP
+			-- Credito infinito por RAM si NO hay DIP de free play (con DIP,
+			-- escribirlo taparia el "FREE PLAY"). En direcciones comprobadas se
+			-- escribe sin mas; en las importadas (cheat) se PRUEBA con red de
+			-- seguridad (ver por_frame): si la escritura no pega, se desiste solo
+			-- en ese juego. Decision de Eloy (2026-11): probar primero las
+			-- importadas; si algun juego se corrompe, se pasa al plan B (monedas).
+			GA_ESTADO.freeplay_ram = FREEPLAY and not FREEPLAY_DIP and (GA_ESTADO.escribir_ram ~= nil)
 			GA_ESTADO.freeplay_n = FREEPLAY_N
-			if GA_ESTADO.freeplay_ram then
+			GA_ESTADO.freeplay_prueba = GA_ESTADO.freeplay_ram and not entrada.comprobada or nil
+			if GA_ESTADO.freeplay_ram and entrada.comprobada then
 				log('free play: mantendre %d credito(s) en la RAM de este juego', FREEPLAY_N)
+			elseif GA_ESTADO.freeplay_ram then
+				log('free play: PROBANDO escribir %d credito(s) en direccion importada '
+					.. '(red de seguridad activa)', FREEPLAY_N)
 			elseif FREEPLAY and FREEPLAY_DIP then
 				log('free play: por DIP; no escribo la RAM para que se vea FREE PLAY')
-			elseif FREEPLAY and not entrada.comprobada then
-				log('free play: direccion importada (no se escribe) y sin DIP -- REVISAR')
+			elseif FREEPLAY then
+				log('free play: sin DIP ni direccion en este juego -- REVISAR')
 			end
 
 			-- Con arranque tapado, quien decide cuando la RAM es de fiar es
@@ -1792,12 +1818,15 @@ if MEM then
 			if entrada.comprobada then
 				log('creditos leidos de la memoria del juego: %s %s %04x',
 					entrada.cpu, entrada.espacio, entrada.dir)
-			else
+			elseif not GA_ESTADO.freeplay_ram then
 				-- Todavia no nos fiamos: hasta que las monedas demuestren que
 				-- ese byte es el contador, no se usa para nada.
 				local ok, v = pcall(GA_ESTADO.leer_ram)
 				GA_ESTADO.a_prueba = { antes = ok and v or nil, dir = entrada.dir }
 			end
+			-- En free play no hay monedas que prueben la direccion importada, asi
+			-- que no se pone 'a_prueba': se va directo a mantener el credito y la
+			-- red de seguridad de por_frame comprueba que la escritura pega.
 
 			-- Sabiendo escribir ahi, no hace falta simular monedas: se pone el
 			-- monedero entero en el contador del juego y los dos numeros pasan
