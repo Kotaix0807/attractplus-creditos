@@ -1,0 +1,70 @@
+diff --git a/src/mame/namco/namcoio.cpp b/src/mame/namco/namcoio.cpp
+index 079a5ea423f..021fa993b3c 100644
+--- a/src/mame/namco/namcoio.cpp
++++ b/src/mame/namco/namcoio.cpp
+@@ -113,6 +113,11 @@ TODO:
+ #include "emu.h"
+ #include "namcoio.h"
+ 
++// Cabina Arcade-UMAG: para leer el fichero de free play (~/.attract/tarifa_global).
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++
+ 
+ #define VERBOSE 0
+ #include "logmacro.h"
+@@ -160,6 +165,25 @@ void namcoio_device::device_start()
+ 	save_item(NAME(m_coins_per_cred));
+ 	save_item(NAME(m_creds_per_coin));
+ 	save_item(NAME(m_in_count));
++
++	// Cabina Arcade-UMAG: free play. Estos chips (56xx/58xx) estan SIMULADOS y
++	// su contador de creditos vive en m_credits, sin direccion de memoria que
++	// se pueda leer/escribir desde fuera. Para el free play de la cabina se lee
++	// la senal global ~/.attract/tarifa_global al arrancar: si dice "freeplay",
++	// handle_coins mantendra el contador en un minimo (2, para permitir tambien
++	// 2 jugadores). Solo SUBE si esta por debajo; nunca lo fuerza a bajar.
++	m_freeplay_floor = 0;
++	if (const char *home = std::getenv("HOME"))
++	{
++		std::string path = std::string(home) + "/.attract/tarifa_global";
++		if (std::FILE *fp = std::fopen(path.c_str(), "r"))
++		{
++			char buf[32] = { 0 };
++			if (std::fgets(buf, sizeof(buf), fp) && std::strstr(buf, "freeplay"))
++				m_freeplay_floor = 2;
++			std::fclose(fp);
++		}
++	}
+ }
+ 
+ //-------------------------------------------------
+@@ -246,6 +270,12 @@ void namcoio_device::handle_coins( int swap )
+ 
+ 	m_credits += credit_add - credit_sub;
+ 
++	// Cabina Arcade-UMAG: free play "al bare metal". Si esta activo, el contador
++	// nunca baja de m_freeplay_floor: el juego ve siempre credito disponible. El
++	// chip resta en START como siempre (credit_sub) y aqui se repone. Solo sube.
++	if (m_freeplay_floor != 0 && m_credits < m_freeplay_floor)
++		m_credits = m_freeplay_floor;
++
+ 	IORAM_WRITE(0 ^ swap, m_credits / 10);   // BCD credits
+ 	IORAM_WRITE(1 ^ swap, m_credits % 10);   // BCD credits
+ 	// these two are cleared by the host CPU in handshake fashion
+diff --git a/src/mame/namco/namcoio.h b/src/mame/namco/namcoio.h
+index 6c3a849c140..b0c995c96f8 100644
+--- a/src/mame/namco/namcoio.h
++++ b/src/mame/namco/namcoio.h
+@@ -44,6 +44,10 @@ protected:
+ 	int            m_reset = 0;
+ 	int32_t        m_lastcoins = 0, m_lastbuttons = 0;
+ 	int32_t        m_credits = 0;
++	// Cabina Arcade-UMAG: en free play el chip 58xx/56xx es simulado y su
++	// contador no tiene direccion de memoria, asi que se "congela" aqui. Suelo
++	// de creditos (0 = apagado). Se fija en device_start leyendo tarifa_global.
++	int32_t        m_freeplay_floor = 0;
+ 	int32_t        m_coins[2]{};
+ 	int32_t        m_coins_per_cred[2]{};
+ 	int32_t        m_creds_per_coin[2]{};
