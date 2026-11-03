@@ -1138,7 +1138,11 @@ local function por_frame()
 	-- jugadores activos pegada a VIDA_OBJETIVO para que no mueran. Solo pasado el
 	-- arranque; solo cuando la vida esta entre 1 y objetivo-1 (no activa slots
 	-- muertos ni pisa la comida que sube por encima). u16 big-endian.
-	if e.vida_peg and not e.arranque then
+	-- SOLO tras una moneda del jugador (e.metidos>0): durante la ATRACCION el
+	-- demo usa estos mismos slots de vida y drena; pegarlos a 999 dejaba al demo
+	-- inmortal, no terminaba, y la placa no dejaba empezar partida. Medido:
+	-- sin moneda, E4 iba 799->749 y D8/E0 aparecian en el demo. (2026-11-02)
+	if e.vida_peg and not e.arranque and e.metidos > 0 then
 		local sp = e.vida_space
 		for _, a in ipairs(e.vida_peg) do
 			local ok, v = pcall(sp.read_u16, sp, a)
