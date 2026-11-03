@@ -593,6 +593,20 @@ local FREEPLAY_DIP = false
 -- freeplay=N en arranque.dat lo cambia por juego.
 local FREEPLAY_N = math.max(1, ajuste('freeplay', 'GA_FREEPLAY', 2))
 
+-- Juegos SIN credito: la "moneda" compra VIDA que se agota sola (Gauntlet). No
+-- hay contador que mantener; en free play se deja la vida de cada jugador ACTIVO
+-- pegada a VIDA_OBJETIVO para que no mueran. Direcciones u16 big-endian (68010),
+-- confirmadas en la cabina 2026-11-02 (la vida sube al meter moneda y drena al
+-- jugar; paso de 4 bytes por jugador). Solo se escribe entre 1 y VIDA_OBJETIVO-1:
+-- asi no se activan slots muertos (vida 0) ni se pisa la comida (vida > objetivo).
+local VIDA_FREEPLAY = {
+	gauntlet = { 0x9048D8, 0x9048DC, 0x9048E0, 0x9048E4 },  -- Warrior/Valkyrie/Wizard/Elf
+	gaunt2   = { 0x904982, 0x904986, 0x90498A, 0x90498E },  -- Red/Blue/Yellow/Green
+}
+VIDA_FREEPLAY.gauntlet2p = VIDA_FREEPLAY.gauntlet
+VIDA_FREEPLAY.gaunt22p   = VIDA_FREEPLAY.gaunt2
+local VIDA_OBJETIVO = math.max(1, math.min(0xFFFF, ajuste('vida', 'GA_VIDA', 999)))
+
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
 	if (TARIFA == 'off') or not T then
@@ -1118,6 +1132,20 @@ local function por_frame()
 			end
 		end
 		procesar_pulsos_panel()   -- cada frame: suelta los pulsos que vencieron
+	end
+
+	-- Free play por VIDA (Gauntlet): no hay credito, se mantiene la vida de los
+	-- jugadores activos pegada a VIDA_OBJETIVO para que no mueran. Solo pasado el
+	-- arranque; solo cuando la vida esta entre 1 y objetivo-1 (no activa slots
+	-- muertos ni pisa la comida que sube por encima). u16 big-endian.
+	if e.vida_peg and not e.arranque then
+		local sp = e.vida_space
+		for _, a in ipairs(e.vida_peg) do
+			local ok, v = pcall(sp.read_u16, sp, a)
+			if ok and type(v) == 'number' and v >= 1 and v < VIDA_OBJETIVO then
+				pcall(sp.write_u16, sp, a, VIDA_OBJETIVO)
+			end
+		end
 	end
 
 	if e.arranque then
@@ -1926,6 +1954,18 @@ if MEM then
 				log('sincronizando %d creditos por escritura, sin insertar monedas', quiero)
 			end
 		end
+	end
+end
+
+-- --- Free play por VIDA (Gauntlet y similares, sin contador de credito) ---
+GA_ESTADO.vida_peg = VIDA_FREEPLAY[emu.romname and emu.romname() or '']
+if GA_ESTADO.vida_peg then
+	GA_ESTADO.vida_space = manager.machine.devices[':maincpu'].spaces['program']
+	if FREEPLAY then
+		log('free play por VIDA: mantengo la vida de los jugadores en %d (%s)',
+			VIDA_OBJETIVO, emu.romname())
+	else
+		GA_ESTADO.vida_peg = nil   -- solo en free play
 	end
 end
 
