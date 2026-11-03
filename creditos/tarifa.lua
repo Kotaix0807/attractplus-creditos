@@ -141,4 +141,32 @@ function M.valor_freeplay(dip)
 	return nil
 end
 
+-- Pone el juego en FREE PLAY por DIP alla donde la placa lo ofrezca, no solo en
+-- el DIP de tarifa elegido por buscar_dip(). Cubre los tres casos vistos:
+--   - un dipswitch SUELTO llamado "Free Play" (On): NeoGeo, CPS, qbert...
+--   - la opcion "Free Play" dentro de un Coinage que no era el elegido
+--     (rampage, wboy, zaxxon la tienen en un campo distinto del de mas tarifas)
+--   - "Free Play (if the other too)" en Coin A Y Coin B a la vez
+--     (goldnaxe, outrun, nemesis: hay que poner los dos)
+-- Devuelve true si toco algun campo.
+function M.aplicar_freeplay()
+	local tocado = false
+	for _, port in pairs(manager.machine.ioport.ports) do
+		for nombre, campo in pairs(port.fields) do
+			if campo.type_class == 'dipswitch' and campo.settings then
+				for valor, texto in pairs(campo.settings) do
+					local suelto = (nombre == 'Free Play')
+						and (texto == 'On' or texto == 'Yes')
+					local _, _, gratis = M.partir(texto)
+					if suelto or gratis then
+						campo.user_value = valor
+						tocado = true
+					end
+				end
+			end
+		end
+	end
+	return tocado
+end
+
 return M

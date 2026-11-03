@@ -587,9 +587,11 @@ local FREEPLAY = (GLOBAL_TARIFA == 'freeplay')
 -- ademas un credito: el credito hace que muestre "CREDIT 1" en vez de "FREE
 -- PLAY" (lo que le pasaba a Megaman). Con DIP, el DIP manda y no se toca la RAM.
 local FREEPLAY_DIP = false
--- Cuantos creditos se mantienen en free play por la via RAM. freeplay=2 en
--- arranque.dat para los juegos donde conviene dejar jugar a 2 gratis.
-local FREEPLAY_N = math.max(1, ajuste('freeplay', 'GA_FREEPLAY', 1))
+-- Cuantos creditos se mantienen en free play por la via RAM/moneda. Por defecto
+-- 2 (decision de Eloy: en free play todos los juegos dejan jugar a 2 gratis, y
+-- se mantienen estaticos: al gastar uno con START, el bucle repone hasta 2).
+-- freeplay=N en arranque.dat lo cambia por juego.
+local FREEPLAY_N = math.max(1, ajuste('freeplay', 'GA_FREEPLAY', 2))
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
@@ -601,15 +603,14 @@ local function tarifa_vigente()
 
 	-- La tarifa GLOBAL manda sobre el DIP guardado y sobre GA_TARIFA.
 	if GLOBAL_TARIFA == 'freeplay' then
-		if dip then
-			local v = T.valor_freeplay(dip)
-			if v then
-				dip.campo.user_value = v
-				FREEPLAY_DIP = true   -- el DIP manda: NO escribir credito (taparia el FREE PLAY)
-				log('tarifa global FREE PLAY: DIP a partida gratis (valor %s)', tostring(v))
-			else
-				log('tarifa global FREE PLAY: sin DIP; mantengo el credito por RAM si se puede')
-			end
+		-- Free Play por DIP alla donde la placa lo ofrezca (dipswitch suelto,
+		-- Coinage que no era el elegido, o Coin A+B a la vez). Si lo hay, MANDA
+		-- el DIP: NO se mantiene credito por RAM (taparia el rotulo FREE PLAY).
+		if T.aplicar_freeplay() then
+			FREEPLAY_DIP = true
+			log('tarifa global FREE PLAY: DIP(s) a partida gratis')
+		else
+			log('tarifa global FREE PLAY: sin DIP; mantengo %d credito(s) por RAM si se puede', FREEPLAY_N)
 		end
 		return 1, 1, true
 	elseif type(GLOBAL_TARIFA) == 'number' then
@@ -744,6 +745,67 @@ local function insertar(e)
 				e.campo:set_value(0)   -- garantiza soltar la moneda
 				log('insercion terminada')
 			end
+		end
+	end
+end
+
+-- --- Joystick virtual del panel: pulsar cualquier control -------------------
+-- El panel (docs/panel.md) manda "pulsar <control>" por panel_cmd cuando hay un
+-- juego en marcha.  Aqui se traduce el control a su tipo de entrada de MAME y se
+-- pulsa su campo PULSO frames, re-afirmando set_value(1) cada frame como hace
+-- insertar() (set_value es un OR con la secuencia fisica, no estorba al jugador).
+-- En el menu del frontend no corre este .lua: ahi lo hace el panel por teclas.
+local PANEL_CTRL = {
+	start1 = 'START1', start2 = 'START2',
+	p1_up = 'P1_JOYSTICK_UP', p1_down = 'P1_JOYSTICK_DOWN',
+	p1_left = 'P1_JOYSTICK_LEFT', p1_right = 'P1_JOYSTICK_RIGHT',
+	p1_b1 = 'P1_BUTTON1', p1_b2 = 'P1_BUTTON2', p1_b3 = 'P1_BUTTON3',
+	p1_b4 = 'P1_BUTTON4', p1_b5 = 'P1_BUTTON5', p1_b6 = 'P1_BUTTON6',
+	p2_up = 'P2_JOYSTICK_UP', p2_down = 'P2_JOYSTICK_DOWN',
+	p2_left = 'P2_JOYSTICK_LEFT', p2_right = 'P2_JOYSTICK_RIGHT',
+	p2_b1 = 'P2_BUTTON1', p2_b2 = 'P2_BUTTON2', p2_b3 = 'P2_BUTTON3',
+	p2_b4 = 'P2_BUTTON4', p2_b5 = 'P2_BUTTON5', p2_b6 = 'P2_BUTTON6',
+}
+
+-- Como buscar_moneda pero por TOKEN cualquiera, comparando TAMBIEN el jugador:
+-- "P2_BUTTON1" tiene el mismo tipo que "P1_BUTTON1" y solo cambia el player.
+local function campo_de_token(token)
+	local io_ = manager.machine.ioport
+	local ok, tipo, jugador = pcall(function() return io_:token_to_input_type(token) end)
+	if not ok or not tipo then return nil end
+	for _, port in pairs(io_.ports) do
+		for _, campo in pairs(port.fields) do
+			if campo.type == tipo and (jugador == nil or campo.player == jugador) then
+				return campo
+			end
+		end
+	end
+	return nil
+end
+
+local function pulsar_control(control)
+	local token = PANEL_CTRL[control]
+	if not token then log('panel: control desconocido: %s', tostring(control)); return end
+	local campo = campo_de_token(token)
+	if not campo then log('panel: esta maquina no tiene %s (%s)', control, token); return end
+	GA_ESTADO.pulsos_panel = GA_ESTADO.pulsos_panel or {}
+	campo:set_value(1)
+	table.insert(GA_ESTADO.pulsos_panel, { campo = campo, quedan = PULSO })
+	log('panel: pulsar %s (%s) durante %d frames', control, token, PULSO)
+end
+
+-- Cada frame: mantiene pulsados los controles vivos y suelta los que vencieron.
+local function procesar_pulsos_panel()
+	local lista = GA_ESTADO.pulsos_panel
+	if not lista or #lista == 0 then return end
+	for i = #lista, 1, -1 do
+		local p = lista[i]
+		p.quedan = p.quedan - 1
+		if p.quedan <= 0 then
+			pcall(function() p.campo:set_value(0) end)
+			table.remove(lista, i)
+		else
+			pcall(function() p.campo:set_value(1) end)
 		end
 	end
 end
@@ -1010,8 +1072,15 @@ local function por_frame()
 					manager.machine:exit()
 					return
 				else
+					local ctrl = orden:match('^pulsar%s+(%S+)$')
 					local n = tonumber(orden:match('^insertar%s+(%d+)$') or '')
-					if n and n > 0 and e.campo then
+					if ctrl then
+						if e.arranque then
+							log('panel: "pulsar %s" ignorado, la placa aun arranca', ctrl)
+						else
+							pulsar_control(ctrl)
+						end
+					elseif n and n > 0 and e.campo then
 						if e.arranque then
 							log('panel: "insertar %d" ignorado, la placa aun arranca', n)
 						elseif emu.romname() == 'mwalk' and e.leer_ram and e.escribir_ram then
@@ -1048,6 +1117,7 @@ local function por_frame()
 				end
 			end
 		end
+		procesar_pulsos_panel()   -- cada frame: suelta los pulsos que vencieron
 	end
 
 	if e.arranque then
@@ -1329,25 +1399,28 @@ local function por_frame()
 		if e.freeplay_ram and not e.arranque then
 			local objetivo = e.freeplay_n or 1
 			local okf, v = pcall(e.leer_ram)
-			if okf and type(v) == 'number' and v < objetivo then
-				pcall(e.escribir_ram, objetivo)
-				-- Red de seguridad para las direcciones importadas: si la
-				-- escritura no se queda puesta, la direccion no sirve y se desiste
-				-- (antes de insistir y arriesgar mas). En las comprobadas siempre
-				-- pega, asi que esto no les afecta.
-				if e.freeplay_prueba then
-					local okv, v2 = pcall(e.leer_ram)
-					if okv and type(v2) == 'number' and v2 >= objetivo then
-						e.freeplay_prueba = nil   -- pego: a partir de aqui, de fiar
-						log('free play: la escritura pega en %s, la mantengo', emu.romname())
-					else
+			-- Free play por MONEDA, no por escritura. Escribir el contador cada frame
+			-- peleaba con el codigo del juego (que gestiona ese byte durante la partida)
+			-- y corrompia el video: dkong3 pintaba una barra de basura sobre el juego.
+			-- Meter la moneda por la ranura pasa por el codigo del propio juego, asi el
+			-- credito queda consistente y no se corrompe nada (verificado en dkong3).
+			-- Solo si la maquina de insercion esta libre.
+			if okf and type(v) == 'number' and (e.fase == 'fin' or e.fase == 'inactivo') then
+				if v < objetivo then
+					e.restantes = objetivo - v
+					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+					-- Red de seguridad (direcciones importadas): si meter monedas no sube
+					-- el contador, la direccion de lectura no sirve; se desiste.
+					if e.freeplay_prueba then
 						e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
 						if e.freeplay_fallos >= 10 then
 							e.freeplay_ram = false
-							log('free play: la escritura NO pega en %s, lo dejo -- REVISAR '
-								.. '(toca el plan B)', emu.romname())
+							log('free play: meter monedas no sube el contador en %s, lo dejo', emu.romname())
 						end
 					end
+				elseif e.freeplay_prueba then
+					e.freeplay_prueba = nil
+					log('free play por moneda OK en %s', emu.romname())
 				end
 			end
 		end
