@@ -211,7 +211,7 @@ static void guardarMapa(void) {
 //   jugar  : ENTER / ESPACIO -> confirmar en el menu
 //   cerrar : se cerro la ventana (SDL_QUIT) -> cierra el programa siempre
 
-typedef struct { int celda, dx, dy, salir, jugar, cerrar; } Entrada;
+typedef struct { int celda, dx, dy, salir, jugar, cerrar, recalibrar; } Entrada;
 
 // Diagnostico (modo demo): el ultimo evento de entrada, en texto, para ver que
 // manda cada control fisico. Se dibuja arriba a la izquierda con dibujarDebug().
@@ -264,7 +264,7 @@ static void leerDireccion(const SDL_Event *e, int *dx, int *dy) {
 }
 
 static Entrada leerEntrada(const SDL_Event *e) {
-    Entrada in = { -1, 0, 0, 0, 0, 0 };
+    Entrada in = { -1, 0, 0, 0, 0, 0, 0 };
     registrarEvento(e);
 
     if (e->type == SDL_QUIT) { in.cerrar = 1; return in; }
@@ -280,6 +280,7 @@ static Entrada leerEntrada(const SDL_Event *e) {
         switch (e->key.keysym.sym) {
             case SDLK_ESCAPE: case SDLK_0:     in.salir = 1; break;
             case SDLK_RETURN: case SDLK_SPACE: in.jugar = 1; break;
+            case SDLK_c: in.recalibrar = 1; break;   // recalibrar los botones del mando
             case SDLK_LEFT:  in.dx = -1; break;
             case SDLK_RIGHT: in.dx =  1; break;
             case SDLK_UP:    in.dy = -1; break;
@@ -602,6 +603,7 @@ static int menu(void) {
         while (SDL_PollEvent(&e)) {
             Entrada in = leerEntrada(&e);
             if (in.cerrar || in.salir) return A_SALIR;
+            if (in.recalibrar && numJoys > 0) { calibrar(); break; }   // tecla C: reasignar botones
             if (in.jugar || in.celda >= 0) { Mix_HaltMusic(); return sel == 0 ? JUEGO_META : JUEGO_TOPO; }
             if (in.dy) sel ^= 1;   // arriba/abajo alterna entre los dos juegos
         }
@@ -614,7 +616,7 @@ static int menu(void) {
         texto("MINIJUEGOS DE LUCES", anchoV / 2, altoV / 5, fuenteBig, AMBAR, 1);
         for (int i = 0; i < 2; i++)
             texto(nombres[i], anchoV / 2, altoV / 2 - 60 + i * 64, fuenteBig, i == sel ? BLANCO : GRIS, 1);
-        texto("arriba/abajo: elegir    boton: jugar    boton 0: salir", anchoV / 2, altoV - 60, fuente, GRIS, 1);
+        texto("arriba/abajo: elegir    boton: jugar    boton 0: salir    C: recalibrar", anchoV / 2, altoV - 60, fuente, GRIS, 1);
         if (demo) {
             texto("teclado: flechas elegir   ENTER jugar   ESC salir", anchoV / 2, altoV - 30, fuente, GRIS, 1);
             dibujarPanelDemo();
