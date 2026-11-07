@@ -334,10 +334,19 @@ static const char *NOMBRE_CELDA[NUM_CELDAS] = {
     "ABAJO   col 1", "ABAJO   col 2", "ABAJO   col 3", "ABAJO   col 4", "ABAJO   col 5", "ABAJO   col 6"
 };
 
+// Ese (joystick, boton) ya se asigno a una celda anterior? (evita mapear el mismo
+// boton a dos cosas, que dejaria botones "muertos" o actuando de salir.)
+static int botonYaUsado(int ji, int btn, int hasta) {
+    for (int c = 0; c < hasta && c < NUM_CELDAS; c++)
+        if (bindCelda[c].joy == ji && bindCelda[c].btn == btn) return 1;
+    return 0;
+}
+
 static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
     int objetivo = 0;         // 0..11 celdas, 12 = boton de salir
-    for (int c = 0; c < NUM_CELDAS; c++) bindCelda[c].joy = -1;
-    bindSalir.joy = -1;
+    int repetido = 0;
+    for (int c = 0; c < NUM_CELDAS; c++) { bindCelda[c].joy = -1; bindCelda[c].btn = -1; }
+    bindSalir.joy = -1; bindSalir.btn = -1;
 
     while (objetivo <= NUM_CELDAS) {
         // Pista en el panel: enciende solo el LED que toca pulsar (salir = extra).
@@ -351,12 +360,16 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
             if (e.type == SDL_QUIT) return 0;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) return 0;
             if (e.type == SDL_JOYBUTTONDOWN) {
-                int ji = joyIndex(e.jbutton.which);
+                int ji = joyIndex(e.jbutton.which), btn = e.jbutton.button;
                 if (ji < 0) continue;
-                struct Bind *b = (objetivo < NUM_CELDAS) ? &bindCelda[objetivo] : &bindSalir;
-                b->joy = ji; b->btn = e.jbutton.button;
-                objetivo++;
-                hecho = 1;
+                int hasta = (objetivo < NUM_CELDAS) ? objetivo : NUM_CELDAS;
+                if (botonYaUsado(ji, btn, hasta)) {
+                    repetido = 1;                 // ese boton ya esta cogido: pide otro
+                } else {
+                    struct Bind *b = (objetivo < NUM_CELDAS) ? &bindCelda[objetivo] : &bindSalir;
+                    b->joy = ji; b->btn = btn;
+                    objetivo++; hecho = 1; repetido = 0;
+                }
             }
             limpiarPantalla();
             texto("CALIBRACION", anchoV / 2, altoV / 4, fuenteBig, AMBAR, 1);
@@ -364,6 +377,7 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
             if (objetivo < NUM_CELDAS) snprintf(msg, sizeof msg, "Pulsa el boton:  %s", NOMBRE_CELDA[objetivo]);
             else                       snprintf(msg, sizeof msg, "Pulsa el boton de SALIR (boton 0)");
             texto(msg, anchoV / 2, altoV / 2, fuente, BLANCO, 1);
+            if (repetido) texto("ese boton ya esta usado, prueba otro", anchoV / 2, altoV / 2 + 50, fuente, AMBAR, 1);
             texto("ESC para cancelar", anchoV / 2, altoV * 3 / 4, fuente, BLANCO, 1);
             SDL_RenderPresent(ren);
         }
@@ -589,13 +603,19 @@ int main(void) {
         joyId[i] = joys[i] ? SDL_JoystickInstanceID(joys[i]) : -1;
     }
 
+    // Mapa de botones "sin asignar" de entrada: asi, sin calibrar, NINGUN boton
+    // del mando hace nada (antes el 0-por-defecto hacia que el boton 0 = salir).
+    for (int c = 0; c < NUM_CELDAS; c++) { bindCelda[c].joy = -1; bindCelda[c].btn = -1; }
+    bindSalir.joy = -1; bindSalir.btn = -1;
+
     cargarPuntajes();
     fifoAbrir();
     fifoLinea("[");             // reclamar el panel al demonio
 
-    // En demo se juega con teclado: no hace falta el mapa de botones del panel.
-    if (!demo && !cargarMapa())
-        calibrar();             // si se cancela, se sigue con los botones sin mapear
+    // Si hay un mando sin mapear, se calibra (tambien en demo, para poder jugar con
+    // el). ESC durante la calibracion lo salta y se juega solo con el teclado.
+    if (!cargarMapa() && numJoys > 0)
+        calibrar();
 
     for (;;) {
         int eleccion = menu();
