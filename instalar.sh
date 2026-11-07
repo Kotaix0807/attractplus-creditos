@@ -20,8 +20,8 @@
 # Se puede fijar por entorno lo que se quiera saltar la deteccion:
 #   MAME=/usr/bin/groovymame ROMS=/ruta CREDITOS=/ruta DESTINO=/ruta
 #   TAREAS="config romlist"   (deps compilar binario config romlist arte crt
-#                              audio monedero salida escritorio teclado descargar
-#                              mame videos)
+#                              audio monedero panel minijuegos salida escritorio
+#                              teclado descargar mame videos)
 #
 # Lo que NO hace, a proposito:
 #   - No toca ~/.attract/config/attract.cfg si ya existe: ahi estan tus teclas.
@@ -1505,6 +1505,45 @@ EOF
 	return 0
 }
 
+# Minijuegos de luces (huevo de pascua): compila el frontend SDL de minijuegos/.
+# El plugin (config/plugins/Minijuegos.nut) lo copia la tarea config; aqui solo
+# se instalan SDL2/ttf/mixer y se compila. Ver docs/minijuegos.md.
+tarea_minijuegos() {
+	paso "Minijuegos de luces: dependencias SDL2 + compilar el frontend"
+
+	local dir="$AQUI/minijuegos"
+	[ -f "$dir/main.c" ] || { rojo "  no encuentro $dir/main.c"; return 1; }
+
+	# SDL2 + SDL2_ttf + SDL2_mixer (dev). Nombres por distro.
+	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer 2>/dev/null; then
+		echo "  faltan librerias SDL2; las instalo"
+		case "$GESTOR" in
+			pacman) sudo pacman -S --needed --noconfirm sdl2 sdl2_ttf sdl2_mixer ;;
+			apt)    sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev ;;
+			dnf)    sudo dnf install -y SDL2-devel SDL2_ttf-devel SDL2_mixer-devel ;;
+			zypper) sudo zypper --non-interactive install libSDL2-devel libSDL2_ttf-devel libSDL2_mixer-devel ;;
+			*) aviso "  no se instalar SDL2 en esta distro; hazlo a mano" ;;
+		esac
+	fi
+	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer 2>/dev/null; then
+		rojo "  SDL2/ttf/mixer siguen sin estar; no puedo compilar los minijuegos"
+		return 1
+	fi
+
+	if make -C "$dir" >/dev/null 2>&1 && [ -x "$dir/minijuegos" ]; then
+		verde "  compilado: $dir/minijuegos"
+	else
+		rojo "  fallo al compilar; mira: make -C $dir"
+		return 1
+	fi
+
+	echo "  PENDIENTE (manual, como el huevo de Adventure):"
+	echo "    - activa el plugin y mapea P2 Start en Configure > Plugins > Minijuegos"
+	echo "    - pon el 'Ejecutable' del plugin a: $dir/minijuegos"
+	echo "    - la primera vez el frontend pide calibrar los botones del panel"
+	return 0
+}
+
 # Pantalla completa SIN bordes (borderless), para que no haya cambio de modo de
 # video (parpadeo/negro) al entrar/salir de un juego. Dos ajustes de config; el
 # binario de GroovyMAME debe llevar ademas el parche opcional (se aplica solo si
@@ -1869,6 +1908,10 @@ monedero_por_defecto=OFF
 panel_por_defecto=OFF
 [ "$ES_GROOVYARCADE" = 1 ] && panel_por_defecto=ON
 
+# Los minijuegos de luces (huevo): en la cabina de serie, fuera no.
+minijuegos_por_defecto=OFF
+[ "$ES_GROOVYARCADE" = 1 ] && minijuegos_por_defecto=ON
+
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
 # Se puede fijar por entorno, que es como se prueba sin ir tarea por tarea:
 #   TAREAS="config romlist" ./instalar.sh --sin-preguntar
@@ -1879,6 +1922,7 @@ if [ -z "${TAREAS:-}" ]; then
 	[ "$audio_por_defecto"    = ON ] && TAREAS="$TAREAS audio"
 	[ "$monedero_por_defecto" = ON ] && TAREAS="$TAREAS monedero"
 	[ "$panel_por_defecto"    = ON ] && TAREAS="$TAREAS panel"
+	[ "$minijuegos_por_defecto" = ON ] && TAREAS="$TAREAS minijuegos"
 	FIJADAS=0
 else
 	FIJADAS=1
@@ -1896,6 +1940,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
 		monedero "Arrancar el demonio del monedero (Arduino) con la cabina" $monedero_por_defecto \
 		panel    "Panel web de control remoto (servicio + Cloudflare)" $panel_por_defecto \
+		minijuegos "Minijuegos de luces del panel (huevo: P2 Start)" $minijuegos_por_defecto \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
 		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
@@ -1948,6 +1993,7 @@ hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
 hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
 hace monedero && { tarea_monedero     || fallos=$((fallos+1)); }
 hace panel    && { tarea_panel        || fallos=$((fallos+1)); }
+hace minijuegos && { tarea_minijuegos || fallos=$((fallos+1)); }
 hace borderless && { tarea_borderless || fallos=$((fallos+1)); }
 hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
 hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }

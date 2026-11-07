@@ -1,27 +1,63 @@
 #!/usr/bin/env python3
+# Demonio del Arduino de la cabina. Unico dueno del puerto serie: multiplexa
+# todos los canales en el protocolo de una-letra-por-linea de arduino/Arcade.ino
+# (a 115200). Antes manejaba el display de 7 segmentos (cabina.ino); eso se
+# descarto y ahora maneja los LEDs de los botones + el rele del monedero.
+#
+# Que manda, segun el estado (lo decide este demonio; la placa obedece el ultimo):
+#
+#   MINIJUEGO  el frontend SDL reclamo el panel por el FIFO -> se reenvian sus
+#              lineas P/X crudas; no se manda A ni B. Rele cerrado (no hay MAME).
+#   EN MAME    pgrep -x mame -> M1 y B<mascara> con los botones que usa el juego.
+#   ATRACCION  ni lo uno ni lo otro -> M0 y A8 (show de animaciones).
+#   siempre    si cambio el brillo -> L<n>.
+#
+# Ficheros vigilados en ~/.attract/ (los escribe creditos.lua / el panel):
+#   monedero_switch  -> M   (1 = partida en marcha, acepta monedas)
+#   botones_juego    -> B   (botones de P1 que usa el juego; aqui se traducen a LEDs)
+#   brillo_leds      -> L   (brillo global 0..255)
+#   arduino_fifo     -> FIFO en tiempo real: lineas P/X del minijuego + '['/']'
+#                      para reclamar/soltar el panel.
+#
+# Tiene que ser un solo proceso: el puerto solo lo puede tener abierto uno, y
+# abrirlo reinicia la placa. Detalle a fondo: docs/minijuegos.md.
 import subprocess
 import os
 import time
-import datetime 
+import datetime
 import serial
 import glob
+import select
 
 MONEYBANK_STATE_PATH = os.path.expanduser("~/.attract/monedero_switch")
-ARDUINO_PATH = "/dev/serial/by-id/"
-ARDUINO_ID = 'usb-1a86_USB2.0-Serial-if00-port0'
-PORT = ARDUINO_PATH + ARDUINO_ID
-BAUD_RATE = 9600
+BOTONES_PATH = os.path.expanduser("~/.attract/botones_juego")
+BRILLO_PATH = os.path.expanduser("~/.attract/brillo_leds")
+FIFO_PATH = os.path.expanduser("~/.attract/arduino_fifo")
+BAUD_RATE = 115200
 LOG_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 UPDATE_TIME = 0.1
 ARDUINO_TIME = 3
 RETRY_TIME = 5
+ANIM_ATRACCION = "8"   # show rotatorio de animaciones
 
-isActive = 0
+# Mapa provisional: boton de accion de P1 (1..6) -> canal de LED del panel.
+# PENDIENTE de confirmar en la cabina (es cableado del panel). Ver docs/minijuegos.md.
+MAPA_BOTONES = {1: 1, 2: 8, 3: 6, 4: 2, 5: 7, 6: 5}
+
 conection = None
 lastError = None
-lastCredit = None
+# Lo ultimo que se mando con exito. None = la placa no sabe nada todavia (se
+# acaba de abrir el puerto, que la reinicia), asi que se manda todo otra vez.
+lastSwitch = None
+lastLed = None
+lastBrillo = None
+minijuego = False     # el PC reclamo el panel por el FIFO
+fifoBuf = ""
 
 def find_port():
+    forzado = os.environ.get("ARDUINO_PORT")                   # util para pruebas / montajes raros
+    if forzado:
+        return forzado
     for c in sorted(glob.glob("/dev/serial/by-id/*1a86*")):   # cualquier CH340
         return c
     for c in sorted(glob.glob("/dev/ttyUSB*")):               # respaldo
@@ -45,79 +81,180 @@ def logOk():
      lastError = None
 
 def initArduino():
-    global conection
-    global lastError
+    global conection, lastSwitch, lastLed, lastBrillo
 
     if conection is not None:
         return True
 
-    PORT = find_port()
+    port = find_port()
+    if port is None:
+        log("no encuentro el Arduino (ni /dev/serial/by-id/*1a86* ni /dev/ttyUSB*)")
+        return False
 
     try:
-        conection = serial.Serial(PORT, BAUD_RATE)
+        conection = serial.Serial(port, BAUD_RATE)
+        # Abrir el puerto reinicia la placa: esperar a que arranque y volver a
+        # mandarle todo, porque ha vuelto a su estado inicial.
         time.sleep(ARDUINO_TIME)
+        lastSwitch = None
+        lastLed = None
+        lastBrillo = None
         logOk()
         return True
-    except (serial.SerialException, serial.SerialTimeoutException) as e:
+    except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
         log(str(e))
         return False
 
 def getFileData(path):
+    # Se abre en cada lectura: los ficheros se reemplazan enteros (temporal +
+    # rename), y con el descriptor abierto se leeria el viejo.
     with open(str(path), "r") as file:
-        data = file.read()
-    return data
-
-def getMoneyBankState():
-    global isActive
-
-    try:
-        fileData = getFileData(MONEYBANK_STATE_PATH)
-        isActive = fileData
-        return isActive
-    except (FileNotFoundError, PermissionError, UnicodeDecodeError, OSError, ValueError, IndexError) as e:
-         log(e)
-         return None
+        return file.read()
 
 def mameRunning():
-    return subprocess.run(["pgrep","-x","mame"], stdout=subprocess.DEVNULL).returncode == 0
+    return subprocess.run(["pgrep", "-x", "mame"], stdout=subprocess.DEVNULL).returncode == 0
 
-def sendToArduino(data):
-    global conection
-    stringData = str(data) + '\n'
+def getMoneyBankState(running):
+    # Sin MAME no hay partida: monedero cerrado, diga lo que diga el fichero
+    # (creditos.lua no puede escribir el 0 al salir, MAME no le da un ultimo frame).
+    if not running:
+        try:
+            with open(MONEYBANK_STATE_PATH, "w") as f:
+                f.write("0")
+        except OSError as e:
+            log(e)
+        return 0
+
     try:
-        conection.write(stringData.encode())
+        return 1 if getFileData(MONEYBANK_STATE_PATH).strip() == "1" else 0
+    except (FileNotFoundError, PermissionError, UnicodeDecodeError, OSError) as e:
+        log(e)
+        return None
+
+def getBrillo():
+    # None = no hay fichero o error -> no se manda nada (la placa queda a 255).
+    try:
+        return max(0, min(255, int(getFileData(BRILLO_PATH).strip())))
+    except FileNotFoundError:
+        return None
+    except (PermissionError, UnicodeDecodeError, OSError, ValueError) as e:
+        log(e)
+        return None
+
+def getBotonesMask():
+    # creditos.lua escribe los botones de P1 que usa el juego; aqui se traducen
+    # a una mascara de 13 bits de canales de LED. 0 = ninguno.
+    try:
+        txt = getFileData(BOTONES_PATH)
+    except FileNotFoundError:
+        return 0    # todavia no corrio creditos.lua que lo escriba
+    except (PermissionError, UnicodeDecodeError, OSError) as e:
+        log(e)
+        return None
+    mask = 0
+    for tok in txt.replace(",", " ").split():
+        try:
+            canal = MAPA_BOTONES.get(int(tok))
+        except ValueError:
+            continue
+        if canal is not None:
+            mask |= (1 << canal)
+    return mask
+
+def enviarCrudo(texto):
+    global conection
+    if conection is None:
+        return False
+    try:
+        conection.write((texto + "\n").encode())
     except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
         log(e)
         conection = None
         return False
-
     logOk()
     return True
 
+def sendToArduino(tipo, valor):
+    return enviarCrudo(tipo + str(valor))
+
+def abrirFifo():
+    # O_RDWR (no solo O_RDONLY) mantiene un extremo escritor abierto, asi el
+    # read nunca da EOF cuando el frontend no esta conectado y no hay que reabrir.
+    try:
+        if not os.path.exists(FIFO_PATH):
+            os.mkfifo(FIFO_PATH)
+        return os.open(FIFO_PATH, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as e:
+        log(e)
+        return None
+
 # main
 
+fifoFd = abrirFifo()
 
 while True:
-
-    time.sleep(UPDATE_TIME)
 
     if initArduino() is False:
         time.sleep(RETRY_TIME)
         continue
 
-    if not mameRunning():
-        with open(MONEYBANK_STATE_PATH, "w") as f:
-            f.write("0")
-        sendToArduino(0)
-        if isActive != 0:
-            sendToArduino(0)
-            isActive = 0
+    # Despertar en cuanto el FIFO tenga datos (minijuego: latencia de un write),
+    # o cada UPDATE_TIME para la ronda de ficheros.
+    if fifoFd is not None:
+        try:
+            select.select([fifoFd], [], [], UPDATE_TIME)
+        except OSError:
+            fifoFd = None
+            time.sleep(UPDATE_TIME)
+    else:
+        time.sleep(UPDATE_TIME)
+        fifoFd = abrirFifo()
+
+    # Drenar el FIFO y reenviar lo del minijuego
+    if fifoFd is not None:
+        try:
+            data = os.read(fifoFd, 4096)
+        except (BlockingIOError, OSError):
+            data = b""
+        if data:
+            fifoBuf += data.decode(errors="ignore")
+            while "\n" in fifoBuf:
+                linea, fifoBuf = fifoBuf.split("\n", 1)
+                linea = linea.strip()
+                if linea == "[":
+                    minijuego = True
+                    lastLed = None   # al salir habra que re-mandar A/B
+                elif linea == "]":
+                    minijuego = False
+                    lastLed = None
+                elif linea and minijuego:
+                    enviarCrudo(linea)   # P<ch>,<v> / X crudos del frontend
+
+    running = mameRunning()
+
+    switch = getMoneyBankState(running)
+    if switch is not None and switch != lastSwitch:
+        if sendToArduino("M", switch) is True:
+            lastSwitch = switch
+            print("Monedero:", switch)
+
+    if conection is None:
         continue
 
-        
-    isActiveBuffer = getMoneyBankState()
-    if isActiveBuffer is None:
-        continue
+    brillo = getBrillo()
+    if brillo is not None and brillo != lastBrillo:
+        if sendToArduino("L", brillo) is True:
+            lastBrillo = brillo
+            print("Brillo:", brillo)
 
-    if sendToArduino(isActive) is True:
-        print("State: ", isActive)
+    # Los LEDs: en minijuego manda el PC (ya reenviado arriba). Si no, A o B.
+    if not minijuego:
+        if running:
+            mask = getBotonesMask()
+            cmd = None if mask is None else ("B%X" % mask)
+        else:
+            cmd = "A" + ANIM_ATRACCION
+        if cmd is not None and cmd != lastLed:
+            if enviarCrudo(cmd) is True:
+                lastLed = cmd
+                print("LEDs:", cmd)
