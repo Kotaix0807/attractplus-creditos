@@ -54,7 +54,10 @@ static const SDL_Color BLANCO = { 235, 235, 235, 255 };
 static const SDL_Color AMBAR  = { 255, 210,  40, 255 };
 static const SDL_Color GRIS   = { 120, 120, 130, 255 };
 
-enum { A_MENU, A_SALIR };    // que hace cada funcion al volver
+// Que devuelve menu()/los juegos al volver. OJO: A_MENU=0 y A_SALIR=1, por eso
+// las dos opciones de juego valen 2 y 3 (no 1, que chocaria con A_SALIR y haria
+// que elegir el primer juego cerrara el programa).
+enum { A_MENU, A_SALIR, JUEGO_META, JUEGO_TOPO };
 
 // ------- estado global -------
 static SDL_Window   *win;
@@ -76,6 +79,20 @@ static void pantallaFin(int puntos, int record);   // se define en la seccion 8
 static void rutaHome(char *buf, size_t n, const char *nombre) {
     const char *home = getenv("HOME");
     snprintf(buf, n, "%s/.attract/%s", home ? home : ".", nombre);
+}
+
+// Log de diagnostico a ~/.attract/minijuegos.log (para cazar por que se sale).
+static void registro(const char *fmt, ...) {
+    char ruta[1024];
+    rutaHome(ruta, sizeof ruta, "minijuegos.log");
+    FILE *f = fopen(ruta, "a");
+    if (!f) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
 }
 
 // ============================ 2. FIFO / LEDs ================================
@@ -585,7 +602,7 @@ static int menu(void) {
         while (SDL_PollEvent(&e)) {
             Entrada in = leerEntrada(&e);
             if (in.cerrar || in.salir) return A_SALIR;
-            if (in.jugar || in.celda >= 0) { Mix_HaltMusic(); return sel == 0 ? 1 : 2; }
+            if (in.jugar || in.celda >= 0) { Mix_HaltMusic(); return sel == 0 ? JUEGO_META : JUEGO_TOPO; }
             if (in.dy) sel ^= 1;   // arriba/abajo alterna entre los dos juegos
         }
 
@@ -641,7 +658,11 @@ int main(void) {
     snprintf(rf, sizeof rf, "%sfuente.ttf", rutaBase);
     fuente    = TTF_OpenFont(rf, 28);
     fuenteBig = TTF_OpenFont(rf, 52);
-    if (!fuente || !fuenteBig) { fprintf(stderr, "fuente %s: %s\n", rf, TTF_GetError()); return 1; }
+    if (!fuente || !fuenteBig) 
+    { 
+        fprintf(stderr, "fuente %s: %s\n", rf, TTF_GetError()); 
+        return 1; 
+    }
 
     Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
@@ -662,6 +683,13 @@ int main(void) {
         joyId[i] = joys[i] ? SDL_JoystickInstanceID(joys[i]) : -1;
     }
 
+    registro("=== arranque: demo=%d joysticks=%d ===", demo, numJoys);
+    for (int i = 0; i < numJoys; i++)
+        registro("  joy %d: '%s'  botones=%d ejes=%d hats=%d", i,
+                 SDL_JoystickName(joys[i]) ? SDL_JoystickName(joys[i]) : "?",
+                 SDL_JoystickNumButtons(joys[i]), SDL_JoystickNumAxes(joys[i]),
+                 SDL_JoystickNumHats(joys[i]));
+
     // Mapa de botones "sin asignar" de entrada: asi, sin calibrar, NINGUN boton
     // del mando hace nada (antes el 0-por-defecto hacia que el boton 0 = salir).
     for (int c = 0; c < NUM_CELDAS; c++) { bindCelda[c].joy = -1; bindCelda[c].btn = -1; }
@@ -676,16 +704,19 @@ int main(void) {
     if (!cargarMapa() && numJoys > 0)
         calibrar();
 
-    for (;;) {
+    while(1) {
         int eleccion = menu();
-        if (eleccion == A_SALIR) break;
-        int r = (eleccion == 1) ? jugarMeta() : jugarTopo();   // cada juego muestra su fin de ronda
-        if (r == A_SALIR) break;
+        if (eleccion == A_SALIR) 
+            break;
+        int gameSelect = (eleccion == JUEGO_META) ? jugarMeta() : jugarTopo();   // cada juego muestra su fin de ronda
+        if (gameSelect == A_SALIR)
+            break;
     }
 
     fifoLinea("]");             // soltar el panel -> el demonio vuelve a atraccion
     ledApagarTodo();
-    if (fifoFd >= 0) close(fifoFd);
+    if (fifoFd >= 0) 
+        close(fifoFd);
     SDL_Quit();
     return 0;
 }
