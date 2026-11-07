@@ -75,6 +75,8 @@ void setup() {
 
   fijarMonedero(false); // el PCA9685 no se reinicia con el Arduino: forzar estado conocido
   apagarTodos();
+  modo = M_ANIM;            // arranca ANIMANDO (atraccion): asi la placa anima aunque
+  ultimoCambioShow = millis(); // no haya demonio todavia; el demonio luego confirma o cambia
 }
 
 // Escala por el brillo global, salvo el rele (que es on/off puro).
