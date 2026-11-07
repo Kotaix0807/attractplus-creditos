@@ -158,7 +158,8 @@ static int teclaCelda(SDL_Keycode k) {
 }
 
 static int cargarMapa(void) {
-    char ruta[1024]; rutaHome(ruta, sizeof ruta, "minijuegos_mapa.conf");
+    char ruta[1024];
+    rutaHome(ruta, sizeof ruta, "minijuegos_mapa.conf");
     FILE *f = fopen(ruta, "r");
     if (!f) return 0;
     for (int c = 0; c < NUM_CELDAS; c++) bindCelda[c].joy = -1;
@@ -173,7 +174,8 @@ static int cargarMapa(void) {
 }
 
 static void guardarMapa(void) {
-    char ruta[1024]; rutaHome(ruta, sizeof ruta, "minijuegos_mapa.conf");
+    char ruta[1024];
+    rutaHome(ruta, sizeof ruta, "minijuegos_mapa.conf");
     FILE *f = fopen(ruta, "w");
     if (!f) return;
     for (int c = 0; c < NUM_CELDAS; c++)
@@ -193,6 +195,30 @@ static void guardarMapa(void) {
 //   cerrar : se cerro la ventana (SDL_QUIT) -> cierra el programa siempre
 
 typedef struct { int celda, dx, dy, salir, jugar, cerrar; } Entrada;
+
+// Diagnostico (modo demo): el ultimo evento de entrada, en texto, para ver que
+// manda cada control fisico. Se dibuja arriba a la izquierda con dibujarDebug().
+static char ultimoEvt[96] = "";
+static void registrarEvento(const SDL_Event *e) {
+    switch (e->type) {
+        case SDL_JOYBUTTONDOWN:
+            snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  BOTON %d",
+                     joyIndex(e->jbutton.which), e->jbutton.button); break;
+        case SDL_JOYAXISMOTION:
+            if (e->jaxis.value > UMBRAL || e->jaxis.value < -UMBRAL)
+                snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  EJE %d = %d",
+                         joyIndex(e->jaxis.which), e->jaxis.axis, e->jaxis.value);
+            break;
+        case SDL_JOYHATMOTION:
+            if (e->jhat.value)
+                snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  HAT = %d",
+                         joyIndex(e->jhat.which), e->jhat.value);
+            break;
+        case SDL_KEYDOWN:
+            snprintf(ultimoEvt, sizeof ultimoEvt, "TECLA %s", SDL_GetKeyName(e->key.keysym.sym));
+            break;
+    }
+}
 
 // Estado de los ejes (compartido por todos los sticks) para dar un paso por empujon.
 static int ejeXact = 0, ejeYact = 0;
@@ -222,6 +248,7 @@ static void leerDireccion(const SDL_Event *e, int *dx, int *dy) {
 
 static Entrada leerEntrada(const SDL_Event *e) {
     Entrada in = { -1, 0, 0, 0, 0, 0 };
+    registrarEvento(e);
 
     if (e->type == SDL_QUIT) { in.cerrar = 1; return in; }
 
@@ -252,7 +279,8 @@ static Entrada leerEntrada(const SDL_Event *e) {
 // ============================= 5. PUNTAJES ==================================
 
 static void cargarPuntajes(void) {
-    char ruta[1024]; rutaHome(ruta, sizeof ruta, "minijuegos.json");
+    char ruta[1024];
+    rutaHome(ruta, sizeof ruta, "minijuegos.json");
     FILE *f = fopen(ruta, "r");
     if (!f) return;
     char buf[256] = {0};
@@ -265,7 +293,8 @@ static void cargarPuntajes(void) {
 }
 
 static void guardarPuntajes(void) {
-    char ruta[1024]; rutaHome(ruta, sizeof ruta, "minijuegos.json");
+    char ruta[1024];
+    rutaHome(ruta, sizeof ruta, "minijuegos.json");
     FILE *f = fopen(ruta, "w");
     if (!f) return;
     fprintf(f, "{\"meta\": %d, \"topo\": %d}\n", recordMeta, recordTopo);
@@ -314,15 +343,31 @@ static void dibujarPanelDemo(void) {
     }
 }
 
+// Diagnostico (modo demo): el ultimo evento de entrada, arriba a la izquierda.
+static void dibujarDebug(void) {
+    if (!demo || ultimoEvt[0] == '\0') return;
+    texto(ultimoEvt, 10, 8, fuente, AMBAR, 0);
+}
+
 // Pantalla comun de los dos juegos: titulo, puntos, record y segundos restantes.
 static void hud(const char *titulo, int puntos, int record, Uint32 restante_ms) {
     char s[64];
     limpiarPantalla();
     texto(titulo, anchoV / 2, 40, fuenteBig, BLANCO, 1);
-    snprintf(s, sizeof s, "Puntos: %d", puntos);  texto(s, anchoV / 2, altoV / 2 - 30, fuenteBig, BLANCO, 1);
-    snprintf(s, sizeof s, "Record: %d", record);  texto(s, anchoV / 2, altoV / 2 + 40, fuente, BLANCO, 1);
-    snprintf(s, sizeof s, "%u s", restante_ms / 1000); texto(s, anchoV / 2, altoV - 70, fuente, BLANCO, 1);
-    if (demo) dibujarPanelDemo();
+
+    snprintf(s, sizeof s, "Puntos: %d", puntos);
+    texto(s, anchoV / 2, altoV / 2 - 30, fuenteBig, BLANCO, 1);
+
+    snprintf(s, sizeof s, "Record: %d", record);
+    texto(s, anchoV / 2, altoV / 2 + 40, fuente, BLANCO, 1);
+
+    snprintf(s, sizeof s, "%u s", restante_ms / 1000);
+    texto(s, anchoV / 2, altoV - 70, fuente, BLANCO, 1);
+
+    if (demo) {
+        dibujarPanelDemo();
+        dibujarDebug();
+    }
 }
 
 // ============================ 7. CALIBRACION ================================
@@ -377,8 +422,11 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
             if (objetivo < NUM_CELDAS) snprintf(msg, sizeof msg, "Pulsa el boton:  %s", NOMBRE_CELDA[objetivo]);
             else                       snprintf(msg, sizeof msg, "Pulsa el boton de SALIR (boton 0)");
             texto(msg, anchoV / 2, altoV / 2, fuente, BLANCO, 1);
-            if (repetido) texto("ese boton ya esta usado, prueba otro", anchoV / 2, altoV / 2 + 50, fuente, AMBAR, 1);
+            if (repetido)
+                texto("ese boton ya esta usado, prueba otro", anchoV / 2, altoV / 2 + 50, fuente, AMBAR, 1);
             texto("ESC para cancelar", anchoV / 2, altoV * 3 / 4, fuente, BLANCO, 1);
+            if (ultimoEvt[0])   // que manda el ultimo control pulsado (diagnostico)
+                texto(ultimoEvt, 10, 8, fuente, AMBAR, 0);
             SDL_RenderPresent(ren);
         }
     }
@@ -507,8 +555,13 @@ static void pantallaFin(int puntos, int record) {
         char s[64];
         limpiarPantalla();
         texto("FIN", anchoV / 2, altoV / 3, fuenteBig, AMBAR, 1);
-        snprintf(s, sizeof s, "Puntos: %d", puntos);  texto(s, anchoV / 2, altoV / 2, fuenteBig, BLANCO, 1);
-        snprintf(s, sizeof s, "Record: %d", record);  texto(s, anchoV / 2, altoV / 2 + 70, fuente, BLANCO, 1);
+
+        snprintf(s, sizeof s, "Puntos: %d", puntos);
+        texto(s, anchoV / 2, altoV / 2, fuenteBig, BLANCO, 1);
+
+        snprintf(s, sizeof s, "Record: %d", record);
+        texto(s, anchoV / 2, altoV / 2 + 70, fuente, BLANCO, 1);
+
         SDL_RenderPresent(ren);
         SDL_Delay(16);
         if (fin == 0) break;
@@ -548,6 +601,7 @@ static int menu(void) {
         if (demo) {
             texto("teclado: flechas elegir   ENTER jugar   ESC salir", anchoV / 2, altoV - 30, fuente, GRIS, 1);
             dibujarPanelDemo();
+            dibujarDebug();
         }
         SDL_RenderPresent(ren);
         SDL_Delay(16);
@@ -557,7 +611,8 @@ static int menu(void) {
 // =============================== 10. MAIN ==================================
 
 static void cargarSonido(Mix_Chunk **sfx, const char *nombre) {
-    char ruta[1200]; snprintf(ruta, sizeof ruta, "%ssonidos/%s", rutaBase, nombre);
+    char ruta[1200];
+    snprintf(ruta, sizeof ruta, "%ssonidos/%s", rutaBase, nombre);
     *sfx = Mix_LoadWAV(ruta);
 }
 
@@ -582,7 +637,8 @@ int main(void) {
     if (!demo) SDL_ShowCursor(SDL_DISABLE);
 
     if (TTF_Init() < 0) { fprintf(stderr, "TTF_Init: %s\n", TTF_GetError()); return 1; }
-    char rf[1100]; snprintf(rf, sizeof rf, "%sfuente.ttf", rutaBase);
+    char rf[1100];
+    snprintf(rf, sizeof rf, "%sfuente.ttf", rutaBase);
     fuente    = TTF_OpenFont(rf, 28);
     fuenteBig = TTF_OpenFont(rf, 52);
     if (!fuente || !fuenteBig) { fprintf(stderr, "fuente %s: %s\n", rf, TTF_GetError()); return 1; }
@@ -593,9 +649,12 @@ int main(void) {
     cargarSonido(&sfxOk,   "correct.wav");
     cargarSonido(&sfxFail, "incorrect.wav");
     cargarSonido(&sfxTopo, "MW_KeyAppear.wav");
+
     char rm[1200];
-    snprintf(rm, sizeof rm, "%ssonidos/menu.mp3", rutaBase); musMenu = Mix_LoadMUS(rm);
-    snprintf(rm, sizeof rm, "%ssonidos/fin.mp3",  rutaBase); musFin  = Mix_LoadMUS(rm);
+    snprintf(rm, sizeof rm, "%ssonidos/menu.mp3", rutaBase);
+    musMenu = Mix_LoadMUS(rm);
+    snprintf(rm, sizeof rm, "%ssonidos/fin.mp3", rutaBase);
+    musFin = Mix_LoadMUS(rm);
 
     numJoys = SDL_NumJoysticks(); if (numJoys > 16) numJoys = 16;
     for (int i = 0; i < numJoys; i++) {
