@@ -880,16 +880,28 @@ static int jugarTopo(void) {
 
 // Tras una ronda: puntaje y record unos segundos, o hasta que se pulse algo.
 static void pantallaFin(int puntos, int record) {
-    //if (musFin)
-      //  Mix_PlayMusic(musFin, 1);   // una vez
+    // La musica de fin la lanza cada juego ANTES de llamar aqui. Esta pantalla
+    // espera a que ESE sonido termine (asi no se corta al volver al menu). Se puede
+    // saltar pulsando algo tras una gracia corta, y hay un tope de seguridad.
     ledApagarTodo();
-    Uint32 fin = SDL_GetTicks() + 4000;
-    while (SDL_GetTicks() < fin) {
+    Uint32 ini = SDL_GetTicks();
+    int cortar = 0;
+    while (!cortar) {
+        Uint32 t = SDL_GetTicks() - ini;
+        if (t >= 1000 && !Mix_PlayingMusic())   // el sonido ya acabo (o no habia): minimo 1 s
+            break;
+        if (t >= 30000)                         // tope de seguridad, por si acaso
+            break;
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             Entrada in = leerEntrada(&e);
-            if (in.cerrar || in.salir || in.jugar || in.celda >= 0) fin = 0;  // cualquier cosa corta
+            if (in.cerrar)                                             // cerrar ventana: salir ya
+                cortar = 1;
+            else if (t >= 800 && (in.salir || in.jugar || in.celda >= 0))
+                cortar = 1;                                           // saltar (tras 0,8 s de gracia)
         }
+
         char s[64];
         limpiarPantalla();
         texto("FIN", anchoV / 2, altoV / 3, fuenteBig, AMBAR, 1);
@@ -902,8 +914,6 @@ static void pantallaFin(int puntos, int record) {
 
         SDL_RenderPresent(ren);
         SDL_Delay(16);
-        if (fin == 0)
-            break;
     }
 }
 
