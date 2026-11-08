@@ -754,10 +754,11 @@ static int jugarTopo(void) {
                 visible = 400;
 
             topoHasta = ahora + visible;
-            // El topo suena mas agudo segun avanza la ronda (demo de cambiarPitch).
+            // El topo suena a un tono aleatorio entre 1.0 y 1.8 (demo de cambiarPitch).
             if (topoAgudo)
                 Mix_FreeChunk(topoAgudo);              // libera el de la vez anterior
-            topoAgudo = cambiarPitch(sfxTopo, 1.0f + puntos * 0.03f);
+            float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.8f;   // 1.0 .. 1.8
+            topoAgudo = cambiarPitch(sfxTopo, tono);
             Mix_PlayChannel(-1, topoAgudo ? topoAgudo : sfxTopo, 0);
 
         } else if (topo >= 0 && ahora >= topoHasta) {  // se escapo
@@ -946,9 +947,9 @@ static void initMix()
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         fprintf(stderr, "audio: %s (se juega sin sonido)\n", Mix_GetError());
 
-    cargarSonido(&sfxOk,   "correct.wav");
+    cargarSonido(&sfxOk,   "dragon-coin.wav");
     cargarSonido(&sfxFail, "incorrect.wav");
-    cargarSonido(&sfxTopo, "MW_KeyAppear.wav");
+    cargarSonido(&sfxTopo, "screen-scroll.wav");
     
     char rm[1200];
     snprintf(rm, sizeof rm, "%ssonidos/menu.mp3", rutaBase);
