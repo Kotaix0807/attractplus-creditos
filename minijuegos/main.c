@@ -65,6 +65,9 @@ static SDL_Renderer *ren;
 static TTF_Font     *fuente, *fuenteBig;
 static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo, *sfxWhack;
 static Mix_Music    *musMenu, *musTopo, *musTopoFin, *musFin;
+// Copias con el tono cambiado (una viva por sonido; se liberan solas, ver reproducirPitch).
+static Mix_Chunk    *okAgudo = NULL, *topoAgudo = NULL;
+static int           okCanal = -1, topoCanal = -1;
 static int anchoV, altoV;
 static int demo = 0;             // MINIJUEGOS_DEMO=1: ventana + teclado + panel en pantalla
 static char rutaBase[1024];      // carpeta del ejecutable (de ahi salen fuente y sonidos)
@@ -149,6 +152,31 @@ static Mix_Chunk *cambiarPitch(Mix_Chunk *orig, float factor) {
     nuevo->alen   = framesNuevo * bytesPorFrame;
     nuevo->volume = orig->volume;
     return nuevo;
+}
+
+// Reproduce 'orig' con el tono 'factor' reutilizando un unico slot (sin fugas):
+// libera la copia anterior de ese slot antes de crear la nueva. Para evitar leer
+// memoria liberada, solo corta el canal si AUN esta sonando esa copia (no toca
+// otros sonidos que ya reutilizaron el canal).
+static void reproducirPitch(Mix_Chunk **slot, int *canal, Mix_Chunk *orig, float factor) {
+    if (*slot) {
+        if (*canal >= 0 && Mix_GetChunk(*canal) == *slot)
+            Mix_HaltChannel(*canal);
+        Mix_FreeChunk(*slot);
+    }
+    *slot = cambiarPitch(orig, factor);
+    *canal = Mix_PlayChannel(-1, *slot ? *slot : orig, 0);
+}
+
+// Libera el slot (al cerrar el programa). Igual de cuidadoso con el canal.
+static void liberarPitch(Mix_Chunk **slot, int *canal) {
+    if (!*slot)
+        return;
+    if (*canal >= 0 && Mix_GetChunk(*canal) == *slot)
+        Mix_HaltChannel(*canal);
+    Mix_FreeChunk(*slot);
+    *slot = NULL;
+    *canal = -1;
 }
 
 // ============================ 2. FIFO / LEDs ================================
@@ -735,9 +763,8 @@ static int jugarMeta(void) {
                 cursor = mover(cursor, in.dx, in.dy);
                 if (cursor == meta) {
                     puntos++;
-                    float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.3f;   // 1.0 .. 1.8
-                    Mix_Chunk *highPitchOk = cambiarPitch(sfxOk, tono);
-                    Mix_PlayChannel(-1, highPitchOk, 0);
+                    float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.3f;   // 1.0 .. 1.3
+                    reproducirPitch(&okAgudo, &okCanal, sfxOk, tono);               // sin fugas
                     meta = celdaAlAzarMenos(cursor);
                 }
             }
@@ -762,8 +789,6 @@ static int jugarMeta(void) {
 static int jugarTopo(void) {
     int puntos = 0, topo = -1;
     Uint32 ini = SDL_GetTicks(), topoHasta = 0, proximo = SDL_GetTicks() + 400;
-    static Mix_Chunk *topoAgudo = NULL;   // copia del sonido del topo con el tono subido
-                                          // (static: se reaprovecha y se libera en el siguiente topo)
     ledApagarTodo();
 
     Mix_PlayMusic(musTopo, -1);
@@ -781,11 +806,8 @@ static int jugarTopo(void) {
 
             topoHasta = ahora + visible;
             // El topo suena a un tono aleatorio entre 1.0 y 1.8 (demo de cambiarPitch).
-            if (topoAgudo)
-                Mix_FreeChunk(topoAgudo);              // libera el de la vez anterior
             float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.8f;   // 1.0 .. 1.8
-            topoAgudo = cambiarPitch(sfxTopo, tono);
-            Mix_PlayChannel(-1, topoAgudo ? topoAgudo : sfxTopo, 0);
+            reproducirPitch(&topoAgudo, &topoCanal, sfxTopo, tono);         // sin fugas
 
         } else if (topo >= 0 && ahora >= topoHasta) {  // se escapo
             topo = -1;
@@ -1060,8 +1082,10 @@ int main(void) {
 
     fifoLinea("]");             // soltar el panel -> el demonio vuelve a atraccion
     ledApagarTodo();
-    if (fifoFd >= 0) 
+    if (fifoFd >= 0)
         close(fifoFd);
+    liberarPitch(&okAgudo, &okCanal);       // libera las copias de tono (sin fugas)
+    liberarPitch(&topoAgudo, &topoCanal);
     SDL_Quit();
     return 0;
 }
