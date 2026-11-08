@@ -852,6 +852,7 @@ static void topoSpriteInit(SpriteTopo *s) {
             s->w = s->h * tw / th;   // respeta la proporcion del sprite
     }
     s->angulo = 0;
+    s->tgolpe = 0;
     s->tex = texTopoAppear;
     s->pcx = s->pcy = s->hcx = s->hcy = s->cx = s->cy = -10000;  // se fijan en Aparece
 }
