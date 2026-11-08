@@ -63,7 +63,7 @@ enum { A_MENU, A_SALIR, JUEGO_META, JUEGO_TOPO };
 static SDL_Window   *win;
 static SDL_Renderer *ren;
 static TTF_Font     *fuente, *fuenteBig;
-static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo;
+static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo, *sfxWhack;
 static Mix_Music    *musMenu, *musFin;
 static int anchoV, altoV;
 static int demo = 0;             // MINIJUEGOS_DEMO=1: ventana + teclado + panel en pantalla
@@ -359,6 +359,26 @@ static void registrarEvento(const SDL_Event *e) {
 static int ejeXact = 0, ejeYact = 0;
 static void reiniciarEjes(void) { ejeXact = ejeYact = 0; }
 
+// Rectangulo en pantalla de la celda c del panel de demo. La usan el dibujo y el
+// hit-test del raton, asi que el clic cuadra siempre con lo que se ve.
+static SDL_Rect celdaRect(int c) {
+    int s = anchoV / 14, gap = s / 4;
+    int x0 = (anchoV - (6 * s + 5 * gap)) / 2;
+    int y0 = altoV - 2 * s - gap - 72;
+    SDL_Rect r = { x0 + (c % 6) * (s + gap), y0 + (c / 6) * (s + gap), s, s };
+    return r;
+}
+
+// Que celda del panel (0..11) cae en el pixel (mx,my), o -1 si ninguna.
+static int celdaEnPixel(int mx, int my) {
+    for (int c = 0; c < NUM_CELDAS; c++) {
+        SDL_Rect r = celdaRect(c);
+        if (mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h)
+            return c;
+    }
+    return -1;
+}
+
 // Convierte el movimiento analogico de un stick (ejes 0 y 1) o su cruceta en dx/dy.
 static void leerDireccion(const SDL_Event *e, int *dx, int *dy) {
     if (e->type == SDL_JOYAXISMOTION) {
@@ -448,6 +468,14 @@ static Entrada leerEntrada(const SDL_Event *e) {
         return in;
     }
 
+    // Clic del raton sobre el panel de demo = pulsar esa celda (acierto en el topo).
+    if (demo && e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_LEFT) {
+        int c = celdaEnPixel(e->button.x, e->button.y);
+        if (c >= 0)
+            in.celda = c;
+        return in;
+    }
+
     leerDireccion(e, &in.dx, &in.dy);   // ejes / cruceta del mando
     return in;
 }
@@ -530,12 +558,7 @@ static void dibujarPanelDemo(void) {
     SDL_SetRenderDrawColor(ren, ve, ve * 4 / 5, 12, 255);
     SDL_RenderFillRect(ren, &ex);
     for (int c = 0; c < NUM_CELDAS; c++) {
-        SDL_Rect r = { 
-            x0 + (c % 6) * (s + gap),
-            y0 + (c / 6) * (s + gap),
-            s,
-            s
-        };
+        SDL_Rect r = celdaRect(c);                 // misma geometria que el hit-test del raton
         int v = ledEstado[CANAL[c]];
         SDL_SetRenderDrawColor(ren, v, v * 4 / 5, 12, 255);
         SDL_RenderFillRect(ren, &r);
@@ -779,7 +802,7 @@ static int jugarTopo(void) {
             if (in.celda >= 0) {
                 if (in.celda == topo) {                // acierto
                     puntos++;
-                    Mix_PlayChannel(-1, sfxOk, 0);
+                    Mix_PlayChannel(-1, sfxWhack, 0);
                     topo = -1;
                     proximo = ahora + 250;
                 } else {                               // fallo
@@ -948,6 +971,7 @@ static void initMix()
         fprintf(stderr, "audio: %s (se juega sin sonido)\n", Mix_GetError());
 
     cargarSonido(&sfxOk,   "dragon-coin.wav");
+    cargarSonido(&sfxWhack,   "clap-pop.wav");
     cargarSonido(&sfxFail, "incorrect.wav");
     cargarSonido(&sfxTopo, "screen-scroll.wav");
     
