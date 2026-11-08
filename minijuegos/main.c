@@ -64,7 +64,7 @@ static SDL_Window   *win;
 static SDL_Renderer *ren;
 static TTF_Font     *fuente, *fuenteBig;
 static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo, *sfxWhack;
-static Mix_Music    *musMenu, *musTopo, *musTopoFin, *musFin;
+static Mix_Music    *musMenu, *musTopo, *musTopoFin, *musFin, *musPathGame;
 // Copias con el tono cambiado (una viva por sonido; se liberan solas, ver reproducirPitch).
 static Mix_Chunk    *okAgudo = NULL, *topoAgudo = NULL;
 static int           okCanal = -1, topoCanal = -1;
@@ -744,6 +744,8 @@ static int jugarMeta(void) {
     reiniciarEjes();
     ledApagarTodo();
 
+    Mix_PlayMusic(musPathGame, -1);
+
     while(1) {
         Uint32 ahora = SDL_GetTicks();
         if (ahora - ini >= RONDA_MS)
@@ -780,7 +782,9 @@ static int jugarMeta(void) {
         SDL_Delay(8);
     }
     guardarRecord(&recordMeta, puntos);
-    pantallaFin(puntos, recordMeta);
+    Mix_HaltMusic();                 // corta la musica de fondo de la meta
+    Mix_PlayMusic(musFin, 1);        // sonido de fin: suena DURANTE la pantalla de fin
+    pantallaFin(puntos, recordMeta); // (pantallaFin BLOQUEA; por eso la musica va antes)
     return A_MENU;
 }
 
@@ -1011,6 +1015,8 @@ static void initMix()
     musTopo = Mix_LoadMUS(rm);
     snprintf(rm, sizeof rm, "%ssonidos/moleEnd.mp3", rutaBase);
     musTopoFin = Mix_LoadMUS(rm);
+    snprintf(rm, sizeof rm, "%ssonidos/pathGame.mp3", rutaBase);
+    musPathGame = Mix_LoadMUS(rm);
 }
 
 static int initComponents()
