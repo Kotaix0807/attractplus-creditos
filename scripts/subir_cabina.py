@@ -45,7 +45,12 @@ if not PI_PW or not CAB_PW:
     sys.exit("Faltan PI_PW y/o CAB_PW. Ponlos en %s (o en el entorno)." % conf)
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SSH_OPTS = "-o StrictHostKeyChecking=no -o ConnectTimeout=20 -J %s" % PI_HOST
+# accept-new (TOFU): acepta la clave de un host NUEVO la 1a vez, pero AVISA/falla si
+# la clave de un host ya conocido cambia (deteccion de MITM). No se usa 'no' porque
+# desactiva esa proteccion. La cabina va por 4G con IP cambiante y auth por
+# contrasena; lo ideal a futuro seria clave SSH + HostKeyAlias para fijar la clave
+# aunque cambie la IP.
+SSH_OPTS = "-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -J %s" % PI_HOST
 
 # Contesta las dos contrasenas del salto (primero el Pi, luego la cabina) hasta
 # ver el patron 'hasta' (o EOF). Devuelve el indice que corto el bucle.
