@@ -816,16 +816,19 @@ static int jugarMeta(void) {
 }
 
 
-// --- Sprite del topo que cruza la pantalla -----------------------------------
-// Un solo topo: entra deslizando desde un lado al azar, se queda, y al aplastarlo
-// (o al escaparse) se retira por donde vino. 'appear' normal, 'whack' aplastado.
+// --- Sprite del topo que se asoma desde una esquina --------------------------
+// Un solo topo: entra en diagonal desde una esquina al azar y asoma solo un
+// poquito (ASOMO = fraccion visible); al aplastarlo (o escaparse) se esconde de
+// vuelta. 'appear' normal, 'whack' aplastado.
+#define ASOMO 0.45f        // cuanto del sprite queda a la vista al asomarse (0..1)
+
 enum { TP_FUERA, TP_ENTRA, TP_DENTRO, TP_SALE };
 typedef struct {
     int estado;
-    float x;             // esquina izquierda del sprite (lo que se desliza)
-    float destino;       // x cuando esta "dentro" (centrado)
-    float fuera;         // x fuera de pantalla (de donde entra y a donde se retira)
-    int w, h, cy;        // tamano dibujado y centro vertical
+    float x, y;          // esquina sup-izq del sprite (se mueve en 2D)
+    float px, py;        // posicion "asomado" (destino al entrar)
+    float hx, hy;        // posicion escondido (fuera; de donde entra y a donde sale)
+    int w, h;            // tamano dibujado
     SDL_Texture *tex;    // appear o whack
 } SpriteTopo;
 
@@ -839,44 +842,53 @@ static void topoSpriteInit(SpriteTopo *s) {
         if (th)
             s->w = s->h * tw / th;   // respeta la proporcion del sprite
     }
-    s->cy = (int)(altoV * 0.30);     // entre el titulo y el marcador
-    s->destino = (anchoV - s->w) / 2.0f;
-    s->fuera = -s->w;                // se fija de verdad en topoSpriteAparece
     s->tex = texTopoAppear;
-    s->x = -s->w;
+    s->px = s->py = s->hx = s->hy = s->x = s->y = -10000;  // se fijan en Aparece
 }
 
-static void topoSpriteAparece(SpriteTopo *s) {     // entra desde un lado al azar
-    s->fuera = (rand() % 2) ? (float)anchoV : (float)(-s->w);
-    s->x = s->fuera;
+static void topoSpriteAparece(SpriteTopo *s) {     // asoma desde una esquina al azar
+    int esquina = rand() % 4;
+    int der   = esquina & 1;        // 0 = izquierda, 1 = derecha
+    int abajo = esquina & 2;        // 0 = arriba,    1 = abajo
+    // asomado: solo ASOMO del sprite entra por esa esquina
+    s->px = der   ? (anchoV - s->w * ASOMO) : (-s->w * (1.0f - ASOMO));
+    s->py = abajo ? (altoV  - s->h * ASOMO) : (-s->h * (1.0f - ASOMO));
+    // escondido: el sprite entero fuera, pasada esa esquina
+    s->hx = der   ? (float)anchoV : (float)(-s->w);
+    s->hy = abajo ? (float)altoV  : (float)(-s->h);
+    s->x = s->hx;
+    s->y = s->hy;
     s->tex = texTopoAppear;
     s->estado = TP_ENTRA;
 }
 
-static void topoSpriteAplasta(SpriteTopo *s) {     // cambia de sprite y se retira
+static void topoSpriteAplasta(SpriteTopo *s) {     // cambia de sprite y se esconde
     s->tex = texTopoWhack;
     s->estado = TP_SALE;
 }
 
-static void topoSpriteSale(SpriteTopo *s) {        // se escapo: se retira sin cambiar
+static void topoSpriteSale(SpriteTopo *s) {        // se escapo: se esconde sin cambiar
     if (s->estado != TP_FUERA)
         s->estado = TP_SALE;
 }
 
-static void topoSpriteActualiza(SpriteTopo *s) {   // deslizamiento suave hacia su objetivo
-    float objetivo = (s->estado == TP_ENTRA) ? s->destino
-                   : (s->estado == TP_SALE)  ? s->fuera
-                   : s->x;
-    s->x += (objetivo - s->x) * 0.25f;
-    if (s->estado == TP_ENTRA && fabsf(s->x - s->destino) < 2) { s->x = s->destino; s->estado = TP_DENTRO; }
-    if (s->estado == TP_SALE  && fabsf(s->x - s->fuera)   < 2) s->estado = TP_FUERA;
+static void topoSpriteActualiza(SpriteTopo *s) {   // deslizamiento suave en diagonal
+    float tx = (s->estado == TP_ENTRA) ? s->px : (s->estado == TP_SALE) ? s->hx : s->x;
+    float ty = (s->estado == TP_ENTRA) ? s->py : (s->estado == TP_SALE) ? s->hy : s->y;
+    s->x += (tx - s->x) * 0.25f;
+    s->y += (ty - s->y) * 0.25f;
+    if (s->estado == TP_ENTRA && fabsf(s->x - s->px) < 2 && fabsf(s->y - s->py) < 2) {
+        s->x = s->px; s->y = s->py; s->estado = TP_DENTRO;
+    }
+    if (s->estado == TP_SALE && fabsf(s->x - s->hx) < 2 && fabsf(s->y - s->hy) < 2)
+        s->estado = TP_FUERA;
 }
 
 static void topoSpriteDibuja(SpriteTopo *s) {
     if (s->estado == TP_FUERA || !s->tex)
         return;
-    SDL_Rect d = { (int)s->x, s->cy - s->h / 2, s->w, s->h };
-    SDL_RenderCopy(ren, s->tex, NULL, &d);
+    SDL_Rect d = { (int)s->x, (int)s->y, s->w, s->h };
+    SDL_RenderCopy(ren, s->tex, NULL, &d);   // SDL recorta lo que sobresale
 }
 
 // Juego 2: sale un topo (una celda encendida), pegale al boton antes de que
