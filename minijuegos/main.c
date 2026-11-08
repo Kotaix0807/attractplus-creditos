@@ -827,8 +827,9 @@ static int jugarMeta(void) {
 // el. El eje cabeza-pies mide 'h', y tras rotar queda SIEMPRE perpendicular al
 // borde, asi que la profundidad del asomo es 'h' en los cuatro casos.
 #define ASOMO 0.45f        // cuanto del sprite queda a la vista al asomarse (0..1)
+#define GOLPE_MS 300       // cuanto se queda quieto mostrando 'whack' antes de esconderse
 
-enum { TP_FUERA, TP_ENTRA, TP_DENTRO, TP_SALE };
+enum { TP_FUERA, TP_ENTRA, TP_DENTRO, TP_GOLPE, TP_SALE };
 typedef struct {
     int estado;
     float cx, cy;        // CENTRO del sprite (se mueve)
@@ -836,6 +837,7 @@ typedef struct {
     float hcx, hcy;      // centro escondido (fuera; de donde entra y a donde sale)
     double angulo;       // rotacion segun el lado
     int w, h;            // tamano dibujado (sin rotar)
+    Uint32 tgolpe;       // cuando se aplasto (para mostrar 'whack' un momento)
     SDL_Texture *tex;    // appear o whack
 } SpriteTopo;
 
@@ -885,9 +887,10 @@ static void topoSpriteAparece(SpriteTopo *s) {     // asoma desde un lateral al 
     s->estado = TP_ENTRA;
 }
 
-static void topoSpriteAplasta(SpriteTopo *s) {     // cambia de sprite y se esconde
+static void topoSpriteAplasta(SpriteTopo *s) {     // cambia a 'whack', se queda un momento y se esconde
     s->tex = texTopoWhack;
-    s->estado = TP_SALE;
+    s->tgolpe = SDL_GetTicks();
+    s->estado = TP_GOLPE;
 }
 
 static void topoSpriteSale(SpriteTopo *s) {        // se escapo: se esconde sin cambiar
@@ -896,13 +899,17 @@ static void topoSpriteSale(SpriteTopo *s) {        // se escapo: se esconde sin 
 }
 
 static void topoSpriteActualiza(SpriteTopo *s) {   // deslizamiento suave hacia su objetivo
-    float tx = (s->estado == TP_ENTRA) ? s->pcx : (s->estado == TP_SALE) ? s->hcx : s->cx;
-    float ty = (s->estado == TP_ENTRA) ? s->pcy : (s->estado == TP_SALE) ? s->hcy : s->cy;
+    // Al entrar y durante el golpe apunta al "asomado"; al salir, al "escondido".
+    float tx = (s->estado == TP_SALE) ? s->hcx : s->pcx;
+    float ty = (s->estado == TP_SALE) ? s->hcy : s->pcy;
+    if (s->estado == TP_FUERA || s->estado == TP_DENTRO) { tx = s->cx; ty = s->cy; }
     s->cx += (tx - s->cx) * 0.25f;
     s->cy += (ty - s->cy) * 0.25f;
     if (s->estado == TP_ENTRA && fabsf(s->cx - s->pcx) < 2 && fabsf(s->cy - s->pcy) < 2) {
         s->cx = s->pcx; s->cy = s->pcy; s->estado = TP_DENTRO;
     }
+    if (s->estado == TP_GOLPE && SDL_GetTicks() - s->tgolpe >= GOLPE_MS)
+        s->estado = TP_SALE;               // ya se mostro 'whack' un momento: ahora se esconde
     if (s->estado == TP_SALE && fabsf(s->cx - s->hcx) < 2 && fabsf(s->cy - s->hcy) < 2)
         s->estado = TP_FUERA;
 }
@@ -964,9 +971,9 @@ static int jugarTopo(void) {
                 } else if (in.celda == topo) {         // acierto
                     puntos++;
                     Mix_PlayChannel(-1, sfxWhack, 0);
-                    topoSpriteAplasta(&sp);            // cambia a 'whack' y se retira
+                    topoSpriteAplasta(&sp);            // cambia a 'whack', se queda un momento y se retira
                     topo = -1;
-                    proximo = ahora + 250;
+                    proximo = ahora + 550;            // pausa para que se vea el golpe
                 } else {                               // fallo (boton equivocado)
                     Mix_PlayChannel(-1, sfxFail, 0);
                 }
