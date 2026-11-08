@@ -25,6 +25,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_mixer.h>
+#include <SDL2/SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <time.h>
+#include <math.h>
 
 // ============================ 1. AJUSTES Y TABLAS ============================
 
@@ -65,6 +67,7 @@ static SDL_Renderer *ren;
 static TTF_Font     *fuente, *fuenteBig;
 static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo, *sfxWhack;
 static Mix_Music    *musMenu, *musTopo, *musTopoFin, *musFin, *musPathGame;
+static SDL_Texture  *texTopoAppear = NULL, *texTopoWhack = NULL;   // sprites del topo
 // Copias con el tono cambiado (una viva por sonido; se liberan solas, ver reproducirPitch).
 static Mix_Chunk    *okAgudo = NULL, *topoAgudo = NULL;
 static int           okCanal = -1, topoCanal = -1;
@@ -812,11 +815,77 @@ static int jugarMeta(void) {
     return A_MENU;
 }
 
+
+// --- Sprite del topo que cruza la pantalla -----------------------------------
+// Un solo topo: entra deslizando desde un lado al azar, se queda, y al aplastarlo
+// (o al escaparse) se retira por donde vino. 'appear' normal, 'whack' aplastado.
+enum { TP_FUERA, TP_ENTRA, TP_DENTRO, TP_SALE };
+typedef struct {
+    int estado;
+    float x;             // esquina izquierda del sprite (lo que se desliza)
+    float destino;       // x cuando esta "dentro" (centrado)
+    float fuera;         // x fuera de pantalla (de donde entra y a donde se retira)
+    int w, h, cy;        // tamano dibujado y centro vertical
+    SDL_Texture *tex;    // appear o whack
+} SpriteTopo;
+
+static void topoSpriteInit(SpriteTopo *s) {
+    s->estado = TP_FUERA;
+    s->h = (int)(altoV * 0.30);
+    s->w = s->h;
+    if (texTopoAppear) {
+        int tw, th;
+        SDL_QueryTexture(texTopoAppear, NULL, NULL, &tw, &th);
+        if (th)
+            s->w = s->h * tw / th;   // respeta la proporcion del sprite
+    }
+    s->cy = (int)(altoV * 0.30);     // entre el titulo y el marcador
+    s->destino = (anchoV - s->w) / 2.0f;
+    s->fuera = -s->w;                // se fija de verdad en topoSpriteAparece
+    s->tex = texTopoAppear;
+    s->x = -s->w;
+}
+
+static void topoSpriteAparece(SpriteTopo *s) {     // entra desde un lado al azar
+    s->fuera = (rand() % 2) ? (float)anchoV : (float)(-s->w);
+    s->x = s->fuera;
+    s->tex = texTopoAppear;
+    s->estado = TP_ENTRA;
+}
+
+static void topoSpriteAplasta(SpriteTopo *s) {     // cambia de sprite y se retira
+    s->tex = texTopoWhack;
+    s->estado = TP_SALE;
+}
+
+static void topoSpriteSale(SpriteTopo *s) {        // se escapo: se retira sin cambiar
+    if (s->estado != TP_FUERA)
+        s->estado = TP_SALE;
+}
+
+static void topoSpriteActualiza(SpriteTopo *s) {   // deslizamiento suave hacia su objetivo
+    float objetivo = (s->estado == TP_ENTRA) ? s->destino
+                   : (s->estado == TP_SALE)  ? s->fuera
+                   : s->x;
+    s->x += (objetivo - s->x) * 0.25f;
+    if (s->estado == TP_ENTRA && fabsf(s->x - s->destino) < 2) { s->x = s->destino; s->estado = TP_DENTRO; }
+    if (s->estado == TP_SALE  && fabsf(s->x - s->fuera)   < 2) s->estado = TP_FUERA;
+}
+
+static void topoSpriteDibuja(SpriteTopo *s) {
+    if (s->estado == TP_FUERA || !s->tex)
+        return;
+    SDL_Rect d = { (int)s->x, s->cy - s->h / 2, s->w, s->h };
+    SDL_RenderCopy(ren, s->tex, NULL, &d);
+}
+
 // Juego 2: sale un topo (una celda encendida), pegale al boton antes de que
 // desaparezca. +1 por acierto; va acelerando con el puntaje.
 static int jugarTopo(void) {
     int puntos = 0, topo = -1;
     Uint32 ini = SDL_GetTicks(), topoHasta = 0, proximo = SDL_GetTicks() + 400;
+    SpriteTopo sp;
+    topoSpriteInit(&sp);
     ledApagarTodo();
 
     Mix_PlayMusic(musTopo, -1);
@@ -836,10 +905,12 @@ static int jugarTopo(void) {
             // El topo suena a un tono aleatorio entre 1.0 y 1.8 (demo de cambiarPitch).
             float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.8f;   // 1.0 .. 1.8
             reproducirPitch(&topoAgudo, &topoCanal, sfxTopo, tono);         // sin fugas
+            topoSpriteAparece(&sp);                    // entra deslizando desde un lado
 
         } else if (topo >= 0 && ahora >= topoHasta) {  // se escapo
             topo = -1;
             proximo = ahora + 300;
+            topoSpriteSale(&sp);                       // se retira
         }
 
         SDL_Event e;
@@ -858,6 +929,7 @@ static int jugarTopo(void) {
                 } else if (in.celda == topo) {         // acierto
                     puntos++;
                     Mix_PlayChannel(-1, sfxWhack, 0);
+                    topoSpriteAplasta(&sp);            // cambia a 'whack' y se retira
                     topo = -1;
                     proximo = ahora + 250;
                 } else {                               // fallo (boton equivocado)
@@ -867,7 +939,9 @@ static int jugarTopo(void) {
         }
 
         pintarUnaCelda(topo, 255);
+        topoSpriteActualiza(&sp);
         hud("DALE AL TOPO", puntos, recordTopo, RONDA_MS - (ahora - ini));
+        topoSpriteDibuja(&sp);          // el topo va ENCIMA del hud
         SDL_RenderPresent(ren);
         SDL_Delay(8);
     }
@@ -1055,6 +1129,26 @@ static void initMix()
     musPathGame = Mix_LoadMUS(rm);
 }
 
+static SDL_Texture *cargarSprite(const char *nombre) {
+    char ruta[1200];
+    snprintf(ruta, sizeof ruta, "%ssprites/%s", rutaBase, nombre);
+    SDL_Surface *s = IMG_Load(ruta);
+    if (!s) {
+        fprintf(stderr, "sprite %s: %s\n", ruta, IMG_GetError());
+        return NULL;
+    }
+    SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
+    SDL_FreeSurface(s);
+    return t;
+}
+
+static void initSprites()
+{
+    IMG_Init(IMG_INIT_PNG);
+    texTopoAppear = cargarSprite("appear.png");
+    texTopoWhack  = cargarSprite("whack.png");
+}
+
 static int initComponents()
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
@@ -1089,7 +1183,7 @@ static int initComponents()
         return 1;
 
     initMix();
-
+    initSprites();
     initJoysticks();
 
     return 0;
@@ -1128,6 +1222,8 @@ int main(void) {
         close(fifoFd);
     liberarPitch(&okAgudo, &okCanal);       // libera las copias de tono (sin fugas)
     liberarPitch(&topoAgudo, &topoCanal);
+    if (texTopoAppear) SDL_DestroyTexture(texTopoAppear);
+    if (texTopoWhack)  SDL_DestroyTexture(texTopoWhack);
     SDL_Quit();
     return 0;
 }

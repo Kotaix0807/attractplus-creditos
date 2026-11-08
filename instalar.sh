@@ -1514,19 +1514,19 @@ tarea_minijuegos() {
 	local dir="$AQUI/minijuegos"
 	[ -f "$dir/main.c" ] || { rojo "  no encuentro $dir/main.c"; return 1; }
 
-	# SDL2 + SDL2_ttf + SDL2_mixer (dev). Nombres por distro.
-	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer 2>/dev/null; then
+	# SDL2 + SDL2_ttf + SDL2_mixer + SDL2_image (dev). Nombres por distro.
+	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer SDL2_image 2>/dev/null; then
 		echo "  faltan librerias SDL2; las instalo"
 		case "$GESTOR" in
-			pacman) sudo pacman -S --needed --noconfirm sdl2 sdl2_ttf sdl2_mixer ;;
-			apt)    sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev ;;
-			dnf)    sudo dnf install -y SDL2-devel SDL2_ttf-devel SDL2_mixer-devel ;;
-			zypper) sudo zypper --non-interactive install libSDL2-devel libSDL2_ttf-devel libSDL2_mixer-devel ;;
+			pacman) sudo pacman -S --needed --noconfirm sdl2 sdl2_ttf sdl2_mixer sdl2_image ;;
+			apt)    sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev ;;
+			dnf)    sudo dnf install -y SDL2-devel SDL2_ttf-devel SDL2_mixer-devel SDL2_image-devel ;;
+			zypper) sudo zypper --non-interactive install libSDL2-devel libSDL2_ttf-devel libSDL2_mixer-devel libSDL2_image-devel ;;
 			*) aviso "  no se instalar SDL2 en esta distro; hazlo a mano" ;;
 		esac
 	fi
-	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer 2>/dev/null; then
-		rojo "  SDL2/ttf/mixer siguen sin estar; no puedo compilar los minijuegos"
+	if ! pkg-config --exists sdl2 SDL2_ttf SDL2_mixer SDL2_image 2>/dev/null; then
+		rojo "  SDL2/ttf/mixer/image siguen sin estar; no puedo compilar los minijuegos"
 		return 1
 	fi
 
