@@ -64,7 +64,7 @@ static SDL_Window   *win;
 static SDL_Renderer *ren;
 static TTF_Font     *fuente, *fuenteBig;
 static Mix_Chunk    *sfxOk, *sfxFail, *sfxTopo, *sfxWhack;
-static Mix_Music    *musMenu, *musFin;
+static Mix_Music    *musMenu, *musTopo, *musTopoFin, *musFin;
 static int anchoV, altoV;
 static int demo = 0;             // MINIJUEGOS_DEMO=1: ventana + teclado + panel en pantalla
 static char rutaBase[1024];      // carpeta del ejecutable (de ahi salen fuente y sonidos)
@@ -735,7 +735,9 @@ static int jugarMeta(void) {
                 cursor = mover(cursor, in.dx, in.dy);
                 if (cursor == meta) {
                     puntos++;
-                    Mix_PlayChannel(-1, sfxOk, 0);
+                    float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.3f;   // 1.0 .. 1.8
+                    Mix_Chunk *highPitchOk = cambiarPitch(sfxOk, tono);
+                    Mix_PlayChannel(-1, highPitchOk, 0);
                     meta = celdaAlAzarMenos(cursor);
                 }
             }
@@ -764,9 +766,10 @@ static int jugarTopo(void) {
                                           // (static: se reaprovecha y se libera en el siguiente topo)
     ledApagarTodo();
 
+    Mix_PlayMusic(musTopo, -1);
     while (1) {
         Uint32 ahora = SDL_GetTicks();
-        if (ahora - ini >= RONDA_MS)
+        if (ahora - ini >= 2000)//RONDA_MS)
             break;
 
         if (topo < 0 && ahora >= proximo) {            // sale un topo nuevo
@@ -817,14 +820,16 @@ static int jugarTopo(void) {
         SDL_Delay(8);
     }
     guardarRecord(&recordTopo, puntos);
-    pantallaFin(puntos, recordTopo);
+    Mix_HaltMusic();                 // corta la musica de fondo del topo
+    Mix_PlayMusic(musTopoFin, 1);    // jingle de victoria: suena DURANTE la pantalla de fin
+    pantallaFin(puntos, recordTopo); // (pantallaFin BLOQUEA ~4 s; por eso la musica va antes)
     return A_MENU;
 }
 
 // Tras una ronda: puntaje y record unos segundos, o hasta que se pulse algo.
 static void pantallaFin(int puntos, int record) {
-    if (musFin)
-        Mix_PlayMusic(musFin, 1);   // una vez
+    //if (musFin)
+      //  Mix_PlayMusic(musFin, 1);   // una vez
     ledApagarTodo();
     Uint32 fin = SDL_GetTicks() + 4000;
     while (SDL_GetTicks() < fin) {
@@ -858,7 +863,8 @@ static int menu(void) {
     const char *nombres[2] = { "ALCANZA LA META", "DALE AL TOPO" };
     int sel = 0;
     reiniciarEjes();
-    if (musMenu) Mix_PlayMusic(musMenu, 1);   // UNA vez (antes -1 repetia el jingle sin parar)
+    if (musMenu)
+        Mix_PlayMusic(musMenu, -1);   // UNA vez (antes -1 repetia el jingle sin parar)
     ledApagarTodo();
     Uint32 t0 = SDL_GetTicks();
 
@@ -893,7 +899,6 @@ static int menu(void) {
         for (int i = 0; i < 2; i++)
             texto(nombres[i], anchoV / 2, altoV / 2 - 60 + i * 64, fuenteBig, i == sel ? BLANCO : GRIS, 1);
 
-        texto("arriba/abajo: elegir    boton: jugar    boton 0: salir    C: recalibrar", anchoV / 2, altoV - 60, fuente, GRIS, 1);
         if (demo) {
             texto("teclado: flechas elegir   ENTER jugar   ESC salir", anchoV / 2, altoV - 30, fuente, GRIS, 1);
             dibujarPanelDemo();
@@ -976,10 +981,14 @@ static void initMix()
     cargarSonido(&sfxTopo, "screen-scroll.wav");
     
     char rm[1200];
-    snprintf(rm, sizeof rm, "%ssonidos/menu.mp3", rutaBase);
+    snprintf(rm, sizeof rm, "%ssonidos/mainMus.mp3", rutaBase);
     musMenu = Mix_LoadMUS(rm);
     snprintf(rm, sizeof rm, "%ssonidos/fin.mp3", rutaBase);
     musFin = Mix_LoadMUS(rm);
+    snprintf(rm, sizeof rm, "%ssonidos/mole.mp3", rutaBase);
+    musTopo = Mix_LoadMUS(rm);
+    snprintf(rm, sizeof rm, "%ssonidos/moleEnd.mp3", rutaBase);
+    musTopoFin = Mix_LoadMUS(rm);
 }
 
 static int initComponents()
