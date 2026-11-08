@@ -264,8 +264,32 @@ static int celdaDeBoton(int ji, int btn) {
     for (int c = 0; c < NUM_CELDAS; c++)
         if (bindCelda[c].joy == ji && bindCelda[c].btn == btn)
             return c;
-        
+
     return -1;
+}
+
+// Cuantos botones hay pulsados AHORA mismo (todos los joysticks; en demo tambien
+// las teclas de celda). Sirve para la regla "mas de un boton a la vez = falla".
+static int botonesPulsados(void) {
+    int n = 0;
+    for (int i = 0; i < numJoys; i++) {
+        if (!joys[i])
+            continue;
+        int nb = SDL_JoystickNumButtons(joys[i]);
+        for (int b = 0; b < nb; b++)
+            if (SDL_JoystickGetButton(joys[i], b))
+                n++;
+    }
+    if (demo) {   // teclas de celda pulsadas, para poder probar la regla sin mando
+        static const SDL_Scancode CEL[NUM_CELDAS] = {
+            SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4, SDL_SCANCODE_5, SDL_SCANCODE_6,
+            SDL_SCANCODE_Q, SDL_SCANCODE_W, SDL_SCANCODE_E, SDL_SCANCODE_R, SDL_SCANCODE_T, SDL_SCANCODE_Y };
+        const Uint8 *ks = SDL_GetKeyboardState(NULL);
+        for (int c = 0; c < NUM_CELDAS; c++)
+            if (ks[CEL[c]])
+                n++;
+    }
+    return n;
 }
 
 // Teclado del modo demo: fila de arriba = 1..6, fila de abajo = q w e r t y.
@@ -798,7 +822,7 @@ static int jugarTopo(void) {
     Mix_PlayMusic(musTopo, -1);
     while (1) {
         Uint32 ahora = SDL_GetTicks();
-        if (ahora - ini >= 2000)//RONDA_MS)
+        if (ahora - ini >= RONDA_MS)
             break;
 
         if (topo < 0 && ahora >= proximo) {            // sale un topo nuevo
@@ -829,12 +853,14 @@ static int jugarTopo(void) {
                 return A_MENU;
 
             if (in.celda >= 0) {
-                if (in.celda == topo) {                // acierto
+                if (botonesPulsados() > 1) {           // mas de un boton a la vez = falla
+                    Mix_PlayChannel(-1, sfxFail, 0);
+                } else if (in.celda == topo) {         // acierto
                     puntos++;
                     Mix_PlayChannel(-1, sfxWhack, 0);
                     topo = -1;
                     proximo = ahora + 250;
-                } else {                               // fallo
+                } else {                               // fallo (boton equivocado)
                     Mix_PlayChannel(-1, sfxFail, 0);
                 }
             }
