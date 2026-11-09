@@ -662,6 +662,12 @@ local ESCRIBIR_FREEPLAY = {
 	-- se da free play escribiendo el contador BINARIO 0x2007CE0 (cheat Infinite
 	-- Credits), topa en 9. Verificado en pantalla: 'CREDITS:9 / PRESS START'.
 	sfiii3 = { contador = 0x2007ce0, valor = 9, tope = 9 },
+	-- simpsons2p (Konami, 6809): CPS no aplica; el juego no ofrece free play en su
+	-- menu de servicio (de ahi el parche de ROM de la comunidad), pero el contador
+	-- de creditos 0x4838 (verificado por Eloy en creditos.dat) es escribible, asi
+	-- que damos free play escribiendolo, sin tocar la ROM. Binario, topa en 9.
+	-- Verificado en pantalla: 'CREDIT 9' limpio en el titulo, sin basura.
+	simpsons2p = { contador = 0x4838, valor = 9, tope = 9 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
