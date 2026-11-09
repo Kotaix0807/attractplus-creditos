@@ -236,6 +236,9 @@ end
 local PANEL_CMD    = ruta_attract('panel_cmd', 'GA_PANEL_CMD')
 local MONEDAS_LOG  = ruta_attract('monedas.log', 'GA_MONEDAS_LOG')
 local JUEGO_ACTUAL = ruta_attract('juego_actual', 'GA_JUEGO_ACTUAL')
+-- Que botones de P1 usa el juego, para que el demonio (moneyBank.py) encienda
+-- esos LEDs del panel mientras se juega. GA_BOTONES_JUEGO=off lo apaga.
+local BOTONES_JUEGO = ruta_attract('botones_juego', 'GA_BOTONES_JUEGO')
 
 -- Apunta una moneda (evento 'moneda') o un credito gratis del panel (evento
 -- 'panel') en el log de ingresos. Append, formato <epoch>\t<rom>\t<evento>\t<n>.
@@ -593,6 +596,12 @@ local FREEPLAY_DIP = false
 -- freeplay=N en arranque.dat lo cambia por juego.
 local FREEPLAY_N = math.max(1, ajuste('freeplay', 'GA_FREEPLAY', 2))
 
+-- Tras un intento de reponer que la placa IGNORA (p.ej. btime durante la partida
+-- no admite subir los creditos por encima de la reserva), frames a esperar antes
+-- de reintentar. Sin esto se pulsaba COIN1 cada ~16 frames sin fin. ~3 s: corto
+-- para reponer al volver al titulo (fin de partida), largo para no martillar.
+local FREEPLAY_REINTENTO = 180
+
 -- Juegos SIN credito: la "moneda" compra VIDA que se agota sola (Gauntlet). No
 -- hay contador que mantener; en free play se deja la vida de cada jugador ACTIVO
 -- pegada a VIDA_OBJETIVO para que no mueran. Direcciones u16 big-endian (68010),
@@ -607,6 +616,45 @@ VIDA_FREEPLAY.gauntlet2p = VIDA_FREEPLAY.gauntlet
 VIDA_FREEPLAY.gaunt22p   = VIDA_FREEPLAY.gaunt2
 local VIDA_OBJETIVO = math.max(1, math.min(0xFFFF, ajuste('vida', 'GA_VIDA', 999)))
 
+-- Free play por ESCRITURA directa, para juegos donde insertar monedas NO mantiene
+-- los creditos (btime no las admite con la partida en curso). Cuando el contador
+-- baja de 'valor' se re-escribe a 'valor' y se escribe 'disparo' = 'disparo_valor':
+-- es un byte que la placa vigila; el credito escrito no surte efecto hasta que ese
+-- byte VARIA. Medido por Eloy en btime (001D=FF, 00F9=1). Reemplaza al pulso de
+-- moneda en esos juegos.
+-- 'tope' = valor al que la placa RECORTA el contador (btime lo capa en 9 aunque
+-- le escribamos 0xFF). Solo se repone cuando el contador cae por debajo de 'tope',
+-- no cuando es < valor: si no, al estar siempre capado a 9 reescribiriamos cada
+-- frame y oscilaria 0xFF<->9 peleando con el juego (como dkong3).
+-- 'umbral' (opcional): si se da, solo se repone cuando el contador cae por DEBAJO
+-- de 'umbral' (no en cada partida). btime lo usa para no disparar 00F9 en cada
+-- START (el disparo reprocesa creditos y retrasaba un pelin el inicio); asi solo
+-- repone ~1 de cada 'tope' partidas. Sin 'umbral' se repone en cuanto baja de 'tope'.
+local ESCRIBIR_FREEPLAY = {
+	btime = { contador = 0x001d, valor = 0xff, tope = 9, umbral = 2, disparo = 0x00f9, disparo_valor = 1 },
+	-- commando: contador BCD en e030, SIN disparo (la placa mantiene lo escrito y no
+	-- lo recorta). 0x99 = "CREDIT 99" (verificado en pantalla). tope=0x99: repone en
+	-- cuanto baja de 99. Verificado por Eloy.
+	commando = { contador = 0xe030, valor = 0x99, tope = 0x99 },
+	-- defender (Williams): contador BCD en a037, SIN disparo. 0x09 = "9 creditos".
+	-- tope=9: repone al bajar de 9. Verificado por Eloy (8 o 9 valen).
+	defender = { contador = 0xa037, valor = 0x09, tope = 9 },
+	-- digdug: el contador NO esta en maincpu sino en el chip Namco 51xx (data 0x19).
+	-- creditos.dat lo apunta ahi y GA_ESTADO.cred_space usa ese espacio. OJO: en
+	-- digdug SOLO se puede SUBIR el contador (decrementarlo rompe el juego); como
+	-- fp_escribir solo escribe cuando v < tope, nunca baja. Sin disparo. Verificado
+	-- por Eloy (le puso 5 con un watchpoint; aqui repone a 9 cuando baja de 9).
+	digdug = { contador = 0x19, valor = 9, tope = 9 },
+	dkong = { contador = 0x6001, valor = 9, tope = 99 }
+}
+-- clones (misma direccion que su set base)
+for _, c in ipairs({ 'commandob', 'commandob2', 'commandob3', 'commandoj', 'commandou', 'commandou2' }) do
+	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.commando
+end
+for _, c in ipairs({ 'defenderb', 'defenderg', 'defenderom', 'defenderw' }) do
+	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.defender
+end
+
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
 	if (TARIFA == 'off') or not T then
@@ -614,6 +662,14 @@ local function tarifa_vigente()
 	end
 
 	local dip = T.buscar_dip()
+
+	-- Al NO estar en free play global (tarifa de pago, en pesos o normal), hay que
+	-- DESHACER el free play del DIP SUELTO (KOF/Neo Geo, qbert, CPS...): si no, se
+	-- queda en On para siempre y esos juegos siguen gratis. Los Coinage los reajusta
+	-- la logica de tarifa de mas abajo (1c1c / N monedas).
+	if GLOBAL_TARIFA ~= 'freeplay' and T.quitar_freeplay() then
+		log('sin free play global: quito el/los DIP suelto(s) de free play')
+	end
 
 	-- La tarifa GLOBAL manda sobre el DIP guardado y sobre GA_TARIFA.
 	if GLOBAL_TARIFA == 'freeplay' then
@@ -795,6 +851,23 @@ local function campo_de_token(token)
 		end
 	end
 	return nil
+end
+
+-- Apunta que botones de accion de P1 EXISTEN en este juego (1..6), para que el
+-- demonio los encienda en el panel. Un juego de 1 boton (p.ej. Centipede, disparo)
+-- deja "1"; sin botones, fichero vacio. Una sola vez al arrancar. Sin el START.
+local function escribir_botones_juego()
+	if not BOTONES_JUEGO then return end
+	local usados = {}
+	for i = 1, 6 do
+		if campo_de_token('P1_BUTTON' .. i) then usados[#usados + 1] = tostring(i) end
+	end
+	local f = io.open(BOTONES_JUEGO .. '.tmp', 'wb')
+	if not f then return end
+	f:write(table.concat(usados, ' '))
+	f:close()
+	os.rename(BOTONES_JUEGO .. '.tmp', BOTONES_JUEGO)
+	log('botones del juego para el panel: [%s]', table.concat(usados, ' '))
 end
 
 local function pulsar_control(control)
@@ -1425,6 +1498,21 @@ local function por_frame()
 		-- es lo que el juego se ha llevado de verdad. Nada de estimar.
 		e.memoria.frame()
 
+		-- Free play por ESCRITURA (btime): el pulso de moneda no basta porque la
+		-- placa no admite creditos con la partida en curso. Cuando el contador
+		-- baja, se re-escribe a 'valor' y se dispara el byte que la placa vigila
+		-- (si no, el credito escrito no surte efecto). Verificado por Eloy.
+		if e.fp_escribir and not e.arranque then
+			local w = e.fp_escribir
+			local ok, v = pcall(w.space.read_u8, w.space, w.contador)
+			if ok and type(v) == 'number' and v < (w.umbral or w.tope) then
+				pcall(w.space.write_u8, w.space, w.contador, w.valor)
+				if w.disparo then
+					pcall(w.space.write_u8, w.space, w.disparo, w.disparo_valor)
+				end
+			end
+		end
+
 		-- Free play por RAM: si el jugador gasto el credito (START), se le
 		-- repone. Asi siempre hay con que jugar sin meter monedas. Solo en
 		-- direcciones comprobadas y una vez pasado el arranque.
@@ -1438,21 +1526,38 @@ local function por_frame()
 			-- credito queda consistente y no se corrompe nada (verificado en dkong3).
 			-- Solo si la maquina de insercion esta libre.
 			if okf and type(v) == 'number' and (e.fase == 'fin' or e.fase == 'inactivo') then
-				if v < objetivo then
-					e.restantes = objetivo - v
-					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
-					-- Red de seguridad (direcciones importadas): si meter monedas no sube
-					-- el contador, la direccion de lectura no sirve; se desiste.
-					if e.freeplay_prueba then
-						e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
-						if e.freeplay_fallos >= 10 then
-							e.freeplay_ram = false
-							log('free play: meter monedas no sube el contador en %s, lo dejo', emu.romname())
+				-- Resultado del intento ANTERIOR (ya termino la insercion): si la moneda
+				-- no subio el contador, la placa la ignora ahora (partida en curso), asi
+				-- que se espera FREEPLAY_REINTENTO antes de volver a probar en vez de
+				-- pulsar sin fin. Al volver al titulo la placa ya acepta y repone a N.
+				if e.freeplay_intento then
+					if v > e.freeplay_intento then
+						e.freeplay_cooldown = 0
+						if e.freeplay_prueba then
+							e.freeplay_prueba = nil
+							log('free play por moneda OK en %s', emu.romname())
+						end
+					else
+						e.freeplay_cooldown = FREEPLAY_REINTENTO
+						-- Red de seguridad (direcciones importadas): si meter monedas no sube
+						-- el contador, la direccion de lectura no sirve; se desiste.
+						if e.freeplay_prueba then
+							e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
+							if e.freeplay_fallos >= 10 then
+								e.freeplay_ram = false
+								log('free play: meter monedas no sube el contador en %s, lo dejo', emu.romname())
+							end
 						end
 					end
-				elseif e.freeplay_prueba then
-					e.freeplay_prueba = nil
-					log('free play por moneda OK en %s', emu.romname())
+					e.freeplay_intento = nil
+				end
+
+				if (e.freeplay_cooldown or 0) > 0 then
+					e.freeplay_cooldown = e.freeplay_cooldown - 1
+				elseif e.freeplay_ram and v < objetivo then
+					e.restantes = objetivo - v
+					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+					e.freeplay_intento = v   -- valor antes de pulsar, para medir el resultado
 				end
 			end
 		end
@@ -1768,6 +1873,9 @@ if MEM then
 			log('creditos.dat apunta a %s/%s y no existe en esta maquina',
 				entrada.cpu, entrada.espacio)
 		else
+			-- Espacio del contador (no siempre :maincpu/program: digdug va en el
+			-- chip Namco 51xx, data). Lo usa fp_escribir para escribir alli.
+			GA_ESTADO.cred_space = esp
 			-- Una direccion importada no se ha comprobado nunca, y no vale con
 			-- mirar si arranca a 0: hay placas con NVRAM que guardan los
 			-- creditos de la sesion anterior (Tapper lo hace). Se comprueba
@@ -1970,6 +2078,28 @@ if GA_ESTADO.vida_peg then
 			VIDA_OBJETIVO, emu.romname())
 	else
 		GA_ESTADO.vida_peg = nil   -- solo en free play
+	end
+end
+
+-- --- Free play por ESCRITURA directa (btime: el pulso de moneda no basta) ---
+do
+	local cfg = ESCRIBIR_FREEPLAY[emu.romname and emu.romname() or '']
+	if cfg and FREEPLAY then
+		cfg.space = GA_ESTADO.cred_space
+			or manager.machine.devices[':maincpu'].spaces['program']
+		GA_ESTADO.fp_escribir = cfg
+		GA_ESTADO.freeplay_ram = false   -- este metodo reemplaza al pulso de moneda
+		-- Las direcciones importadas (cheat) se ponen 'a_prueba' (esperar una moneda
+		-- que las valide), y eso bloquearia la rama de fp_escribir. Aqui ya la hemos
+		-- verificado (Eloy), asi que se quita para que la escritura actue.
+		GA_ESTADO.a_prueba = nil
+		if cfg.disparo then
+			log('free play por ESCRITURA: %04x=%d, disparo %04x=%d (%s)',
+				cfg.contador, cfg.valor, cfg.disparo, cfg.disparo_valor, emu.romname())
+		else
+			log('free play por ESCRITURA: %04x=%d, sin disparo (%s)',
+				cfg.contador, cfg.valor, emu.romname())
+		end
 	end
 end
 
@@ -2322,6 +2452,7 @@ end
 -- El panel necesita saber que juego corre: se deja aqui, antes del atajo, para
 -- que se escriba tambien cuando no haya nada mas que vigilar.
 escribir_juego_actual()
+escribir_botones_juego()   -- que botones encender en el panel mientras se juega
 
 -- Atajo para los juegos en los que no hay nada que hacer. Los dos modos de
 -- grabacion NO entran aqui: viven en por_frame, asi que salirse antes de

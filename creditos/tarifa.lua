@@ -169,4 +169,29 @@ function M.aplicar_freeplay()
 	return tocado
 end
 
+-- Inversa de aplicar_freeplay: quita el FREE PLAY del DIP SUELTO (un campo llamado
+-- "Free Play": Neo Geo/KOF, CPS, qbert...), poniendolo a Off/No. Los Coinage con
+-- una opcion "Free Play" NO se tocan aqui: de esos se encarga la tarifa normal
+-- (1c1c / N monedas), que elige otro valor del MISMO campo. Devuelve true si toco
+-- algo. Hace falta porque, al salir de free play, el DIP suelto se quedaba en On
+-- para siempre (los KOF seguian gratis aunque la tarifa fuera de pago).
+function M.quitar_freeplay()
+	local tocado = false
+	for _, port in pairs(manager.machine.ioport.ports) do
+		for nombre, campo in pairs(port.fields) do
+			if campo.type_class == 'dipswitch' and campo.settings
+					and nombre == 'Free Play' then
+				for valor, texto in pairs(campo.settings) do
+					if (texto == 'Off' or texto == 'No')
+							and campo.user_value ~= valor then
+						campo.user_value = valor
+						tocado = true
+					end
+				end
+			end
+		end
+	end
+	return tocado
+end
+
 return M
