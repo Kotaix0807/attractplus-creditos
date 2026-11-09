@@ -647,6 +647,7 @@ local ESCRIBIR_FREEPLAY = {
 	digdug = { contador = 0x19, valor = 9, tope = 9 },
 	dkong = { contador = 0x6001, valor = 9, tope = 99 },
 	dkongjr = { contador = 0x6001, valor = 9, tope = 99 },
+	frogger = { contador = 0x83e1, valor = 9, tope = 99 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'commandob', 'commandob2', 'commandob3', 'commandoj', 'commandou', 'commandou2' }) do
@@ -664,6 +665,11 @@ end
 -- lectura NO hay carrera con el dibujo. Dir y metodo de Eloy (dkong3 6bf1).
 local FREEPLAY_TAP = {
 	dkong3 = { dir = 0x6bf1, valor = 0x99 },
+	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM, no en un
+	-- DIP. Su contador de creditos esta en 0x00c1 (cheat "Infinite Credits" = 09). El
+	-- pulso de moneda patinaba; forzar la lectura a 9 deja "PRESS 1 OR 2 PLAYER START"
+	-- sin monedas. Verificado por captura.
+	atetris = { dir = 0x00c1, valor = 9 },
 }
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
