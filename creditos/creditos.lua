@@ -663,14 +663,19 @@ end
 -- (equivale al watchpoint de MAME 'wpset dir,1,rw,1,{b@dir=valor;g}'): el juego
 -- siempre ve creditos y nunca llega a 0, y como solo se toca en el instante de la
 -- lectura NO hay carrera con el dibujo. Dir y metodo de Eloy (dkong3 6bf1).
+-- Cada juego es una LISTA de {dir, valor}: algunos tienen VARIAS copias del
+-- contador (Williams) y hay que forzar todas.
 local FREEPLAY_TAP = {
-	dkong3 = { dir = 0x6bf1, valor = 0x99 },
+	dkong3 = { { dir = 0x6bf1, valor = 0x99 } },   -- escribir por frame pelea con el marcador
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
 	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
 	-- off/on). Forzar su lectura a 0xE0 da el rotulo real "FREE PLAY" (verificado por
 	-- captura, identico al EEPROM puesto a mano en el menu de servicio).
-	atetris = { dir = 0x08bc, valor = 0xe0 },
+	atetris = { { dir = 0x08bc, valor = 0xe0 } },
+	-- joust (Williams): el contador de creditos (BCD) tiene DOS copias, 0xa0f2 y
+	-- 0xa0f4; hay que forzar las dos a 5. Hallado por Eloy con watchpoints rw.
+	joust = { { dir = 0xa0f2, valor = 5 }, { dir = 0xa0f4, valor = 5 } },
 }
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
@@ -2123,21 +2128,32 @@ end
 
 -- --- Free play por TAP de lectura (dkong3: escribir pelea con el marcador) ---
 do
-	local cfg = FREEPLAY_TAP[emu.romname and emu.romname() or '']
-	if cfg and FREEPLAY then
+	local lista = FREEPLAY_TAP[emu.romname and emu.romname() or '']
+	if lista and FREEPLAY then
 		local sp = GA_ESTADO.cred_space
 			or manager.machine.devices[':maincpu'].spaces['program']
-		local ok, tap = pcall(function()
-			return sp:install_read_tap(cfg.dir, cfg.dir, 'fp_tap',
-				function(offset, data, mask) return cfg.valor end)
-		end)
-		if ok then
-			GA_ESTADO.fp_tap = tap             -- vivo en GA_ESTADO: que el GC no se lo lleve
+		GA_ESTADO.fp_taps = {}   -- vivos en GA_ESTADO: que el GC no se los lleve
+		for _, t in ipairs(lista) do
+			local ok, tap = pcall(function()
+				return sp:install_read_tap(t.dir, t.dir, 'fp_tap',
+					-- Durante el arranque NO se fuerza (se devuelve el valor real): asi no
+					-- se rompe el test de RAM de boot (Williams/joust escribe patrones en
+					-- esta zona y comprueba que se lean igual). Tras el arranque, se fuerza.
+					function(offset, data, mask)
+						if GA_ESTADO.arranque then return data end
+						return t.valor
+					end)
+			end)
+			if ok then
+				GA_ESTADO.fp_taps[#GA_ESTADO.fp_taps + 1] = tap
+				log('free play por TAP de lectura: %04x -> %d (%s)',
+					t.dir, t.valor, emu.romname())
+			else
+				log('free play TAP fallo %04x (%s): %s', t.dir, emu.romname(), tostring(tap))
+			end
+		end
+		if #GA_ESTADO.fp_taps > 0 then
 			GA_ESTADO.freeplay_ram = false     -- el tap reemplaza al pulso de moneda/RAM
-			log('free play por TAP de lectura: %04x -> %d (%s)',
-				cfg.dir, cfg.valor, emu.romname())
-		else
-			log('free play TAP fallo (%s): %s', emu.romname(), tostring(tap))
 		end
 	end
 end
