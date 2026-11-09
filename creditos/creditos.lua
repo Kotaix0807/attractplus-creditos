@@ -658,6 +658,10 @@ local ESCRIBIR_FREEPLAY = {
 	-- El watchpoint de SOLO-escritura no lo congelaba (el juego no reescribe en
 	-- atraccion); escritura por frame (post-arranque) si. Verificado: 'CREDIT 9'.
 	sf = { contador = 0xff865d, valor = 9, tope = 9 },
+	-- sfiii3 (CPS3, SH-2): CPS3 no tiene DIPs (tarifa en menu de servicio/EEPROM);
+	-- se da free play escribiendo el contador BINARIO 0x2007CE0 (cheat Infinite
+	-- Credits), topa en 9. Verificado en pantalla: 'CREDITS:9 / PRESS START'.
+	sfiii3 = { contador = 0x2007ce0, valor = 9, tope = 9 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
