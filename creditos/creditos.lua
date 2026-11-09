@@ -648,8 +648,17 @@ local ESCRIBIR_FREEPLAY = {
 	dkong = { contador = 0x6001, valor = 9, tope = 99 },
 	dkongjr = { contador = 0x6001, valor = 9, tope = 99 },
 	frogger = { contador = 0x83e1, valor = 9, tope = 99 },
+	rbtapper = { contador = 0xe011, valor = 9, tope = 99 },
+	-- robocop (Data East dec0, 68000): contador BCD en 0xff8dc5 (cheat Infinite
+	-- Credits=99). La main RAM se espeja en 0x318dc5 y 0xff8dc5 (mismo byte); el
+	-- juego la lee por la vista 0xff8xxx. Escritura post-arranque, sin glitch (dec0
+	-- es tile, no como dkong3). Clones robocopu/w/b/j/u0 usan la misma dir.
+	robocop = { contador = 0xff8dc5, valor = 0x99, tope = 0x99 },
 }
 -- clones (misma direccion que su set base)
+for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
+	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.robocop
+end
 for _, c in ipairs({ 'commandob', 'commandob2', 'commandob3', 'commandoj', 'commandou', 'commandou2' }) do
 	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.commando
 end
