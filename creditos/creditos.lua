@@ -654,6 +654,10 @@ local ESCRIBIR_FREEPLAY = {
 	-- juego la lee por la vista 0xff8xxx. Escritura post-arranque, sin glitch (dec0
 	-- es tile, no como dkong3). Clones robocopu/w/b/j/u0 usan la misma dir.
 	robocop = { contador = 0xff8dc5, valor = 0x99, tope = 0x99 },
+	-- sf (Street Fighter, Capcom 68000): contador BINARIO en 0xff865d, topa en 9.
+	-- El watchpoint de SOLO-escritura no lo congelaba (el juego no reescribe en
+	-- atraccion); escritura por frame (post-arranque) si. Verificado: 'CREDIT 9'.
+	sf = { contador = 0xff865d, valor = 9, tope = 9 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
