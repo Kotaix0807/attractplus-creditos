@@ -31,6 +31,7 @@ F_PUNTAJES = os.path.join(ATTRACT, "puntajes.json")
 F_FRONTEND_DETENIDO = os.path.join(ATTRACT, "frontend_detenido")
 F_AJUSTES = os.path.join(ATTRACT, "panel_ajustes.json")
 F_TARIFA_GLOBAL = os.path.join(ATTRACT, "tarifa_global")  # 'freeplay' o pesos; lo lee creditos.lua
+F_BRILLO = os.path.join(ATTRACT, "brillo_leds")           # 0..255; lo lee moneyBank.py -> L<n>
 DIR_STATS = os.path.join(ATTRACT, "stats", "groovymame")
 
 

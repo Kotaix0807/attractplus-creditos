@@ -160,6 +160,12 @@ Datos fijos para la tarjeta "Información del sistema" (pantalla Ajustes).
 Nivel actual (0-100) para arrancar el slider donde toca. `{"ok": true, "nivel": 45}`
 (`nivel` es `null` si no se pudo leer).
 
+### `GET /api/leds/brillo`
+Brillo global de los LEDs del panel (0-255), para arrancar el slider donde toca:
+`{"brillo": 255}`. Escala TODO lo que corra en el Arduino (animaciones, botones de
+MAME, minijuego). Sin fichero = 255 (máximo). Lo aplica `moneyBank.py` mandando
+`L<n>` a la placa.
+
 ### `GET /api/puerta` (solo con Pi)
 Lo contesta el portero del Pi, no la cabina. Dice si la cabina está viva y si hay
 Wake-on-LAN disponible: `{"cabina_online": true, "wol": true}`. Úsalo en la pantalla
@@ -273,6 +279,7 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/creditos` | `{"n": 1}` | inyecta N créditos en la partida en curso |
 | `POST /api/pantalla` | `{"destino": "crt"}` | `"crt"` o `"panel"` (`pantalla-auto.sh`) |
 | `POST /api/volumen` | `{"nivel": 80}` | 0-100 (`amixer`) |
+| `POST /api/leds/brillo` | `{"brillo": 128}` | 0-255; brillo global de los LEDs, escala cualquier animación/juego en marcha |
 | `POST /api/puntajes/actualizar` | — | re-ejecuta `puntajes.py` |
 | `POST /api/juegos/<rom>/visible` | `{"visible": false}` | oculta/muestra el juego (`global_filter`) |
 | `POST /api/juegos/<rom>/tarifa` | `{"pesos": 200}` | fija la tarifa; pasos de $100 (una moneda) |

@@ -125,6 +125,53 @@ def sesion():
                     "csrf": session.get("csrf") if session.get("auth") else None})
 
 
+@app.get("/api/compilacion")
+def api_compilacion():
+    """Avance de la compilacion de GroovyMAME (PUBLICO, se ve sin login).
+    Cuenta los .o generados en ~/groovymame-fuentes contra el total aproximado
+    de unidades (.cpp/.cc).  Lee ~/compilar-cabina.log para saber si termino."""
+    base = os.path.expanduser("~/groovymame-fuentes")
+    log = os.path.expanduser("~/compilar-cabina.log")
+    out = {"estado": "sin datos", "activo": False, "nobj": 0, "total": 0,
+           "pct": 0, "ultima": "", "ts": int(time.time())}
+    txt = ""
+    try:
+        with open(log, "rb") as f:
+            f.seek(0, 2); sz = f.tell(); f.seek(max(0, sz - 4000))
+            txt = f.read().decode("utf-8", "replace")
+    except OSError:
+        pass
+    lineas = txt.strip().splitlines()
+    out["ultima"] = (lineas[-1][:120] if lineas else "")
+    if "Listo:" in txt:
+        out.update(estado="ok", activo=False, pct=100)
+        return jsonify(out)
+    if any(m in txt for m in ("Fallo la compilacion", "No encuentro el binario",
+                              "Compilo pero no arranca")):
+        out.update(estado="fallo", activo=False)
+        return jsonify(out)
+    if not os.path.isdir(base):
+        return jsonify(out)
+    need_total = (api_compilacion._total == 0)
+    nobj = 0
+    total = 0
+    for _r, _d, files in os.walk(base):
+        for n in files:
+            if n.endswith(".o"):
+                nobj += 1
+            elif need_total and (n.endswith(".cpp") or n.endswith(".cc")):
+                total += 1
+    if need_total:
+        api_compilacion._total = total
+    total = api_compilacion._total
+    out.update(estado="compilando", activo=True, nobj=nobj, total=total,
+               pct=round(nobj * 100.0 / total, 1) if total else 0)
+    return jsonify(out)
+
+
+api_compilacion._total = 0
+
+
 # ---------------------------------------------------------------------------
 # Lectura (GET)
 # ---------------------------------------------------------------------------
@@ -205,6 +252,12 @@ def api_juego_tarifa_get(rom):
 @requiere_login
 def api_tarifa_global_get():
     return jsonify(acciones.tarifa_global_actual())
+
+
+@app.get("/api/leds/brillo")
+@requiere_login
+def api_brillo_get():
+    return jsonify(acciones.brillo_actual())
 
 
 @app.get("/api/logs/retencion")
@@ -323,6 +376,14 @@ def api_creditos():
     return jsonify(acciones.creditos(cuerpo().get("n", 1)))
 
 
+@app.post("/api/pulsar")
+@requiere_csrf
+def api_pulsar():
+    """Joystick virtual: envia un control del mueble a la cabina (en juego por
+    panel_cmd->creditos.lua; en el menu por tecla XTEST)."""
+    return jsonify(acciones.pulsar(cuerpo().get("control", "")))
+
+
 @app.post("/api/pantalla")
 @requiere_csrf
 def api_pantalla():
@@ -333,6 +394,13 @@ def api_pantalla():
 @requiere_csrf
 def api_volumen():
     return jsonify(acciones.volumen(cuerpo().get("nivel", 80)))
+
+
+@app.post("/api/sonido/prueba")
+@requiere_csrf
+def api_sonido_prueba():
+    """Prueba de altavoces: reproduce un tono en 'izquierda', 'derecha' o 'ambos'."""
+    return jsonify(acciones.prueba_sonido(cuerpo().get("canal", "ambos")))
 
 
 @app.post("/api/puntajes/actualizar")
@@ -357,6 +425,12 @@ def api_juego_tarifa(rom):
 @requiere_csrf
 def api_tarifa_global():
     return jsonify(acciones.fijar_tarifa_global(cuerpo().get("valor")))
+
+
+@app.post("/api/leds/brillo")
+@requiere_csrf
+def api_brillo_set():
+    return jsonify(acciones.fijar_brillo(cuerpo().get("brillo")))
 
 
 @app.post("/api/juegos/<rom>/eliminar")

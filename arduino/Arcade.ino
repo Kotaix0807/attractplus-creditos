@@ -29,6 +29,7 @@ const int NUM_LEDS = 13;
 const int CANAL_MONEDERO = 13; // canal del PCA9685 junto al LED 12
 bool monederoEncendido = false;
 int brilloGlobal = 255;        // escala de todos los LEDs (no del rele)
+int ultimoPintado[NUM_LEDS];   // ultimo valor crudo (0..4095) de cada P, para re-escalar en M_PINTA
 
 // Modos del driver. El ultimo comando manda; solo uno a la vez.
 enum { M_OFF, M_ANIM, M_BOTONES, M_PINTA };
@@ -133,6 +134,11 @@ void procesarLinea() {
       break;
     case 'L':
       brilloGlobal = constrain(atoi(arg), 0, 255);
+      // Las animaciones y la respiracion re-escalan solas cada frame. En M_PINTA
+      // (minijuego) el loop no toca los LEDs, asi que re-aplicamos lo ultimo
+      // pintado con el brillo nuevo: asi el slider afecta a cualquier cosa que corra.
+      if (modo == M_PINTA)
+        for (int i = 0; i < NUM_LEDS; i++) fijarCanalFisico(i, ultimoPintado[i]);
       break;
     case 'A': {
       int n = atoi(arg);
@@ -154,13 +160,15 @@ void procesarLinea() {
         int v = constrain(atoi(coma + 1), 0, 255);
         if (ch >= 0 && ch < NUM_LEDS) {
           modo = M_PINTA; // el PC controla; el loop no pisa los LEDs
-          fijarCanalFisico(ch, (int)((long)v * 4095 / 255));
+          ultimoPintado[ch] = (int)((long)v * 4095 / 255);
+          fijarCanalFisico(ch, ultimoPintado[ch]);
         }
       }
       break;
     }
     case 'X':
       apagarTodos();
+      for (int i = 0; i < NUM_LEDS; i++) ultimoPintado[i] = 0;
       modo = M_PINTA;
       break;
   }

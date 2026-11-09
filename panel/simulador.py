@@ -59,6 +59,7 @@ ESTADO = {
     "tarifas": {},              # rom -> pesos
     "tarifa_global": "defecto", # 'defecto' | 'freeplay' | pesos (str)
     "volumen": 45,
+    "brillo": 255,              # brillo global de los LEDs 0..255
     "detenido": False,
     "ultimo_cambio": INICIO,
 }
@@ -304,6 +305,8 @@ class Handler(BaseHTTPRequestHandler):
             if tg != "defecto":
                 return self._json({"modo": "pesos", "pesos": int(tg)})
             return self._json({"modo": "defecto"})
+        if p == "/api/leds/brillo":
+            return self._json({"brillo": ESTADO["brillo"]})
         if p == "/api/botones":
             return self._sse_botones()
         if p == "/api/logs":
@@ -351,6 +354,9 @@ class Handler(BaseHTTPRequestHandler):
             ESTADO["detenido"] = False
         elif p == "/api/volumen":
             ESTADO["volumen"] = int(cuerpo.get("nivel", 45))
+        elif p == "/api/leds/brillo":
+            ESTADO["brillo"] = max(0, min(255, int(cuerpo.get("brillo", 255))))
+            return self._json({"ok": True, "brillo": ESTADO["brillo"]})
         elif p == "/api/tarifa-global":
             ESTADO["tarifa_global"] = str(cuerpo.get("valor", "defecto"))
         elif p == "/api/logs/retencion":

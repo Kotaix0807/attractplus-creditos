@@ -16,10 +16,10 @@ import glob
 import os
 import shutil
 
-from comun import (ATTRACT, DIR_STATS, F_AUDITORIA, F_FRONTEND_DETENIDO,
+from comun import (ATTRACT, DIR_STATS, F_AUDITORIA, F_BRILLO, F_FRONTEND_DETENIDO,
                    F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD, F_PUNTAJES,
                    F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
-                   leer_ajustes, guardar_ajustes)
+                   escribir_atomico, leer_ajustes, guardar_ajustes)
 
 DIR_MAME = os.path.expanduser("~/.mame")
 
@@ -164,6 +164,42 @@ def frontend_menu():
     return _err("no se pudo enviar la tecla a la pantalla")
 
 
+# Joystick virtual (panel tester).  En JUEGO cualquier control se acciona por el
+# ioport, cosa que solo puede creditos.lua -> va por panel_cmd ("pulsar <ctrl>").
+# En el MENU no hay juego y el frontend lee teclas, asi que solo tienen sentido
+# navegar y salir, y se mandan por XTEST.  Los nombres de control son los mismos
+# que usa la GUI (tester.html) y creditos.lua.
+_CONTROLES = {
+    "salir", "start1", "start2",
+    "p1_up", "p1_down", "p1_left", "p1_right",
+    "p1_b1", "p1_b2", "p1_b3", "p1_b4", "p1_b5", "p1_b6",
+    "p2_up", "p2_down", "p2_left", "p2_right",
+    "p2_b1", "p2_b2", "p2_b3", "p2_b4", "p2_b5", "p2_b6",
+}
+# keysyms X para el menu (lo que AM+ lee por teclado): flechas, Return, Esc.
+_XK_MENU = {"p1_up": 0xff52, "p1_down": 0xff54, "p1_left": 0xff51, "p1_right": 0xff53,
+            "start1": 0xff0d, "p1_b1": 0xff0d, "salir": 0xff1b}
+
+
+def pulsar(control):
+    control = (control or "").strip()
+    if control not in _CONTROLES:
+        return _err("control desconocido: %r" % control)
+    auditar("pulsar", control)
+    if _mame_corriendo():
+        # 'salir' cierra la maquina; el resto se acciona por el ioport en creditos.lua
+        orden = "salir" if control == "salir" else ("pulsar " + control)
+        if not _enviar_mame(orden):
+            return _err("no se pudo escribir la orden")
+        return _ok(nota="en el juego")
+    ks = _XK_MENU.get(control)
+    if ks is None:
+        return _ok(nota="en el menú ese control no hace nada (usa cruceta / START / SALIR)")
+    if _tecla_x(ks):
+        return _ok(nota="en el menú")
+    return _err("no se pudo enviar la tecla a la pantalla")
+
+
 # ---------------------------------------------------------------------------
 # Sistema
 # ---------------------------------------------------------------------------
@@ -299,6 +335,50 @@ def volumen_actual():
         if m:
             nivel = int(m.group(1))
     return {"ok": nivel is not None, "nivel": nivel}
+
+
+def prueba_sonido(canal):
+    """Reproduce un tono suave en los altavoces de la cabina para probar los
+    canales: 'izquierda', 'derecha' o 'ambos' (estereo: do5 a la izquierda, mi5 a
+    la derecha). Sirve para diagnosticar un canal mudo sin tener que lanzar un juego."""
+    canal = (canal or "ambos").strip().lower()
+    if canal not in ("izquierda", "derecha", "ambos"):
+        return _err("canal invalido (izquierda|derecha|ambos)")
+    auditar("prueba_sonido", canal)
+    # paplay (compat PipeWire) necesita el runtime del usuario.
+    os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+    import wave
+    import math
+    import array
+    import tempfile
+    sr = 48000
+    n = int(sr * 1.2)
+    amp = 0.33
+    def tono(freq, i):
+        env = min(1.0, i / (0.04 * sr), (n - i) / (0.04 * sr))   # fade 40 ms: sin clics
+        return int(amp * env * math.sin(2 * math.pi * freq * i / sr) * 32767)
+    a = array.array("h")
+    for i in range(n):
+        izq = tono(523.25, i) if canal in ("izquierda", "ambos") else 0
+        der = tono(659.25 if canal == "ambos" else 523.25, i) if canal in ("derecha", "ambos") else 0
+        a.append(izq)
+        a.append(der)
+    fd, ruta = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        w = wave.open(ruta, "wb")
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(a.tobytes())
+        w.close()
+        rc, _, err = ejecutar(["paplay", ruta], timeout=8)
+    finally:
+        try:
+            os.remove(ruta)
+        except OSError:
+            pass
+    return _ok(canal=canal) if rc == 0 else _err(err or "no se pudo reproducir (paplay)")
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +613,35 @@ def fijar_tarifa_global(valor):
         return _err("no se pudo escribir: %s" % e)
     auditar("tarifa_global", contenido)
     return _ok(**tarifa_global_actual())
+
+
+def brillo_actual():
+    """Brillo global de los LEDs (0..255) que escala TODO lo que corra en el
+    Arduino.  Sin fichero = la placa va a 255 (maximo), que es su valor por
+    defecto; lo aplica moneyBank.py mandando L<n>."""
+    try:
+        with open(F_BRILLO, encoding="utf-8") as f:
+            n = max(0, min(255, int(f.read().strip())))
+    except (OSError, ValueError):
+        n = 255
+    return {"brillo": n}
+
+
+def fijar_brillo(valor):
+    """Fija el brillo global de los LEDs (0..255).  Lo recoge moneyBank.py en su
+    ronda (~0.1 s) y lo manda a la placa como L<n>."""
+    try:
+        n = int(valor)
+    except (TypeError, ValueError):
+        return _err("valor no valido (0..255)")
+    n = max(0, min(255, n))
+    try:
+        os.makedirs(ATTRACT, exist_ok=True)
+        escribir_atomico(F_BRILLO, str(n) + "\n")
+    except OSError as e:
+        return _err("no se pudo escribir: %s" % e)
+    auditar("brillo_leds", str(n))
+    return _ok(brillo=n)
 
 
 def juego_reset_nvram(rom):
