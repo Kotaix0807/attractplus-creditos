@@ -645,7 +645,8 @@ local ESCRIBIR_FREEPLAY = {
 	-- fp_escribir solo escribe cuando v < tope, nunca baja. Sin disparo. Verificado
 	-- por Eloy (le puso 5 con un watchpoint; aqui repone a 9 cuando baja de 9).
 	digdug = { contador = 0x19, valor = 9, tope = 9 },
-	dkong = { contador = 0x6001, valor = 9, tope = 99 }
+	dkong = { contador = 0x6001, valor = 9, tope = 99 },
+	dkongjr = { contador = 0x6001, valor = 9, tope = 99 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'commandob', 'commandob2', 'commandob3', 'commandoj', 'commandou', 'commandou2' }) do
@@ -654,6 +655,16 @@ end
 for _, c in ipairs({ 'defenderb', 'defenderg', 'defenderom', 'defenderw' }) do
 	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.defender
 end
+
+-- Free play por TAP de LECTURA: para juegos donde ESCRIBIR el contador por frame
+-- pelea con el redibujado del marcador y deja una "barra de basura" (dkong3). En
+-- vez de escribir, se intercepta la LECTURA de la direccion y se devuelve 'valor'
+-- (equivale al watchpoint de MAME 'wpset dir,1,rw,1,{b@dir=valor;g}'): el juego
+-- siempre ve creditos y nunca llega a 0, y como solo se toca en el instante de la
+-- lectura NO hay carrera con el dibujo. Dir y metodo de Eloy (dkong3 6bf1).
+local FREEPLAY_TAP = {
+	dkong3 = { dir = 0x6bf1, valor = 0x99 },
+}
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
 local function tarifa_vigente()
@@ -2099,6 +2110,27 @@ do
 		else
 			log('free play por ESCRITURA: %04x=%d, sin disparo (%s)',
 				cfg.contador, cfg.valor, emu.romname())
+		end
+	end
+end
+
+-- --- Free play por TAP de lectura (dkong3: escribir pelea con el marcador) ---
+do
+	local cfg = FREEPLAY_TAP[emu.romname and emu.romname() or '']
+	if cfg and FREEPLAY then
+		local sp = GA_ESTADO.cred_space
+			or manager.machine.devices[':maincpu'].spaces['program']
+		local ok, tap = pcall(function()
+			return sp:install_read_tap(cfg.dir, cfg.dir, 'fp_tap',
+				function(offset, data, mask) return cfg.valor end)
+		end)
+		if ok then
+			GA_ESTADO.fp_tap = tap             -- vivo en GA_ESTADO: que el GC no se lo lleve
+			GA_ESTADO.freeplay_ram = false     -- el tap reemplaza al pulso de moneda/RAM
+			log('free play por TAP de lectura: %04x -> %d (%s)',
+				cfg.dir, cfg.valor, emu.romname())
+		else
+			log('free play TAP fallo (%s): %s', emu.romname(), tostring(tap))
 		end
 	end
 end
