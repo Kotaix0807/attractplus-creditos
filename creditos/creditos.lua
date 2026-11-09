@@ -686,7 +686,7 @@ local ESCRIBIR_FREEPLAY = {
 	ncv2       = { contador = 0x400da9,   valor = 9, tope = 9 },
 	snowbros   = { contador = 0x100195,   valor = 9, tope = 9 },
 	ssf2t      = { contador = 0xff82e9,   valor = 9, tope = 9 },   -- CPS2
-	ssriders   = { contador = 0x104044,   valor = 9, tope = 9 },
+	ssriders   = { contador = 0x104044, contador2 = 0x104046, valor = 9, tope = 9 },   -- slots independientes: 044=P1, 046=P2
 	tapper     = { contador = 0xe011,     valor = 9, tope = 9 },   -- como rbtapper
 	tekken     = { contador = 0x267038,   valor = 9, tope = 9 },   -- System11
 	tekken2    = { contador = 0x801c8d80, valor = 9, tope = 9 },   -- System11 (RAM PSX KSEG0)
@@ -1587,6 +1587,14 @@ local function por_frame()
 				pcall(w.space.write_u8, w.space, w.contador, w.valor)
 				if w.disparo then
 					pcall(w.space.write_u8, w.space, w.disparo, w.disparo_valor)
+				end
+			end
+			-- 2o contador independiente (ssriders: slots de moneda separados, P2
+			-- tiene su propio credito en w.contador2; sin esto P2 no puede entrar)
+			if w.contador2 then
+				local ok2, v2 = pcall(w.space.read_u8, w.space, w.contador2)
+				if ok2 and type(v2) == 'number' and v2 < (w.umbral or w.tope) then
+					pcall(w.space.write_u8, w.space, w.contador2, w.valor)
 				end
 			end
 		end
