@@ -665,11 +665,12 @@ end
 -- lectura NO hay carrera con el dibujo. Dir y metodo de Eloy (dkong3 6bf1).
 local FREEPLAY_TAP = {
 	dkong3 = { dir = 0x6bf1, valor = 0x99 },
-	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM, no en un
-	-- DIP. Su contador de creditos esta en 0x00c1 (cheat "Infinite Credits" = 09). El
-	-- pulso de moneda patinaba; forzar la lectura a 9 deja "PRESS 1 OR 2 PLAYER START"
-	-- sin monedas. Verificado por captura.
-	atetris = { dir = 0x00c1, valor = 9 },
+	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
+	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
+	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
+	-- off/on). Forzar su lectura a 0xE0 da el rotulo real "FREE PLAY" (verificado por
+	-- captura, identico al EEPROM puesto a mano en el menu de servicio).
+	atetris = { dir = 0x08bc, valor = 0xe0 },
 }
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
