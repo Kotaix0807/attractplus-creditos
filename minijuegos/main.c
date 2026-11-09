@@ -42,6 +42,7 @@
 #define NUM_LEDS    13       // + el boton extra (canal 0)
 #define RONDA_MS    60000    // dura una partida
 #define CELDA_SALIR (-2)     // codigo que devuelve el mapa para "el boton de salir"
+#define CANAL_FALLO 0        // canal fijo del sonido de fallo (reservado, ver initMix)
 
 // Celda (0..11, por filas: 0..5 arriba, 6..11 abajo) -> canal de LED del PCA.
 // Sale de la grilla de Arcade.ino: arriba {1,8,6,3,10,12}, abajo {2,7,5,4,9,11}.
@@ -180,6 +181,13 @@ static void liberarPitch(Mix_Chunk **slot, int *canal) {
     Mix_FreeChunk(*slot);
     *slot = NULL;
     *canal = -1;
+}
+
+// Suena el fallo en un canal fijo: si ese sonido ya esta sonando, no lo relanza.
+// Asi, pulsar varios botones erroneos a la vez NO apila copias que se solapan.
+static void sonarFallo(void) {
+    if (!Mix_Playing(CANAL_FALLO))
+        Mix_PlayChannel(CANAL_FALLO, sfxFail, 0);
 }
 
 // ============================ 2. FIFO / LEDs ================================
@@ -754,19 +762,28 @@ static int mover(int celda, int dx, int dy) {
     return fila * 6 + col;
 }
 
-static int celdaAlAzarMenos(int evita) {
+// Distancia en pasos de boton (Manhattan) en la grilla 2x6.
+static int distanciaCeldas(int a, int b) {
+    int dcol = (a % 6) - (b % 6);
+    int dfila = (a / 6) - (b / 6);
+    return abs(dcol) + abs(dfila);
+}
+
+// Una celda al azar a >=2 pasos del cursor: la meta nunca sale encima ni pegada.
+static int metaLejosDe(int cursor) {
     int c;
     do
     {
         c = rand() % NUM_CELDAS;
-    } while (c == evita);
+    } while (distanciaCeldas(c, cursor) < 2);
 
     return c;
 }
 
 // Juego 1: mueve el cursor hasta la celda que parpadea (la meta). +1 por acierto.
 static int jugarMeta(void) {
-    int cursor = 0, meta = 5, puntos = 0;
+    int cursor = 0, puntos = 0;
+    int meta = metaLejosDe(cursor);
     Uint32 ini = SDL_GetTicks();
     reiniciarEjes();
     ledApagarTodo();
@@ -794,15 +811,15 @@ static int jugarMeta(void) {
                     puntos++;
                     float tono = 1.0f + ((float)rand() / (float)RAND_MAX) * 0.3f;   // 1.0 .. 1.3
                     reproducirPitch(&okAgudo, &okCanal, sfxOk, tono);               // sin fugas
-                    meta = celdaAlAzarMenos(cursor);
+                    meta = metaLejosDe(cursor);
                 }
             }
         }
 
-        // cursor fijo encendido, meta parpadeando, el resto apagado
+        // cursor fijo encendido, meta parpadeando (100% / 0%), el resto apagado
         int blink = (SDL_GetTicks() / 300) % 2;
         for (int c = 0; c < NUM_CELDAS; c++)
-            led(CANAL[c], c == cursor ? 255 : (c == meta ? (blink ? 255 : 40) : 0));
+            led(CANAL[c], c == cursor ? 255 : (c == meta ? (blink ? 255 : 0) : 0));
 
         hud("ALCANZA LA META", puntos, recordMeta, RONDA_MS - (ahora - ini));
         SDL_RenderPresent(ren);
@@ -968,7 +985,7 @@ static int jugarTopo(void) {
 
             if (in.celda >= 0) {
                 if (botonesPulsados() > 1) {           // mas de un boton a la vez = falla
-                    Mix_PlayChannel(-1, sfxFail, 0);
+                    sonarFallo();
                 } else if (in.celda == topo) {         // acierto
                     puntos++;
                     Mix_PlayChannel(-1, sfxWhack, 0);
@@ -976,7 +993,7 @@ static int jugarTopo(void) {
                     topo = -1;
                     proximo = ahora + 550;            // pausa para que se vea el golpe
                 } else {                               // fallo (boton equivocado)
-                    Mix_PlayChannel(-1, sfxFail, 0);
+                    sonarFallo();
                 }
             }
         }
@@ -1153,6 +1170,8 @@ static void initMix()
     Mix_Init(MIX_INIT_MP3 | MIX_INIT_OGG);
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 1024) < 0)
         fprintf(stderr, "audio: %s (se juega sin sonido)\n", Mix_GetError());
+
+    Mix_ReserveChannels(1);   // canal 0 solo para sonarFallo; el -1 ya no lo coge
 
     cargarSonido(&sfxOk,   "dragon-coin.wav");
     cargarSonido(&sfxWhack,   "clap-pop.wav");
