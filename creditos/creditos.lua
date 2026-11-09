@@ -685,6 +685,10 @@ local FREEPLAY_TAP = {
 	-- joust (Williams): el contador de creditos (BCD) tiene DOS copias, 0xa0f2 y
 	-- 0xa0f4; hay que forzar las dos a 5. Hallado por Eloy con watchpoints rw.
 	joust = { { dir = 0xa0f2, valor = 5 }, { dir = 0xa0f4, valor = 5 } },
+	-- robotron (Williams, 6809): contador de creditos (BCD) en 0x9851. Mismo enfoque
+	-- que joust. El free play "de verdad" vive en el CMOS (0xcc00-0xcfff), pero
+	-- forzar el contador da free play funcional sin tener que tocar el CMOS.
+	robotron = { { dir = 0x9851, valor = 5 } },
 }
 
 -- Devuelve monedas_por_tanda, creditos_por_tanda, es_gratis
