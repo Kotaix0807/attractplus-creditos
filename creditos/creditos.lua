@@ -668,6 +668,34 @@ local ESCRIBIR_FREEPLAY = {
 	-- que damos free play escribiendolo, sin tocar la ROM. Binario, topa en 9.
 	-- Verificado en pantalla: 'CREDIT 9' limpio en el titulo, sin basura.
 	simpsons2p = { contador = 0x4838, valor = 9, tope = 9 },
+	-- --- Tanda 2026-11-09: juegos sin DIP de free play, contador escrito por frame.
+	-- Todos verificados en pantalla ('CREDIT(S) 9' limpio) metiendo el valor y
+	-- capturando la ventana. Direcciones de creditos.dat (verificadas por Eloy o
+	-- confirmadas aqui por comportamiento). Binario/BCD de un digito -> 9 = 0x09.
+	["1943"]   = { contador = 0xe312,     valor = 9, tope = 9 },
+	arkanoid   = { contador = 0xc432,     valor = 9, tope = 9 },
+	avsp       = { contador = 0xff818c,   valor = 9, tope = 9 },   -- CPS2
+	-- berzerk: unidades en el NIBBLE ALTO (0x90 = 9 creditos); el write se mantiene
+	-- (creditos.dat lo creia 'solo lectura', pero escrito por frame si surte efecto).
+	berzerk    = { contador = 0x08a5,     valor = 0x90, tope = 0x90 },
+	bublbobl   = { contador = 0xe366,     valor = 9, tope = 9 },
+	ddragon    = { contador = 0x0021,     valor = 9, tope = 9 },   -- BCD (9 = 0x09)
+	mario      = { contador = 0x6bf1,     valor = 9, tope = 9 },   -- limpio, no como dkong3
+	megaman2   = { contador = 0xff8068,   valor = 9, tope = 9 },   -- CPS2
+	mvsc       = { contador = 0xff4499,   valor = 9, tope = 9 },   -- CPS2
+	ncv2       = { contador = 0x400da9,   valor = 9, tope = 9 },
+	snowbros   = { contador = 0x100195,   valor = 9, tope = 9 },
+	ssf2t      = { contador = 0xff82e9,   valor = 9, tope = 9 },   -- CPS2
+	ssriders   = { contador = 0x104044,   valor = 9, tope = 9 },
+	tapper     = { contador = 0xe011,     valor = 9, tope = 9 },   -- como rbtapper
+	tekken     = { contador = 0x267038,   valor = 9, tope = 9 },   -- System11
+	tekken2    = { contador = 0x801c8d80, valor = 9, tope = 9 },   -- System11 (RAM PSX KSEG0)
+	tron       = { contador = 0xc501,     valor = 9, tope = 9 },
+	["19xxu"]  = { contador = 0xff4d15,   valor = 9, tope = 9 },   -- CPS2
+	-- xevious: contador en el chip Namco 51xx (cred_space = :51xx:mcu data 0x19, lo
+	-- fija creditos.dat), igual que digdug. Solo SUBE (nunca baja), que es lo que hace
+	-- fp_escribir. 'CREDIT 09' verificado en pantalla.
+	xevious    = { contador = 0x19,       valor = 9, tope = 9 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
