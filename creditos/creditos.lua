@@ -539,11 +539,6 @@ end
 -- ahora no afecta a esta partida, pero MAME la guarda en su .cfg y desde el
 -- siguiente arranque los creditos del frontend son exactos.
 local function fijar_1c1c(dip, gratis)
-	if gratis then
-		log('el juego esta en partida gratis, no le toco el DIP')
-		return
-	end
-
 	local valor = T.valor_1c1c(dip)
 	if not valor then
 		log('este juego no ofrece 1 moneda/1 credito, solo compenso')
@@ -553,6 +548,14 @@ local function fijar_1c1c(dip, gratis)
 	if dip.campo.user_value == valor then
 		log('el DIP ya estaba en 1 moneda/1 credito')
 		return
+	end
+
+	-- Antes, si el DIP estaba en FREE PLAY se dejaba quieto ("respeto el free
+	-- play manual"). Pero el free play lo manda ahora la tarifa global, asi que un
+	-- Coinage pegado en Free Play de una sesion gratis anterior se quedaba gratis
+	-- para siempre al volver a tarifa normal. Ahora SE REVIERTE a 1c1c.
+	if gratis then
+		log('el DIP estaba en FREE PLAY; lo devuelvo a 1 moneda/1 credito')
 	end
 
 	dip.campo.user_value = valor
