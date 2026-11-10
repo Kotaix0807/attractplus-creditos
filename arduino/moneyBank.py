@@ -31,6 +31,7 @@ import select
 
 MONEYBANK_STATE_PATH = os.path.expanduser("~/.attract/monedero_switch")
 BOTONES_PATH = os.path.expanduser("~/.attract/botones_juego")
+AVISO_LED_PATH = os.path.expanduser("~/.attract/aviso_led")
 BRILLO_PATH = os.path.expanduser("~/.attract/brillo_leds")
 FIFO_PATH = os.path.expanduser("~/.attract/arduino_fifo")
 BAUD_RATE = 115200
@@ -54,6 +55,7 @@ lastError = None
 # acaba de abrir el puerto, que la reinicia), asi que se manda todo otra vez.
 lastSwitch = None
 lastLed = None
+lastAviso = None   # estado anterior del aviso de salida ('off'/'salir'/None)
 lastBrillo = None
 minijuego = False     # el PC reclamo el panel por el FIFO
 fifoBuf = ""
@@ -171,6 +173,19 @@ def getBotonesMask():
             mask |= (1 << canal)
     return mask
 
+def getAvisoLed():
+    # Cuadro de salida con creditos dentro (lo escribe creditos.lua):
+    #   'off'   -> apaga todos los botones; 'salir' -> parpadea el de salir (canal 0);
+    #   None    -> no hay cuadro (LEDs normales).
+    try:
+        v = getFileData(AVISO_LED_PATH).strip()
+    except FileNotFoundError:
+        return None
+    except (PermissionError, UnicodeDecodeError, OSError) as e:
+        log(e)
+        return None
+    return v if v in ("off", "salir") else None
+
 def enviarCrudo(texto):
     global conection
     if conection is None:
@@ -257,14 +272,31 @@ while True:
             lastBrillo = brillo
             print("Brillo:", brillo)
 
-    # Los LEDs: en minijuego manda el PC (ya reenviado arriba). Si no, A o B.
+    # Los LEDs: en minijuego manda el PC (ya reenviado arriba). Si no: el aviso de
+    # salida (apagar todo / parpadear el boton de salir) manda sobre el juego; si no
+    # lo hay, A (atraccion) o B (botones del juego).
     if not minijuego:
-        if running:
-            mask = getBotonesMask()
-            cmd = None if mask is None else ("B%X" % mask)
+        aviso = getAvisoLed() if running else None
+        if aviso != lastAviso:
+            # cambio de estado del aviso: limpia (X) y fuerza re-mandar lo que toque
+            enviarCrudo("X")
+            lastLed = None
+            lastAviso = aviso
+            if aviso is not None:
+                print("Aviso salida:", aviso)
+        if aviso == "salir":
+            # parpadeo llamativo del boton de salir (canal 0), ~3 Hz por reloj
+            on = int(time.time() * 6) % 2
+            enviarCrudo("P0,%d" % (255 if on else 0))
+        elif aviso == "off":
+            pass   # ya se mando X al entrar: todos los botones apagados
         else:
-            cmd = "A" + ANIM_ATRACCION
-        if cmd is not None and cmd != lastLed:
-            if enviarCrudo(cmd) is True:
-                lastLed = cmd
-                print("LEDs:", cmd)
+            if running:
+                mask = getBotonesMask()
+                cmd = None if mask is None else ("B%X" % mask)
+            else:
+                cmd = "A" + ANIM_ATRACCION
+            if cmd is not None and cmd != lastLed:
+                if enviarCrudo(cmd) is True:
+                    lastLed = cmd
+                    print("LEDs:", cmd)
