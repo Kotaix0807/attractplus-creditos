@@ -565,24 +565,46 @@ end
 -- ~/.attract/tarifa_global con 'freeplay' o un numero de PESOS (100 = 1
 -- moneda/credito, 200 = 2 monedas/credito...). Vacio o ausente = sin tarifa
 -- global, manda GA_TARIFA de siempre. GA_TARIFA_GLOBAL='off' lo apaga.
-local function leer_tarifa_global()
-	local ruta = ruta_attract('tarifa_global', 'GA_TARIFA_GLOBAL')
-	if not ruta then return nil end
-	local f = io.open(ruta, 'r')
-	if not f then return nil end
-	local t = (f:read('l') or ''):gsub('%s+', ''):lower()
-	f:close()
+local function parse_tarifa(t)
+	t = (t or ''):gsub('%s+', ''):lower()
 	if t == '' then return nil end
 	if t == 'freeplay' or t == 'free' then return 'freeplay' end
 	local pesos = tonumber(t)
 	if pesos and pesos >= 100 then
 		return math.max(1, math.floor(pesos / 100))   -- monedas por credito
 	end
-	log('tarifa_global no se entiende: %s (espero freeplay o pesos >=100)', t)
+	log('tarifa no se entiende: %s (espero freeplay o pesos >=100)', t)
 	return nil
 end
 
-local GLOBAL_TARIFA = leer_tarifa_global()
+local function tarifa_de_fichero(ruta)
+	if not ruta then return nil end
+	local f = io.open(ruta, 'r')
+	if not f then return nil end
+	local t = f:read('l')
+	f:close()
+	return parse_tarifa(t)
+end
+
+-- La tarifa POR JUEGO manda sobre la global: ~/.attract/tarifa_juego/<rom> (el
+-- panel lo escribe al fijar la tarifa de un juego). Asi, con el free play global
+-- puesto, un juego con tarifa propia sigue cobrando (y al reves). Borrar ese
+-- fichero devuelve el juego a la tarifa global. GA_TARIFA_GLOBAL='off' apaga ambas.
+local function leer_tarifa()
+	if os.getenv('GA_TARIFA_GLOBAL') == 'off' then return nil end
+	local rom = emu.romname and emu.romname() or ''
+	if rom ~= '' then
+		local casa = os.getenv('HOME') or '.'
+		local pj = tarifa_de_fichero(casa .. '/.attract/tarifa_juego/' .. rom)
+		if pj ~= nil then
+			log('tarifa por juego (%s) manda sobre la global', rom)
+			return pj
+		end
+	end
+	return tarifa_de_fichero(ruta_attract('tarifa_global', 'GA_TARIFA_GLOBAL'))
+end
+
+local GLOBAL_TARIFA = leer_tarifa()
 -- Upvalue que ve el bucle por-frame: en free play se mantiene un credito escrito
 -- en la RAM (la via para los juegos sin DIP de free play).
 local FREEPLAY = (GLOBAL_TARIFA == 'freeplay')

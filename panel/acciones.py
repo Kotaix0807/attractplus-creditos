@@ -539,6 +539,21 @@ def juego_tarifa(rom, pesos):
         pesos = int(pesos)
     except (TypeError, ValueError):
         return _err("pesos no es un numero")
+    rom = os.path.basename(rom)   # nombre de set, sin separadores de ruta
+    # Fichero por juego que lee creditos.lua; MANDA sobre tarifa_global. Asi un
+    # juego con tarifa propia cobra aunque el free play global este puesto.
+    pj = os.path.join(os.path.dirname(F_TARIFA_GLOBAL), "tarifa_juego", rom)
+    # pesos<=0 = quitar el override: el juego vuelve a seguir la tarifa global.
+    if pesos <= 0:
+        try:
+            os.remove(pj)
+        except FileNotFoundError:
+            pass
+        aj = leer_ajustes()
+        aj.setdefault("tarifas", {}).pop(rom, None)
+        guardar_ajustes(aj)
+        auditar("juego_tarifa", "%s=global" % rom)
+        return _ok(pesos=0, modo="global")
     script = os.path.join(RAIZ_REPO, "creditos", "fijar_tarifa.sh")
     if not os.path.exists(script):
         return _err("no encuentro creditos/fijar_tarifa.sh")
@@ -546,6 +561,8 @@ def juego_tarifa(rom, pesos):
     rc, out, err = ejecutar(["bash", script, rom, str(pesos)], timeout=60)
     if rc != 0:
         return _err((err or out)[-1500:])
+    os.makedirs(os.path.dirname(pj), exist_ok=True)
+    escribir_atomico(pj, str(pesos))
     # Recuerda el valor fijado, para enseñarlo sin relanzar MAME (leer el DIP del
     # .cfg y traducirlo a pesos exigiria arrancar el juego).
     aj = leer_ajustes()
