@@ -287,6 +287,17 @@ function M.nuevo(op)
 		return a.estado == 'avisando'
 	end
 
+	-- Pista para el demonio de LEDs del panel mientras el cuadro de salida esta
+	-- puesto: 'off' = apaga todos los botones (aun falta la combinacion), 'salir'
+	-- = ya hizo las 4 direcciones y solo falta el boton de salir -> que parpadee;
+	-- nil = no hay cuadro (LEDs normales). Pura: no toca el sistema, la escribe
+	-- creditos.lua como el resto de senales.
+	function a.led_estado()
+		if a.estado ~= 'avisando' then return nil end
+		if a.combo >= #ORDEN then return 'salir' end
+		return 'off'
+	end
+
 	-- Las lineas del cuadro, para que quien dibuje no tenga que pensar.
 	--
 	-- saldo es lo que le queda al jugador en el monedero. Que se pierdan o no

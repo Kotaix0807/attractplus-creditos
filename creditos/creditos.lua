@@ -216,6 +216,21 @@ local function escribir_creditos_juego(n)
 	os.rename(CREDITOS_JUEGO .. '.tmp', CREDITOS_JUEGO)
 end
 
+-- Senal para el demonio de LEDs (moneyBank.py): al aparecer el cuadro de salida
+-- con creditos dentro se apagan todos los botones, y cuando el jugador completa la
+-- combinacion y solo falta el boton de salir, ese parpadea (canal 0). Asi, quien
+-- no lee el texto ve que boton pulsar. GA_AVISO_LED=off lo desactiva.
+local AVISO_LED = ruta_attract('aviso_led', 'GA_AVISO_LED')
+local function escribir_aviso_led(v)   -- 'off' | 'salir' | nil (borra el fichero)
+	if not AVISO_LED then return end
+	if v == nil then os.remove(AVISO_LED); return end
+	local f = io.open(AVISO_LED .. '.tmp', 'wb')
+	if not f then return end
+	f:write(v)
+	f:close()
+	os.rename(AVISO_LED .. '.tmp', AVISO_LED)
+end
+
 -- ---------------------------------------------------------------
 -- El panel web (ver docs/panel.md). Tres piezas, todas por fichero porque el
 -- Lua de MAME no tiene sockets:
@@ -1735,6 +1750,16 @@ local function por_frame()
 			or s1 or s2
 		local dirs = GA_ESTADO.leer_dirs and GA_ESTADO.leer_dirs() or nil
 		local accion = e.aviso.frame(e.leer_salir(), seguir, dirs)
+
+		-- Pista de LED para el panel: apaga los botones mientras el cuadro esta
+		-- puesto y parpadea el de salir cuando solo falta pulsarlo. Se escribe
+		-- ANTES de atender la accion (si es 'salir', machine:exit() no volveria).
+		-- Al cerrarse el cuadro led_estado() da nil y se borra el fichero.
+		local le = e.aviso.led_estado()
+		if le ~= e.aviso_led_ultimo then
+			escribir_aviso_led(le)
+			e.aviso_led_ultimo = le
+		end
 
 		if accion == 'bloquear' then
 			-- Esto es lo que frena la salida sin tocar ningun mapeo de
