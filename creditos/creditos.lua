@@ -956,6 +956,26 @@ local function campo_de_token(token)
 	return nil
 end
 
+-- Juegos de 2 jugadores SIMULTANEOS (los dos juegan a la vez): solo en estos se
+-- encienden los botones de P2. En los de 2p por turnos (alternados: dkong,
+-- kungfum, gng, pacman, galaga...) y en los de 1p, P2 se queda APAGADO, porque
+-- iluminarlo confunde al jugador (no puede usarlo). No hay senal fiable sim/alt
+-- en MAME, asi que es una lista; se amplia a mano. Nombres de set (incluye clones
+-- habituales); un juego que no este aqui no enciende P2.
+local P2_SIMULTANEO = {}
+for _, n in ipairs({
+	-- lucha 1v1
+	'sf','sf2','sfiii3','ssf2t','mvsc','mk','mk2','mk3','kinst','kinst2',
+	'tekken','tekken2','fatfury1','kof97','kof98','kof99','kof2000',
+	'samsho','samsho2','samsho3','samsho4','samsho5',
+	-- yo-contra-el-mundo en co-op / beat'em up / run&gun simultaneo
+	'avsp','btoads','bublbobl','contra','doubledr','ddragon','ffight','goldnaxe',
+	'mslug','mslug2','mslug3','ssriders','simpsons2p','tmnt','tmnt2po',
+	'megaman','megaman2','snowbros','strhoop','rampage','mwalk',
+	-- 2+ jugadores a la vez, clasicos
+	'gauntlet','gaunt2','gauntlet2p','gaunt22p','joust','mario','atetris',
+}) do P2_SIMULTANEO[n] = true end
+
 -- Apunta que botones de accion de P1 EXISTEN en este juego (1..6), para que el
 -- demonio los encienda en el panel. Un juego de 1 boton (p.ej. Centipede, disparo)
 -- deja "1"; sin botones, fichero vacio. Una sola vez al arrancar. Sin el START.
@@ -965,13 +985,14 @@ local function escribir_botones_juego()
 	for i = 1, 6 do
 		if campo_de_token('P1_BUTTON' .. i) then usados[#usados + 1] = tostring(i) end
 	end
-	-- P2: su mitad del panel, pero SOLO los botones que el juego define para P2.
-	-- MAME no define botones de P2 cuando P2 comparte los de P1 (defender,
-	-- centipede...) ni en juegos de 1p, asi que esos quedan apagados solos. Se
-	-- marcan 'p2:N' para mandarlos a los canales de P2; un demonio que no lo
-	-- entienda los ignora (no son enteros) y P1 sigue igual que ahora.
-	for i = 1, 6 do
-		if campo_de_token('P2_BUTTON' .. i) then usados[#usados + 1] = 'p2:' .. i end
+	-- P2: su mitad del panel, SOLO en juegos simultaneos (ver P2_SIMULTANEO) y solo
+	-- los botones que el juego define para P2. En 2p por turnos (dkong, kungfum,
+	-- gng...) y en 1p, P2 queda apagado para no confundir. Se marcan 'p2:N' para
+	-- los canales de P2; un demonio viejo los ignora (no son enteros) y P1 sigue igual.
+	if P2_SIMULTANEO[emu.romname and emu.romname() or ''] then
+		for i = 1, 6 do
+			if campo_de_token('P2_BUTTON' .. i) then usados[#usados + 1] = 'p2:' .. i end
+		end
 	end
 	local f = io.open(BOTONES_JUEGO .. '.tmp', 'wb')
 	if not f then return end
