@@ -940,6 +940,14 @@ local function escribir_botones_juego()
 	for i = 1, 6 do
 		if campo_de_token('P1_BUTTON' .. i) then usados[#usados + 1] = tostring(i) end
 	end
+	-- P2: su mitad del panel, pero SOLO los botones que el juego define para P2.
+	-- MAME no define botones de P2 cuando P2 comparte los de P1 (defender,
+	-- centipede...) ni en juegos de 1p, asi que esos quedan apagados solos. Se
+	-- marcan 'p2:N' para mandarlos a los canales de P2; un demonio que no lo
+	-- entienda los ignora (no son enteros) y P1 sigue igual que ahora.
+	for i = 1, 6 do
+		if campo_de_token('P2_BUTTON' .. i) then usados[#usados + 1] = 'p2:' .. i end
+	end
 	local f = io.open(BOTONES_JUEGO .. '.tmp', 'wb')
 	if not f then return end
 	f:write(table.concat(usados, ' '))
