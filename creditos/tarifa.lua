@@ -163,6 +163,17 @@ function M.aplicar_freeplay()
 						tocado = true
 					end
 				end
+				-- Midway (mk/mk2/mk3): el Free Play del Coinage solo surte efecto si la
+				-- fuente de tarifa es el DIP, no la CMOS (CMOS por defecto). Verificado en
+				-- mk: con esto sale FREE PLAY; sin esto el Coinage se ignora.
+				if nombre == 'Coinage Source' then
+					for valor, texto in pairs(campo.settings) do
+						if texto == 'Dipswitch' and campo.user_value ~= valor then
+							campo.user_value = valor
+							tocado = true
+						end
+					end
+				end
 			end
 		end
 	end
@@ -184,6 +195,16 @@ function M.quitar_freeplay()
 				for valor, texto in pairs(campo.settings) do
 					if (texto == 'Off' or texto == 'No')
 							and campo.user_value ~= valor then
+						campo.user_value = valor
+						tocado = true
+					end
+				end
+			end
+			-- Inversa Midway: devolver la fuente de tarifa a CMOS (pricing normal)
+			if campo.type_class == 'dipswitch' and campo.settings
+					and nombre == 'Coinage Source' then
+				for valor, texto in pairs(campo.settings) do
+					if texto == 'CMOS' and campo.user_value ~= valor then
 						campo.user_value = valor
 						tocado = true
 					end
