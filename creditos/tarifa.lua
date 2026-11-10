@@ -180,33 +180,34 @@ function M.aplicar_freeplay()
 	return tocado
 end
 
--- Inversa de aplicar_freeplay: quita el FREE PLAY del DIP SUELTO (un campo llamado
--- "Free Play": Neo Geo/KOF, CPS, qbert...), poniendolo a Off/No. Los Coinage con
--- una opcion "Free Play" NO se tocan aqui: de esos se encarga la tarifa normal
--- (1c1c / N monedas), que elige otro valor del MISMO campo. Devuelve true si toco
--- algo. Hace falta porque, al salir de free play, el DIP suelto se quedaba en On
--- para siempre (los KOF seguian gratis aunque la tarifa fuera de pago).
+-- Inversa de aplicar_freeplay: saca de FREE PLAY cualquier DIP que lo tenga puesto,
+-- devolviendolo a su valor de FABRICA (defvalue), que nunca es free play. Cubre los
+-- tres casos: el DIP SUELTO ("Free Play"=On: Neo Geo/KOF, CPS, qbert), el Coinage
+-- con opcion Free Play (kungfum, gng...), y el free play metido en OTRO campo
+-- (zaxxon: vive en "Lives"=0). Antes solo tocaba el suelto, asi que zaxxon y
+-- compania se quedaban gratis PARA SIEMPRE al volver a tarifa de pago. La tarifa
+-- normal (1c1c / N monedas) ajusta luego el Coinage al valor exacto. true si toco algo.
 function M.quitar_freeplay()
 	local tocado = false
 	for _, port in pairs(manager.machine.ioport.ports) do
 		for nombre, campo in pairs(port.fields) do
-			if campo.type_class == 'dipswitch' and campo.settings
-					and nombre == 'Free Play' then
-				for valor, texto in pairs(campo.settings) do
-					if (texto == 'Off' or texto == 'No')
-							and campo.user_value ~= valor then
-						campo.user_value = valor
-						tocado = true
-					end
+			if campo.type_class == 'dipswitch' and campo.settings then
+				local actual = campo.settings[campo.user_value]
+				local _, _, gratis = M.partir(actual or '')
+				-- el suelto "Free Play"=On/Yes no lo pilla partir() (es un On a secas)
+				local suelto_on = (nombre == 'Free Play')
+					and (actual == 'On' or actual == 'Yes')
+				if (gratis or suelto_on) and campo.user_value ~= campo.defvalue then
+					campo.user_value = campo.defvalue   -- fabrica: nunca es free play
+					tocado = true
 				end
-			end
-			-- Inversa Midway: devolver la fuente de tarifa a CMOS (pricing normal)
-			if campo.type_class == 'dipswitch' and campo.settings
-					and nombre == 'Coinage Source' then
-				for valor, texto in pairs(campo.settings) do
-					if texto == 'CMOS' and campo.user_value ~= valor then
-						campo.user_value = valor
-						tocado = true
+				-- Midway (mk/mk2/mk3): devolver la fuente de tarifa a CMOS (pricing normal)
+				if nombre == 'Coinage Source' then
+					for valor, texto in pairs(campo.settings) do
+						if texto == 'CMOS' and campo.user_value ~= valor then
+							campo.user_value = valor
+							tocado = true
+						end
 					end
 				end
 			end
