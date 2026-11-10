@@ -220,7 +220,13 @@ end
 -- con creditos dentro se apagan todos los botones, y cuando el jugador completa la
 -- combinacion y solo falta el boton de salir, ese parpadea (canal 0). Asi, quien
 -- no lee el texto ve que boton pulsar. GA_AVISO_LED=off lo desactiva.
-local AVISO_LED = ruta_attract('aviso_led', 'GA_AVISO_LED')
+-- (La ruta se arma a mano, como CREDITOS_JUEGO: ruta_attract aun no esta definida.)
+local AVISO_LED = os.getenv('GA_AVISO_LED')
+if AVISO_LED == nil or AVISO_LED == '' then
+	AVISO_LED = (os.getenv('HOME') or '.') .. '/.attract/aviso_led'
+elseif AVISO_LED == 'off' then
+	AVISO_LED = nil
+end
 local function escribir_aviso_led(v)   -- 'off' | 'salir' | nil (borra el fichero)
 	if not AVISO_LED then return end
 	if v == nil then os.remove(AVISO_LED); return end
