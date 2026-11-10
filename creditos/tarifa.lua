@@ -149,7 +149,17 @@ end
 --   - "Free Play (if the other too)" en Coin A Y Coin B a la vez
 --     (goldnaxe, outrun, nemesis: hay que poner los dos)
 -- Devuelve true si toco algun campo.
+--
+-- Juegos cuyo DIP de "Free Play" NO surte efecto al ponerlo: la placa lo lee al
+-- arrancar y ya. zaxxon lo tiene en el campo "Lives" (valor 0 = Free Play) y
+-- ponerlo no da partida gratis -- verificado: START sin moneda no arranca ni con
+-- Lives=0 desde el frame 0. Para estos devolvemos false (no tocamos DIP) y el free
+-- play se hace por RAM (freeplay_ram), que en zaxxon SI funciona: mantener 0x6012
+-- >=1 pone el estado en "credito listo" y START arranca la partida (verificado).
+local SIN_DIP_FREEPLAY = { zaxxon = true }
+
 function M.aplicar_freeplay()
+	if SIN_DIP_FREEPLAY[emu.romname and emu.romname() or ''] then return false end
 	local tocado = false
 	for _, port in pairs(manager.machine.ioport.ports) do
 		for nombre, campo in pairs(port.fields) do
