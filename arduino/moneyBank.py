@@ -43,6 +43,10 @@ ANIM_ATRACCION = "8"   # show rotatorio de animaciones
 # Mapa provisional: boton de accion de P1 (1..6) -> canal de LED del panel.
 # PENDIENTE de confirmar en la cabina (es cableado del panel). Ver docs/minijuegos.md.
 MAPA_BOTONES = {1: 1, 2: 8, 3: 6, 4: 2, 5: 7, 6: 5}
+# P2: segunda mitad de la grilla 2x6 (de ledArcadeTest.ino): arriba 3,10,12 /
+# abajo 4,9,11. creditos.lua manda los botones de P2 como 'p2:N'. PENDIENTE de
+# confirmar en la placa, igual que el de P1.
+MAPA_BOTONES_P2 = {1: 3, 2: 10, 3: 12, 4: 4, 5: 9, 6: 11}
 
 conection = None
 lastError = None
@@ -153,10 +157,16 @@ def getBotonesMask():
         return None
     mask = 0
     for tok in txt.replace(",", " ").split():
-        try:
-            canal = MAPA_BOTONES.get(int(tok))
-        except ValueError:
-            continue
+        if tok.startswith("p2:"):
+            try:
+                canal = MAPA_BOTONES_P2.get(int(tok[3:]))
+            except ValueError:
+                continue
+        else:
+            try:
+                canal = MAPA_BOTONES.get(int(tok))
+            except ValueError:
+                continue
         if canal is not None:
             mask |= (1 << canal)
     return mask
