@@ -15,10 +15,11 @@ auditoria.  Nunca lanza excepcion hacia el servidor.
 import glob
 import os
 import shutil
+import time
 
-from comun import (ATTRACT, DIR_STATS, F_AUDITORIA, F_BRILLO, F_FRONTEND_DETENIDO,
-                   F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD, F_PUNTAJES,
-                   F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
+from comun import (ATTRACT, DIR_STATS, F_ARDUINO_FIFO, F_AUDITORIA, F_BRILLO,
+                   F_FRONTEND_DETENIDO, F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD,
+                   F_PUNTAJES, F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
                    escribir_atomico, leer_ajustes, guardar_ajustes)
 
 DIR_MAME = os.path.expanduser("~/.mame")
@@ -266,13 +267,30 @@ def frontend_iniciar():
     return _ok(detenido=False)
 
 
+def _fifo_arduino(linea):
+    """Escribe una linea en el FIFO que drena moneyBank.py (unico dueno del
+    puerto serie). No bloquea: con O_NONBLOCK, si el demonio no esta leyendo da
+    ENXIO en vez de colgarse."""
+    fd = os.open(F_ARDUINO_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+    try:
+        os.write(fd, (linea + "\n").encode())
+    finally:
+        os.close(fd)
+
+
 def monedero_reiniciar():
-    """Reinicia el demonio del monedero: reabre el puerto serie y resetea la
-    placa (y con ella el rele)."""
+    """Apaga el monedero, espera 2 s y lo enciende otra vez: es el canal 13 del
+    PCA (comando R0/R1 del Arduino). moneyBank.py es el unico que escribe el
+    puerto, asi que la orden va por su FIFO y el demonio reenvia las lineas R; la
+    espera de 2 s la hace el panel."""
     auditar("monedero_reiniciar")
-    rc, _, err = ejecutar(["systemctl", "--user", "restart", "monedero.service"],
-                         timeout=15)
-    return _ok() if rc == 0 else _err(err or "fallo al reiniciar monedero.service")
+    try:
+        _fifo_arduino("R0")
+        time.sleep(2)
+        _fifo_arduino("R1")
+    except OSError as e:
+        return _err("no pude hablar con el monedero (demonio parado?): %s" % e)
+    return _ok()
 
 
 def mantenimiento(activo):

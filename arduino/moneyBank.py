@@ -87,7 +87,7 @@ def logOk():
      lastError = None
 
 def initArduino():
-    global conection, lastSwitch, lastLed, lastBrillo
+    global conection, lastSwitch, lastLed, lastBrillo, lastAviso
 
     if conection is not None:
         return True
@@ -105,6 +105,7 @@ def initArduino():
         lastSwitch = None
         lastLed = None
         lastBrillo = None
+        lastAviso = None   # la placa reinicio: re-mandar tambien el estado del aviso de salida
         logOk()
         return True
     except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
@@ -252,6 +253,8 @@ while True:
                 elif linea == "]":
                     minijuego = False
                     lastLed = None
+                elif linea in ("R0", "R1"):
+                    enviarCrudo(linea)   # alimentacion del monedero (canal 13): el panel lo reinicia
                 elif linea and minijuego:
                     enviarCrudo(linea)   # P<ch>,<v> / X crudos del frontend
 
