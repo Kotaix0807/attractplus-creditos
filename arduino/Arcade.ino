@@ -6,7 +6,10 @@
 // lo que permite compartir el cable (con numeros a secas no se sabria si un "1"
 // es "rele encendido" o "anima con el efecto 1"):
 //
-//   M0 / M1     rele del monedero: 1 = acepta monedas (hay partida)
+//   M0 / M1     rele de ACEPTAR monedas (pin digital 2): 1 = acepta (hay partida al 100%),
+//               0 = bloquea (frontend). NO es la alimentacion del monedero.
+//   R0 / R1     ALIMENTACION del monedero (canal 13 del PCA, via ULN): normalmente ON siempre;
+//               R0/R1 solo para apagarlo/encenderlo al reiniciar o recalibrar.
 //   L<n>        brillo global 0..255 (escala todos los LEDs, no el rele)
 //   A<n>        corre la animacion de atraccion n (0 = ninguna); 8 = show rotatorio
 //   B<hex>      botones de MAME: respiracion suave en los LEDs de la mascara de
@@ -26,7 +29,8 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 
 const int NUM_LEDS = 13;
-const int CANAL_MONEDERO = 13; // canal del PCA9685 junto al LED 12
+const int CANAL_MONEDERO = 13;    // canal del PCA9685: ALIMENTACION del monedero (via ULN). SIEMPRE encendida.
+const int PIN_ACEPTA_MONEDA = 2;  // rele (pin digital, aparte del PCA) que deja ENTRAR monedas. Lo manda el juego.
 bool monederoEncendido = false;
 int brilloGlobal = 255;        // escala de todos los LEDs (no del rele)
 int ultimoPintado[NUM_LEDS];   // ultimo valor crudo (0..4095) de cada P, para re-escalar en M_PINTA
@@ -74,7 +78,10 @@ void setup() {
   Wire.setClock(400000); // 13 escrituras I2C por frame: a 100kHz se nota el retardo
   randomSeed(analogRead(A0));
 
-  fijarMonedero(false); // el PCA9685 no se reinicia con el Arduino: forzar estado conocido
+  fijarMonedero(true);  // alimentacion del monedero (canal 13) SIEMPRE encendida (el PCA no se
+                        // reinicia con el Arduino: forzamos el estado conocido = ON)
+  pinMode(PIN_ACEPTA_MONEDA, OUTPUT);
+  digitalWrite(PIN_ACEPTA_MONEDA, HIGH); // arranca BLOQUEADO (menu). Activo-bajo: LOW = acepta
   apagarTodos();
   modo = M_ANIM;            // arranca ANIMANDO (atraccion): asi la placa anima aunque
   ultimoCambioShow = millis(); // no haya demonio todavia; el demonio luego confirma o cambia
@@ -129,7 +136,12 @@ void cambiarModo(byte m) {
 void procesarLinea() {
   char *arg = linea + 1;
   switch (linea[0]) {
-    case 'M':
+    case 'M':   // estado del juego -> rele de ACEPTAR monedas (pin 2). 1 = acepta (hay partida
+                // al 100%), 0 = bloquea (frontend). Activo-bajo, como el viejo moneyBank.ino.
+      digitalWrite(PIN_ACEPTA_MONEDA, atoi(arg) != 0 ? LOW : HIGH);
+      break;
+    case 'R':   // ALIMENTACION del monedero (canal 13): R1 enciende, R0 apaga. Normalmente ON
+                // siempre; R0/R1 solo para reiniciarlo/recalibrarlo.
       fijarMonedero(atoi(arg) != 0);
       break;
     case 'L':
