@@ -669,7 +669,10 @@ def candidatos_de(juego, cfg, dir_hi, fabrica=None):
     carpeta = os.path.join(DIR_NVRAM, juego)
 
     def leer(ruta):
-        if not (os.path.exists(ruta) and os.path.getsize(ruta)):
+        # isfile (no exists): en MAME nuevo hay subdirectorios dentro de la
+        # carpeta nvram del juego (p.ej. nvram/defender/hiscore/), y abrir un
+        # directorio como fichero revienta con IsADirectoryError.
+        if not (os.path.isfile(ruta) and os.path.getsize(ruta)):
             return None
         d = open(ruta, "rb").read()
         # Un fichero entero a 0x00 o a 0xFF es memoria que la placa nunca ha

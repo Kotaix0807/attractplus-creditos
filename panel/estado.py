@@ -379,27 +379,40 @@ def completo():
 # ---------------------------------------------------------------------------
 
 def puntajes():
-    """El puntajes.json, quitando las filas de fabrica (defecto==true)."""
+    """Todos los juegos con su estado de verificacion, para la vista de revision:
+      - 'confirmado'  la receta se comparo con el marcador en pantalla
+      - 'estimado'    decodifica una tabla pero la receta no esta confirmada
+      - 'sin_puntaje' hay datos pero no se sabe decodificarlos (o no hay receta)
+    El estado sale de la receta (el flag 'confirmado' que puntajes.py copia a cada
+    fila, incluidas las de fabrica), asi que un juego con receta confirmada que
+    nadie ha jugado sale 'confirmado' con la tabla vacia. La tabla solo lleva los
+    puestos reales: las filas de fabrica (defecto==true) se quitan."""
     try:
         with open(F_PUNTAJES, encoding="utf-8") as f:
             crudo = json.load(f)
     except (OSError, ValueError):
-        return {"generado": 0, "juegos": {}}
+        return {"generado": 0, "resumen": {"confirmado": 0, "estimado": 0,
+                                           "sin_puntaje": 0}, "juegos": {}}
     juegos = {}
+    resumen = {"confirmado": 0, "estimado": 0, "sin_puntaje": 0}
     for rom, info in crudo.items():
-        if not isinstance(info, dict) or not info.get("descifrado"):
+        if not isinstance(info, dict):
             continue
-        puestos = []
-        for p in info.get("puestos", []):
-            if p.get("defecto") is True:
-                continue
-            puestos.append({"puesto": p.get("puesto"), "puntos": p.get("puntos"),
-                            "nombre": p.get("nombre"),
-                            "confirmado": bool(p.get("confirmado"))})
-        if puestos:
-            juegos[rom] = {"titulo": info.get("titulo", rom), "puestos": puestos}
+        todos = info.get("puestos") or []
+        if not info.get("descifrado"):
+            est = "sin_puntaje"
+        elif any(p.get("confirmado") for p in todos):
+            est = "confirmado"
+        else:
+            est = "estimado"
+        resumen[est] += 1
+        reales = [{"puesto": p.get("puesto"), "puntos": p.get("puntos"),
+                   "nombre": p.get("nombre")}
+                  for p in todos if p.get("defecto") is not True]
+        juegos[rom] = {"titulo": info.get("titulo", rom), "estado": est,
+                       "puestos": reales}
     gen = int(os.path.getmtime(F_PUNTAJES)) if os.path.exists(F_PUNTAJES) else 0
-    return {"generado": gen, "juegos": juegos}
+    return {"generado": gen, "resumen": resumen, "juegos": juegos}
 
 
 def _titulo_rom(rom):

@@ -94,6 +94,13 @@
     <h3>Más jugados</h3>
     <table><tbody id="masjugados"></tbody></table>
 
+    <h3>Puntajes <small id="punt-resumen"></small></h3>
+    <p>
+      <button id="btn-punt-regen" class="outline">Re-generar puntajes</button>
+      <small id="punt-msg"></small>
+    </p>
+    <div id="puntajes"></div>
+
   </section>
 </main>
 
@@ -193,11 +200,54 @@ async function cargarMasJugados() {
   ).join("");
 }
 
+// -- PUNTAJES: lista por juego con su estado de verificacion --------------
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+function insignia(estado) {
+  const m = {
+    confirmado:  ["✓ confirmado",  "#27ae60"],
+    estimado:    ["~ estimado",         "#e67e22"],
+    sin_puntaje: ["— sin puntaje", "#7f8c8d"],
+  };
+  const [txt, col] = m[estado] || [estado, "#7f8c8d"];
+  return `<span style="color:${col};font-weight:bold">${txt}</span>`;
+}
+
+async function cargarPuntajes() {
+  const d = await (await fetch("/api/puntajes")).json();
+  const r = d.resumen || {};
+  $("punt-resumen").textContent =
+    `(${r.confirmado || 0} confirmados · ${r.estimado || 0} estimados · ${r.sin_puntaje || 0} sin puntaje)`;
+  const juegos = d.juegos || {};
+  // confirmado primero, luego estimado, luego sin puntaje; dentro, por titulo
+  const peso = { confirmado: 0, estimado: 1, sin_puntaje: 2 };
+  const roms = Object.keys(juegos).sort((a, b) =>
+    (peso[juegos[a].estado] - peso[juegos[b].estado]) ||
+    juegos[a].titulo.localeCompare(juegos[b].titulo));
+  $("puntajes").innerHTML = roms.map((rom) => {
+    const g = juegos[rom];
+    const filas = g.puestos.length
+      ? `<table><tbody>${g.puestos.map((p) =>
+          `<tr><td>${p.puesto}</td><td>${esc(p.puntos)}</td><td>${esc(p.nombre)}</td></tr>`).join("")}</tbody></table>`
+      : `<small>sin partidas registradas</small>`;
+    return `<details><summary>${esc(g.titulo)} &nbsp; ${insignia(g.estado)}</summary>${filas}</details>`;
+  }).join("");
+}
+
 // -- conectar los botones --------------------------------------------------
 function arrancarPanel() {
   refrescarEstado();
   setInterval(refrescarEstado, 2000);        // en vivo
   cargarMasJugados();
+  cargarPuntajes();
+
+  $("btn-punt-regen").onclick = async () => {
+    $("punt-msg").textContent = " regenerando…";
+    const r = await accion("/api/puntajes/actualizar");
+    $("punt-msg").textContent = r.ok ? " ¡listo!" : (" error: " + (r.error || ""));
+    if (r.ok) cargarPuntajes();
+  };
 
   // volumen: leer el nivel actual, actualizar la etiqueta al arrastrar, y
   // mandarlo al soltar (onchange) para no saturar amixer en cada pixel.
