@@ -564,7 +564,12 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                # Estos tienen XML de hi2txt, que gana sobre la receta: su
                # confirmado viene de AQUI, no de puntajes.dat. timeplt verificado
                # en pantalla; el resto, tabla coherente de hi2txt (2026-11-13).
-               "timeplt", "ffight", "megaman", "megaman2"}
+               "timeplt", "ffight", "megaman", "megaman2",
+               # kof99/kof2000: la pantalla SCORE/ABILITY RANKING de la atraccion
+               # muestra 100/90/80/70/60 (1ST TAK..5TH MAT), que es justo lo que
+               # lee hi2txt -- no eran "imposibles", es la tabla de fabrica real.
+               # Verificado en pantalla 2026-11-13.
+               "kof99", "kof2000"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro
