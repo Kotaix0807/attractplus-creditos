@@ -278,7 +278,7 @@ galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=si
 # iniciales, solo un identificador de equipo delante y 60/50/40/30/20 detras,
 # que para un juego de baloncesto es la magnitud correcta.
 samsho fuente=saveram swap=2 desde=0x32e entradas=5 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=si
-strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd confirmado=no
+strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd confirmado=si
 
 # nrallyx: bloque de 8 bytes con el digito mas significativo al FINAL, asi que
 # se rota uno. Anclado en dos medidas: la tabla de fabrica da 20000 (lo que dice
