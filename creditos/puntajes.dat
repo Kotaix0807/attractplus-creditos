@@ -285,6 +285,10 @@ strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd conf
 # en 0x4e88 (hiscore.dat). Verificado en pantalla 2026-11-13: .hi = 90 26 01
 # 00 = 12690 = el HIGH SCORE del marcador.
 mspactwin entradas=1 bytes=4 puntos=0,4,bcdle confirmado=si
+# polepos (Pole Position): tabla PRIZE WINNERS de 6, en la nvram. Cada entrada
+# son 6 bytes: score 2-LE (guardado /10) + 4 de tiempo/nombre. Verificado en
+# pantalla 2026-11-13: nvram b0 04.. = 1200 x10 = 12000 = el #1 de PRIZE WINNERS.
+polepos fuente=nvram entradas=6 bytes=6 puntos=0,2,le multiplica=10 confirmado=si
 
 # nrallyx: bloque de 8 bytes con el digito mas significativo al FINAL, asi que
 # se rota uno. Anclado en dos medidas: la tabla de fabrica da 20000 (lo que dice

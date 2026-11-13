@@ -398,7 +398,6 @@ SIN_PUNTAJE_MOTIVO = {
 # partida real en la cabina (deja un .hi/CMOS que la receta decodifica).
 PENDIENTE_PARTIDA = {
     "mk3":     "necesita una partida real (tabla 'finest warriors' en CMOS)",
-    "polepos": "necesita batir el TOP jugando (12000 es constante de ROM)",
 }
 
 
