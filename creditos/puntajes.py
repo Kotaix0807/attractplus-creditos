@@ -564,6 +564,16 @@ FABRICA = {}              # tablas leidas de la RAM con --fabrica
 _BLOQUES = {}             # hiscore.dat, para deducir la tabla de fabrica
 _RECETAS = {}             # puntajes.dat, idem
 
+# Bloques de RAM PROPIOS, para juegos cuyo bloque de hiscore.dat esta mal o es
+# parcial (centiped: hiscore.dat empieza en la 4a entrada y se salta el top; su
+# tabla completa esta en maincpu:program 0x02). Para estos juegos --fabrica
+# vuelca ESTA direccion (no la de hiscore.dat), se salta hi2txt y se descifra con
+# la receta propia de puntajes.dat desde el offset 0. Formato: (cpu, espacio,
+# direccion, largo_en_bytes). Es aditivo: solo afecta a los juegos listados.
+BLOQUES_PROPIOS = {
+    "centiped": [(":maincpu", "program", 0x02, 24)],   # 8 x 3 BCD-LE; 16543 EJD...
+}
+
 
 def _recortar(filas):
     """Quita las posiciones vacias del final: son relleno, no puntuaciones."""
@@ -671,6 +681,13 @@ def candidatos_de(juego, cfg, dir_hi, fabrica=None):
     estructura para la fuente eeprom" teniendo el dato bueno al lado.
     """
     fuente = (cfg or {}).get("fuente", "auto")
+    # Juegos con bloque de RAM propio: solo vale el volcado de --fabrica de esa
+    # direccion; ni .hi ni nvram ni earom (su formato no es el de la receta).
+    if juego in BLOQUES_PROPIOS:
+        if fabrica and juego in fabrica:
+            return [(bytes.fromhex(fabrica[juego]), "fabrica")], None
+        return [], "sin volcado de fabrica (corre --fabrica)"
+
     hi = os.path.join(dir_hi, juego + ".hi")
     carpeta = os.path.join(DIR_NVRAM, juego)
 
@@ -774,7 +791,12 @@ def _descifrar_fuente(juego, bloques, cfg, datos, origen):
     """Intenta descifrar UNA fuente concreta. Misma respuesta que puntajes_de."""
     aviso = None
 
-    if DB_HI2TXT:
+    # Bloque de RAM propio: el volcado YA es la tabla exacta (desde el offset 0),
+    # y hi2txt la malinterpretaria con el XML de hiscore.dat (que era el problema).
+    if juego in BLOQUES_PROPIOS:
+        bloques = BLOQUES_PROPIOS[juego]
+
+    if DB_HI2TXT and juego not in BLOQUES_PROPIOS:
         xml = os.path.join(DB_HI2TXT, juego + ".xml")
         if os.path.exists(xml):
             try:
@@ -958,7 +980,7 @@ def capturar_fabrica(juegos, bloques, mame, rompath):
 
     salida = {}
     for n, j in enumerate(juegos, 1):
-        b = bloques.get(j)
+        b = BLOQUES_PROPIOS.get(j) or bloques.get(j)
         if not b:
             print(f"  {n:>3}/{len(juegos)}  {j:<12} no esta en hiscore.dat")
             continue

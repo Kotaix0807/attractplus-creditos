@@ -292,3 +292,4 @@ nrallyx rotar=1 entradas=1 bytes=8 puntos=0,4,digitos multiplica=10 confirmado=s
 # los cuatro primeros bytes en BCD. La tabla de fabrica que empuja hacia abajo
 # es una escalera limpia de 50000/40000/30000/20000/10000.
 mvsc desde=1 entradas=10 bytes=10 puntos=0,4,bcd nombre=6,3,idx:snk confirmado=si
+centiped entradas=8 bytes=3 puntos=0,3,bcdle confirmado=si   # tabla completa en RAM 0x02 (BLOQUES_PROPIOS); hiscore.dat era parcial
