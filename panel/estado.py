@@ -378,11 +378,37 @@ def completo():
 # Puntajes y mas-jugados (leen ficheros, no tocan el sistema)
 # ---------------------------------------------------------------------------
 
+# Juegos que NO pueden tener puntaje, con el motivo (verificado 2026-11-13
+# ejecutando cada uno: verifyroms, captura de pantalla, volcado de RAM/eeprom).
+# Se marcan 'no_aplica' para que la revision no los cuente como huecos: no es que
+# falte la receta, es que no hay puntaje que obtener.
+SIN_PUNTAJE_MOTIVO = {
+    "mapacman":  "no instalado (ROMs ausentes)",
+    "tekken3":   "no instalado (ROMs ausentes)",
+    "tektagt":   "no instalado (ROMs ausentes)",
+    "profpac":   "no instalado (ROMs ausentes)",
+    "sfiii3.rota_0213": "no es un sistema de MAME",
+    "neogeo":    "es el BIOS del sistema, no un juego",
+    "goldnaxe":  "sin tabla de records (su tabla es la fuerza de los personajes)",
+    "gaunt2":    "sin tabla de records (juego de monedas continuas)",
+    "gaunt22p":  "sin tabla de records (juego de monedas continuas)",
+    "ncv2":      "coleccion de 6 juegos, sin tabla unica",
+}
+# Juegos reales con tabla pero sin datos todavia: solo se confirman con una
+# partida real en la cabina (deja un .hi/CMOS que la receta decodifica).
+PENDIENTE_PARTIDA = {
+    "mk3":     "necesita una partida real (tabla 'finest warriors' en CMOS)",
+    "polepos": "necesita batir el TOP jugando (12000 es constante de ROM)",
+}
+
+
 def puntajes():
     """Todos los juegos con su estado de verificacion, para la vista de revision:
       - 'confirmado'  la receta se comparo con el marcador en pantalla
       - 'estimado'    decodifica una tabla pero la receta no esta confirmada
-      - 'sin_puntaje' hay datos pero no se sabe decodificarlos (o no hay receta)
+      - 'no_aplica'   no puede tener puntaje (ver SIN_PUNTAJE_MOTIVO)
+      - 'pendiente'   juego real con tabla pero sin datos aun (necesita jugarse)
+      - 'sin_puntaje' hay datos pero no se sabe decodificarlos (caso no previsto)
     El estado sale de la receta (el flag 'confirmado' que puntajes.py copia a cada
     fila, incluidas las de fabrica), asi que un juego con receta confirmada que
     nadie ha jugado sale 'confirmado' con la tabla vacia. La tabla solo lleva los
@@ -394,23 +420,31 @@ def puntajes():
         return {"generado": 0, "resumen": {"confirmado": 0, "estimado": 0,
                                            "sin_puntaje": 0}, "juegos": {}}
     juegos = {}
-    resumen = {"confirmado": 0, "estimado": 0, "sin_puntaje": 0}
+    resumen = {"confirmado": 0, "estimado": 0, "no_aplica": 0,
+               "pendiente": 0, "sin_puntaje": 0}
     for rom, info in crudo.items():
         if not isinstance(info, dict):
             continue
         todos = info.get("puestos") or []
-        if not info.get("descifrado"):
-            est = "sin_puntaje"
-        elif any(p.get("confirmado") for p in todos):
+        motivo = None
+        if any(p.get("confirmado") for p in todos) and info.get("descifrado"):
             est = "confirmado"
-        else:
+        elif info.get("descifrado"):
             est = "estimado"
+        elif rom in SIN_PUNTAJE_MOTIVO:
+            est, motivo = "no_aplica", SIN_PUNTAJE_MOTIVO[rom]
+        elif rom in PENDIENTE_PARTIDA:
+            est, motivo = "pendiente", PENDIENTE_PARTIDA[rom]
+        else:
+            est = "sin_puntaje"
         resumen[est] += 1
         reales = [{"puesto": p.get("puesto"), "puntos": p.get("puntos"),
                    "nombre": p.get("nombre")}
                   for p in todos if p.get("defecto") is not True]
         juegos[rom] = {"titulo": info.get("titulo", rom), "estado": est,
                        "puestos": reales}
+        if motivo:
+            juegos[rom]["motivo"] = motivo
     gen = int(os.path.getmtime(F_PUNTAJES)) if os.path.exists(F_PUNTAJES) else 0
     return {"generado": gen, "resumen": resumen, "juegos": juegos}
 

@@ -214,6 +214,8 @@ function insignia(estado) {
   const m = {
     confirmado:  ["✓ confirmado",  "#27ae60"],
     estimado:    ["~ estimado",         "#e67e22"],
+    pendiente:   ["● falta jugar", "#2980b9"],
+    no_aplica:   ["– no aplica",   "#95a5a6"],
     sin_puntaje: ["— sin puntaje", "#7f8c8d"],
   };
   const [txt, col] = m[estado] || [estado, "#7f8c8d"];
@@ -224,10 +226,12 @@ async function cargarPuntajes() {
   const d = await (await fetch("/api/puntajes")).json();
   const r = d.resumen || {};
   $("punt-resumen").textContent =
-    `(${r.confirmado || 0} confirmados · ${r.estimado || 0} estimados · ${r.sin_puntaje || 0} sin puntaje)`;
+    `(${r.confirmado || 0} confirmados · ${r.estimado || 0} estimados · ` +
+    `${r.pendiente || 0} falta jugar · ${r.no_aplica || 0} no aplica` +
+    (r.sin_puntaje ? ` · ${r.sin_puntaje} sin puntaje` : "") + `)`;
   const juegos = d.juegos || {};
-  // confirmado primero, luego estimado, luego sin puntaje; dentro, por titulo
-  const peso = { confirmado: 0, estimado: 1, sin_puntaje: 2 };
+  // confirmado, estimado, falta-jugar, no-aplica, sin-puntaje; dentro, por titulo
+  const peso = { confirmado: 0, estimado: 1, pendiente: 2, no_aplica: 3, sin_puntaje: 4 };
   const roms = Object.keys(juegos).sort((a, b) =>
     (peso[juegos[a].estado] - peso[juegos[b].estado]) ||
     juegos[a].titulo.localeCompare(juegos[b].titulo));
@@ -236,7 +240,8 @@ async function cargarPuntajes() {
     const filas = g.puestos.length
       ? `<table><tbody>${g.puestos.map((p) =>
           `<tr><td>${p.puesto}</td><td>${esc(p.puntos)}</td><td>${esc(p.nombre)}</td></tr>`).join("")}</tbody></table>`
-      : `<small>sin partidas registradas</small>`;
+      : (g.motivo ? `<small>${esc(g.motivo)}</small>`
+                  : `<small>sin partidas registradas</small>`);
     return `<details><summary>${esc(g.titulo)} &nbsp; ${insignia(g.estado)}</summary>${filas}</details>`;
   }).join("");
 }
