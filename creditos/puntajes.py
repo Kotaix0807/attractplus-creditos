@@ -547,7 +547,13 @@ def detectar_en_ventana(datos, tope=2048):
 VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                "dkong", "dkong3", "gradius", "kungfum", "mappy", "mspacman",
                "pacman", "robocop", "sf2", "zaxxon", "tmnt", "tmnt2po",
-               "doubledr"}
+               "doubledr",
+               # verificados en pantalla 2026-11-13 (comparando el marcador de la
+               # atraccion con lo que exporta puntajes.py; capturas por juego).
+               "1942", "19xxu", "berzerk", "btime", "digdug", "dkongjr",
+               "elevator", "frogger", "galaga", "gng", "mario", "missile",
+               "popeye", "qbert", "snowbros", "starwars", "tron", "mwalk",
+               "nemesis", "avsp", "joust", "asteroid"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro

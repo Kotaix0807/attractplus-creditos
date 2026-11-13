@@ -127,9 +127,9 @@ simpsons2p entradas=10 bytes=8 puntos=3,4,bcd nombre=0,3,ascii confirmado=no
 # ssf2t: [50000, 45000, 40000, 35000, 30000, 25000]
 ssf2t entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
 # ssriders: [100000, 90000, 80000, 70000, 60000, 50000]
-ssriders entradas=10 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
+ssriders entradas=10 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=si
 # timeplt: [10000, 8800, 8460, 6520, 4300]
-timeplt entradas=5 bytes=8 puntos=1,3,bcdle nombre=4,3,idx:capcom confirmado=no
+timeplt entradas=5 bytes=8 puntos=1,3,bcdle nombre=4,3,idx:capcom confirmado=si
 # zaxxon: [8900, 7400, 6600, 5100, 4300, 3700]
 zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=si   # pantalla: TOP 008900
 # Atari Tetris guarda TODO en ASCII: 10 puntuaciones de 6 digitos seguidas
@@ -183,8 +183,8 @@ tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado
 #
 # Sin confirmar: no he visto ese numero en el marcador del juego, y de fabrica
 # son todos iguales, asi que no hay orden que ayude a validarlo.
-samsho4 fuente=saveram swap=2 desde=0x422 entradas=13 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
-samsho5 fuente=saveram swap=2 desde=0x422 entradas=28 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=no
+samsho4 fuente=saveram swap=2 desde=0x422 entradas=13 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=si
+samsho5 fuente=saveram swap=2 desde=0x422 entradas=28 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=si
 
 # Fatal Fury. Entradas de 8 bytes desde 0x32c: la puntuacion son 2 bytes en
 # binario y hay que multiplicar por 100, y las iniciales son INDICES de letra
@@ -235,7 +235,7 @@ xevious entradas=5 bytes=16 puntos=0,3,bcd multiplica=10 nombre=3,10,idx:namco c
 # primero, indexadas (0x0a = 'A'), y la puntuacion son 4 bytes en binario a
 # partir del octavo. Sale la escalera 100000 / 90000 / 80000, que es lo que
 # delato la estructura -- 0x000186a0 es 100000 clavado.
-sfiii3 entradas=5 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
+sfiii3 entradas=5 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=si
 
 # Street Fighter. Entradas de 16 bytes: la puntuacion son 8 bytes con un digito
 # decimal en cada uno, y las iniciales van en el 9 indexadas al estilo Capcom
@@ -243,7 +243,7 @@ sfiii3 entradas=5 bytes=20 puntos=8,4,be nombre=0,3,idx:capcom confirmado=no
 #
 # Lo encontro buscar_tabla.py en cuanto se le enseno a probar alfabetos
 # INDEXADOS: en ASCII no hay nada que ver en este volcado.
-sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom confirmado=no
+sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom multiplica=10 confirmado=si   # pantalla: RANKING BEST 10, 101800 HRO
 
 # Samurai Shodown II. De fabrica tiene una escalera BCD de 2 bytes en 0x33a:
 # 7000 / 6000 / 5000, y la partida de Eloy cambio la tercera a 5308. O sea que
@@ -269,7 +269,7 @@ btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,asc
 # campo de 4, asi que ahi no encaja y no descifraba. Es una sola puntuacion en
 # BCD little-endian. De fabrica vale 0, y eso coincide con la referencia de
 # hi2txt (1 fila, SCORE 0).
-galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=no
+galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=si
 
 # samsho y strhoop: las dos salieron del mismo sitio que doubledr, fatfury1 y
 # samsho2 -- en un NeoGeo la tabla vive entre 0x320 y 0x340 del saveram, con
@@ -277,7 +277,7 @@ galaxian entradas=1 bytes=3 puntos=0,3,bcdle confirmado=no
 # que con 0x00='A' son SNK: el relleno de fabrica de la casa. En strhoop no hay
 # iniciales, solo un identificador de equipo delante y 60/50/40/30/20 detras,
 # que para un juego de baloncesto es la magnitud correcta.
-samsho fuente=saveram swap=2 desde=0x32e entradas=5 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=no
+samsho fuente=saveram swap=2 desde=0x32e entradas=5 bytes=16 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=si
 strhoop fuente=saveram swap=2 desde=0x322 entradas=5 bytes=8 puntos=4,4,bcd confirmado=no
 
 # nrallyx: bloque de 8 bytes con el digito mas significativo al FINAL, asi que
@@ -291,4 +291,4 @@ nrallyx rotar=1 entradas=1 bytes=8 puntos=0,4,digitos multiplica=10 confirmado=s
 # las iniciales son indices con 0x00='A' (00 01 02 = ABC) y la puntuacion son
 # los cuatro primeros bytes en BCD. La tabla de fabrica que empuja hacia abajo
 # es una escalera limpia de 50000/40000/30000/20000/10000.
-mvsc desde=1 entradas=10 bytes=10 puntos=0,4,bcd nombre=6,3,idx:snk confirmado=no
+mvsc desde=1 entradas=10 bytes=10 puntos=0,4,bcd nombre=6,3,idx:snk confirmado=si
