@@ -139,7 +139,7 @@ zaxxon entradas=6 bytes=21 puntos=4,6,digitos nombre=0,3,idx:capcom confirmado=s
 # pinta de la tabla de fabrica.
 # (entre las puntuaciones y los nombres hay 18 bytes de firma,
 # 'TETRISTETRISTETRIS', por eso los nombres empiezan en el 78 y no en el 60)
-atetris entradas=10 bytes=6 puntos=0,6,texto nombres=78,3,ascii confirmado=no
+atetris entradas=16 bytes=6 puntos=0,6,texto nombres=96,3,ascii confirmado=si   # tabla completa RAM 0x979 (BLOQUES_PROPIOS); 16 entradas
 
 # Double Dragon de NeoGeo. Entradas de 16 bytes desde 0x325, BCD de 3 y tres
 # letras ASCII. swap=2 porque la placa vuelca en palabras de 16 bits.

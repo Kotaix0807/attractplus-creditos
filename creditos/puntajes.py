@@ -572,6 +572,7 @@ _RECETAS = {}             # puntajes.dat, idem
 # direccion, largo_en_bytes). Es aditivo: solo afecta a los juegos listados.
 BLOQUES_PROPIOS = {
     "centiped": [(":maincpu", "program", 0x02, 24)],   # 8 x 3 BCD-LE; 16543 EJD...
+    "atetris": [(":maincpu", "program", 0x979, 0x90)],  # 16 scores ASCII x6 + 16 nombres x3
 }
 
 
