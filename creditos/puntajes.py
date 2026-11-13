@@ -559,7 +559,8 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                # la tabla para captura pixel a pixel (NeoGeo/CPS/nvram). Resueltos
                # 2026-11-13 por decodificacion coherente, no por pantalla.
                "kof97", "kof98", "mslug", "mslug2", "mslug3", "outrun",
-               "robotron", "rampage", "tapper", "rbtapper"}
+               "robotron", "rampage", "tapper", "rbtapper", "punchout",
+               "mk", "mk2", "mk3"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro

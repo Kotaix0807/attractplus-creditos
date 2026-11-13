@@ -171,7 +171,7 @@ tmnt2po entradas=10 bytes=2 puntos=0,2,bcd nombres=200,4,ascii confirmado=si   #
 # nombre en ASCII con ranura de 4 (AGR, KAZ, TEN, ONO, FUN... el equipo de
 # Namco). OJO: los valores SUBEN de 3600 en 3600, asi que casi seguro son
 # TIEMPOS y no puntuaciones -- es la tabla de records de tiempo del juego.
-tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado=no
+tekken desde=0xc0 entradas=15 bytes=12 puntos=0,4,le nombre=8,3,ascii confirmado=si
 
 # Samurai Shodown IV y V. Su saveram trae tabla DE FABRICA (no hace falta
 # jugar): entradas de 8 bytes desde 0x422, tres letras ASCII y un valor de 4
@@ -221,7 +221,7 @@ samsho3 fuente=saveram swap=2 desde=0x329 entradas=1 bytes=8 puntos=0,3,bcd nomb
 #
 # OJO, igual que en tekken: son TIEMPOS, no puntuaciones. Los valores van de
 # 3600 en 3600, que es un minuto a 60 fps, y 359999 es el tope de "sin marca".
-tekken2 entradas=24 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=no
+tekken2 entradas=24 bytes=8 puntos=0,3,le nombre=4,3,ascii confirmado=si
 
 # Xevious. Entradas de 16 bytes: BCD de 3 (x10) y el nombre en 10 caracteres
 # indexados, con minusculas incluidas.

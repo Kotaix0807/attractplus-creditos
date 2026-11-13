@@ -77,6 +77,23 @@ def _quitar_bytes(datos, valor):
     return bytes(b for b in datos if b != valor)
 
 
+def _byte_skip(datos, modo):
+    """byte-skip del XML. 'even'/'odd': las placas de 16 bits guardan el dato en
+    un byte de cada palabra y el otro es relleno (Midway/TMS34010: mk, mk2...).
+    'even' = quita los bytes en posicion PAR (deja los impares); 'odd' al reves.
+    Un numero (0xNN) mantiene el comportamiento viejo: quitar los bytes iguales a
+    ese valor."""
+    # HiToText numera los bytes desde 1: 'even' = los bytes 2,4,6... (indices
+    # impares 1,3,5) son relleno y se quitan, dejando los pares [0::2] (el dato).
+    # Verificado en mk: [0::2] da CRL + 3356790 (= pantalla); [1::2] daba ceros.
+    m = (modo or "").strip().lower()
+    if m == "even":
+        return datos[0::2]
+    if m == "odd":
+        return datos[1::2]
+    return _quitar_bytes(datos, _entero(modo))
+
+
 def _leer_int(trozo, elt):
     perfil = elt.get("decoding-profile", "")
     base = _entero(elt.get("base"), 10)
@@ -91,7 +108,7 @@ def _leer_int(trozo, elt):
         relleno = _entero(elt.get("byte-trim"))
         trozo = bytes(b for b in trozo if b != relleno)
     if elt.get("byte-skip"):
-        trozo = _quitar_bytes(trozo, _entero(elt.get("byte-skip")))
+        trozo = _byte_skip(trozo, elt.get("byte-skip"))
     if elt.get("nibble-skip"):
         digitos = _quitar_nibbles(trozo, elt.get("nibble-skip"))
         if little:
@@ -133,6 +150,8 @@ def _leer_int(trozo, elt):
 def _leer_text(trozo, elt, charsets):
     tabla = charsets.get(elt.get("charset", ""), {})
     off = _entero(elt.get("ascii-offset"), 0)
+    if elt.get("byte-skip"):
+        trozo = _byte_skip(trozo, elt.get("byte-skip"))
     if elt.get("nibble-skip"):
         trozo = bytes(_quitar_nibbles(trozo, elt.get("nibble-skip")))
     fuera = []
