@@ -576,6 +576,13 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                # Verificado en pantalla 2026-11-13.
                "simpsons2p"}
 
+# Juegos cuya FUENTE guarda mas puestos de los que el juego ensena. 1942 guarda
+# una tabla interna de 25, pero su atraccion dice "TOP 5 RANKING SCORE" y solo
+# muestra 5 (los nombres de fabrica deletrean "CAPCOM ALL RIGHTS RESERVED", un
+# chiste de Capcom). Nos quedamos con lo que el jugador ve; el resto es relleno
+# interno (otros nombres de Capcom + una rampa 1500..200) que no sale en pantalla.
+TOPE_PUESTOS = {"1942": 5}
+
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro
 # sitio con --nvram: asi se descifra un volcado de la cabina desde otra maquina,
@@ -803,6 +810,8 @@ def puntajes_de(juego, bloques, cfg, dir_hi):
     for datos, origen in candidatos:
         filas, org, av = _descifrar_fuente(juego, bloques, cfg, datos, origen)
         if filas:
+            if juego in TOPE_PUESTOS:        # recorta el relleno interno (ver 1942)
+                filas = filas[:TOPE_PUESTOS[juego]]
             return filas, org, av
         if ultimo[2] is None or ultimo[0] is None:
             ultimo = (None, org, av)
