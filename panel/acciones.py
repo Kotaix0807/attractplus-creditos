@@ -414,6 +414,80 @@ def puntajes_actualizar():
 
 
 # ---------------------------------------------------------------------------
+# Opciones de arranque por juego (arranque.dat). Las lee creditos.lua en cada
+# lanzamiento, asi que un cambio aplica al PROXIMO arranque de ese juego, sin
+# reiniciar nada. Se escribe con escribir_ajuste.py (una clave, atomico).
+# ---------------------------------------------------------------------------
+F_ARRANQUE = os.path.join(RAIZ_REPO, "creditos", "arranque.dat")
+
+# clave -> (tipo, etiqueta). bool_on: el defecto es encendido (nvram, negro);
+# bool_off: el defecto es apagado (contador, indicador...).
+ARRANQUE_CLAVES = {
+    "nvram":     ("bool_on",  "Guardar NVRAM (creditos/records entre sesiones)"),
+    "negro":     ("bool_on",  "Tapar la pantalla en negro al arrancar"),
+    "contador":  ("bool_off", "Mostrar creditos en pantalla"),
+    "indicador": ("bool_off", "Mostrar el cartel '>> CARGANDO AL N%'"),
+    "auto":      ("bool_off", "Alargar el arranque hasta detectar la placa lista"),
+    "limite":    ("num",      "Limite de creditos (0 = sin limite)"),
+    "segundos":  ("num",      "Segundos de arranque tapado (del juego)"),
+    "velocidad": ("num",      "Velocidad al cargar (%, 0 = sin freno)"),
+    "barrido":   ("num",      "Segundos hasta limpiar creditos viejos de la NVRAM"),
+}
+
+
+def _arranque_parse():
+    datos = {}
+    try:
+        with open(F_ARRANQUE, encoding="utf-8") as f:
+            for linea in f:
+                linea = linea.strip()
+                if not linea or linea.startswith("#"):
+                    continue
+                campos = linea.split()
+                juego = campos[0].lower()
+                datos[juego] = {}
+                for kv in campos[1:]:
+                    if "=" in kv:
+                        k, v = kv.split("=", 1)
+                        datos[juego][k] = v
+    except OSError:
+        pass
+    return datos
+
+
+def arranque_opciones(rom):
+    """Ajustes actuales de arranque.dat para <rom> (y la linea 'defecto')."""
+    d = _arranque_parse()
+    claves = {k: {"tipo": t, "etiqueta": e} for k, (t, e) in ARRANQUE_CLAVES.items()}
+    return {"rom": rom, "juego": d.get((rom or "").lower(), {}),
+            "defecto": d.get("defecto", {}), "claves": claves}
+
+
+def arranque_fijar(rom, clave, valor):
+    """Pone UNA clave de arranque.dat para <rom>, via escribir_ajuste.py."""
+    if clave not in ARRANQUE_CLAVES:
+        return _err("opcion no permitida: %s" % clave)
+    if not rom or "/" in rom or " " in rom or ".." in rom:
+        return _err("rom invalido")
+    valor = str(valor).strip()
+    if ARRANQUE_CLAVES[clave][0].startswith("bool"):
+        if valor not in ("0", "1"):
+            return _err("valor booleano invalido (0/1): %r" % valor)
+    else:
+        try:
+            float(valor)
+        except ValueError:
+            return _err("valor numerico invalido: %r" % valor)
+    auditar("arranque_fijar %s %s=%s" % (rom, clave, valor))
+    script = os.path.join(RAIZ_REPO, "creditos", "escribir_ajuste.py")
+    rc, out, err = ejecutar(["python3", script, F_ARRANQUE, rom, clave, valor],
+                            timeout=15)
+    if rc != 0:
+        return _err((err or out or "fallo escribir_ajuste.py")[-500:])
+    return _ok(**arranque_opciones(rom))
+
+
+# ---------------------------------------------------------------------------
 # Gestion de juegos (exigen modo mantenimiento: el frontend reescribe sus .cfg)
 # ---------------------------------------------------------------------------
 

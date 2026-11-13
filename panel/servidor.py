@@ -409,6 +409,19 @@ def api_puntajes_act():
     return jsonify(acciones.puntajes_actualizar())
 
 
+@app.get("/api/arranque/<rom>")
+@requiere_login
+def api_arranque_get(rom):
+    return jsonify(acciones.arranque_opciones(rom))
+
+
+@app.post("/api/arranque/<rom>")
+@requiere_csrf
+def api_arranque_set(rom):
+    d = cuerpo()
+    return jsonify(acciones.arranque_fijar(rom, d.get("clave", ""), d.get("valor", "")))
+
+
 @app.post("/api/juegos/<rom>/visible")
 @requiere_csrf
 def api_juego_visible(rom):

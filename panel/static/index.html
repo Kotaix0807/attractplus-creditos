@@ -101,6 +101,12 @@
     </p>
     <div id="puntajes"></div>
 
+    <h3>Opciones de juego</h3>
+    <p>Ajustes de arranque por juego (se aplican al próximo arranque, sin reiniciar).</p>
+    <p><select id="arr-juego"><option value="">— elige un juego —</option></select></p>
+    <div id="arr-opciones"></div>
+    <small id="arr-msg"></small>
+
   </section>
 </main>
 
@@ -235,12 +241,66 @@ async function cargarPuntajes() {
   }).join("");
 }
 
+// -- OPCIONES DE JUEGO: editar arranque.dat (nvram, negro, contador...) ------
+async function cargarJuegosArranque() {
+  let lista = [];
+  try { lista = await (await fetch("/api/juegos")).json(); } catch (e) { return; }
+  if (!Array.isArray(lista)) lista = lista.juegos || [];
+  lista.sort((a, b) => (a.titulo || a.rom).localeCompare(b.titulo || b.rom));
+  const sel = $("arr-juego");
+  for (const j of lista) {
+    const o = document.createElement("option");
+    o.value = j.rom; o.textContent = `${j.titulo || j.rom} (${j.rom})`;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => {
+    if (sel.value) cargarArranque(sel.value);
+    else $("arr-opciones").innerHTML = "";
+  };
+}
+
+async function cargarArranque(rom) {
+  $("arr-msg").textContent = "";
+  const d = await (await fetch("/api/arranque/" + encodeURIComponent(rom))).json();
+  const claves = d.claves || {}, actual = d.juego || {}, def = d.defecto || {};
+  let html = "";
+  for (const k in claves) {
+    const info = claves[k], cur = actual[k];
+    if (info.tipo.indexOf("bool") === 0) {
+      const porDefecto = info.tipo === "bool_on" ? "1" : "0";
+      const on = (cur !== undefined ? cur : porDefecto) === "1";
+      html += `<label><input type="checkbox" data-k="${k}" ${on ? "checked" : ""}> `
+            + `${esc(info.etiqueta)}${cur === undefined ? " <small>(defecto)</small>" : ""}</label>`;
+    } else {
+      const val = cur !== undefined ? cur : (def[k] !== undefined ? def[k] : "");
+      html += `<label>${esc(info.etiqueta)} `
+            + `<input type="number" step="any" data-k="${k}" value="${esc(val)}" style="max-width:9rem"></label>`;
+    }
+  }
+  $("arr-opciones").innerHTML = html;
+  $("arr-opciones").querySelectorAll('input[type=checkbox]').forEach((cb) => {
+    cb.onchange = () => guardarArranque(rom, cb.dataset.k, cb.checked ? "1" : "0");
+  });
+  $("arr-opciones").querySelectorAll('input[type=number]').forEach((inp) => {
+    inp.onchange = () => {
+      if (inp.value.trim() !== "") guardarArranque(rom, inp.dataset.k, inp.value.trim());
+    };
+  });
+}
+
+async function guardarArranque(rom, clave, valor) {
+  const r = await accion("/api/arranque/" + encodeURIComponent(rom), { clave, valor });
+  $("arr-msg").textContent = r.ok ? `✓ ${clave} = ${valor}` : (" error: " + (r.error || ""));
+  if (r.ok) cargarArranque(rom);   // refrescar (quita el "(defecto)")
+}
+
 // -- conectar los botones --------------------------------------------------
 function arrancarPanel() {
   refrescarEstado();
   setInterval(refrescarEstado, 2000);        // en vivo
   cargarMasJugados();
   cargarPuntajes();
+  cargarJuegosArranque();
 
   $("btn-punt-regen").onclick = async () => {
     $("punt-msg").textContent = " regenerando…";
