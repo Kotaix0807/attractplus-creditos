@@ -393,12 +393,15 @@ SIN_PUNTAJE_MOTIVO = {
     "gaunt2":    "sin tabla de records (juego de monedas continuas)",
     "gaunt22p":  "sin tabla de records (juego de monedas continuas)",
     "ncv2":      "coleccion de 6 juegos, sin tabla unica",
+    # mk3: su tabla LONGEST WINNING STREAKS se muestra en la atraccion con nombres
+    # de ROM (MK4/WWF/NHL...); la nvram NO los guarda y gane una racha de 6 por
+    # cheat sin que apareciera texto ASCII. Sin hiscore.dat ni XML que definan la
+    # estructura, no hay forma de decodificarla. (2026-11-13)
+    "mk3":       "tabla de rachas sin estructura conocida (defecto en ROM, nvram sin anclar)",
 }
-# Juegos reales con tabla pero sin datos todavia: solo se confirman con una
-# partida real en la cabina (deja un .hi/CMOS que la receta decodifica).
-PENDIENTE_PARTIDA = {
-    "mk3":     "necesita una partida real (tabla 'finest warriors' en CMOS)",
-}
+# Juegos reales con tabla pero sin datos todavia: se confirman con una partida
+# real en la cabina (deja un .hi/CMOS que la receta decodifica).
+PENDIENTE_PARTIDA = {}
 
 
 def puntajes():
