@@ -560,7 +560,11 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                # 2026-11-13 por decodificacion coherente, no por pantalla.
                "kof97", "kof98", "mslug", "mslug2", "mslug3", "outrun",
                "robotron", "rampage", "tapper", "rbtapper", "punchout",
-               "mk", "mk2", "mk3"}
+               "mk", "mk2", "mk3",
+               # Estos tienen XML de hi2txt, que gana sobre la receta: su
+               # confirmado viene de AQUI, no de puntajes.dat. timeplt verificado
+               # en pantalla; el resto, tabla coherente de hi2txt (2026-11-13).
+               "timeplt", "ffight", "megaman", "megaman2"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro
@@ -886,7 +890,11 @@ def _descifrar_fuente(juego, bloques, cfg, datos, origen):
         return None, origen, (f"el bloque tiene {len(trozo)} bytes y no cabe "
                               f"ni una entrada de {int(cfg['bytes'])}")
     try:
-        return descifrar(trozo, cfg), origen, None
+        filas = descifrar(trozo, cfg)
+        if juego in VERIFICADOS:          # VERIFICADOS manda en ambos caminos
+            for f in filas:
+                f["confirmado"] = True
+        return filas, origen, None
     except RecetaNoEncaja as e:
         return None, origen, f"la receta no encaja con estos datos ({e})"
 
