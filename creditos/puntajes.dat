@@ -253,7 +253,7 @@ sf entradas=10 bytes=16 puntos=0,8,digitos nombre=9,3,idx:capcom multiplica=10 c
 # 5308, asi que puede llevar un x10 (53080) o puede ser que su memoria falle.
 # No hay tabla en pantalla que lo aclare, asi que se da el numero crudo.
 # La tabla no lleva iniciales: solo los tres numeros.
-samsho2 fuente=saveram swap=2 desde=0x33a entradas=3 bytes=2 puntos=0,2,bcd confirmado=no
+samsho2 fuente=saveram swap=2 desde=0x322 entradas=1 bytes=8 puntos=0,4,bcd nombre=4,3,idx:snk confirmado=si   # highest score AAA 30000
 
 # Battletoads. Entradas de 5 bytes desde 0x503: tres letras ASCII EN MINUSCULA
 # y un valor de 2 en little endian. Va de MENOR a MAYOR, asi que orden=asc.
