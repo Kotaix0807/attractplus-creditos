@@ -412,9 +412,9 @@ def puntajes():
       - 'pendiente'   juego real con tabla pero sin datos aun (necesita jugarse)
       - 'sin_puntaje' hay datos pero no se sabe decodificarlos (caso no previsto)
     El estado sale de la receta (el flag 'confirmado' que puntajes.py copia a cada
-    fila, incluidas las de fabrica), asi que un juego con receta confirmada que
-    nadie ha jugado sale 'confirmado' con la tabla vacia. La tabla solo lleva los
-    puestos reales: las filas de fabrica (defecto==true) se quitan."""
+    fila, incluidas las de fabrica). Cada juego lleva TODOS sus puestos (con
+    'defecto' marcando las filas de fabrica) y 'jugados' (si hay alguna fila que
+    no sea de fabrica), para que la vista muestre la tabla completa de cada uno."""
     try:
         with open(F_PUNTAJES, encoding="utf-8") as f:
             crudo = json.load(f)
@@ -440,11 +440,15 @@ def puntajes():
         else:
             est = "sin_puntaje"
         resumen[est] += 1
-        reales = [{"puesto": p.get("puesto"), "puntos": p.get("puntos"),
-                   "nombre": p.get("nombre")}
-                  for p in todos if p.get("defecto") is not True]
+        # TODOS los puestos (no solo los de jugadores): asi la vista puede mostrar
+        # la tabla completa de cada juego. 'defecto' marca las filas de fabrica
+        # (la tabla que trae el juego de serie) para distinguirlas de las jugadas.
+        puestos = [{"puesto": p.get("puesto"), "puntos": p.get("puntos"),
+                    "nombre": p.get("nombre"), "defecto": bool(p.get("defecto"))}
+                   for p in todos]
+        jugados = any(not p["defecto"] for p in puestos)
         juegos[rom] = {"titulo": info.get("titulo", rom), "estado": est,
-                       "puestos": reales}
+                       "puestos": puestos, "jugados": jugados}
         if motivo:
             juegos[rom]["motivo"] = motivo
     gen = int(os.path.getmtime(F_PUNTAJES)) if os.path.exists(F_PUNTAJES) else 0

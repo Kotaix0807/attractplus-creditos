@@ -155,18 +155,29 @@ def dato_estado():
 
 
 def dato_puntajes():
+    # Misma forma que panel/estado.py puntajes(): resumen + por juego su estado,
+    # TODOS los puestos (con 'defecto' marcando la tabla de fabrica) y 'jugados'.
     juegos = {}
-    for rom, titulo in JUEGOS:
+    resumen = {"confirmado": 0, "estimado": 0, "no_aplica": 0,
+               "pendiente": 0, "sin_puntaje": 0}
+    for i, (rom, titulo) in enumerate(JUEGOS):
+        estado = ["confirmado", "confirmado", "estimado", "no_aplica"][i % 4]
+        if estado == "no_aplica":
+            resumen[estado] += 1
+            juegos[rom] = {"titulo": titulo, "estado": estado, "puestos": [],
+                           "jugados": False, "motivo": "sin tabla de records"}
+            continue
+        jugo = random.random() > 0.5
         base = random.randint(20000, 90000)
-        puestos = []
-        for i in range(5):
-            puestos.append({
-                "puesto": i + 1, "puntos": base - i * random.randint(1000, 4000),
-                "nombre": random.choice(["ELO", "ABC", "JJ", None]),
-                "confirmado": random.random() > 0.5,
-            })
-        juegos[rom] = {"titulo": titulo, "puestos": puestos}
-    return {"generado": int(time.time()), "juegos": juegos}
+        puestos = [{"puesto": j + 1,
+                    "puntos": base - j * random.randint(1000, 4000),
+                    "nombre": random.choice(["ELO", "ABC", "JJ", None]),
+                    "defecto": not (jugo and j == 0)}
+                   for j in range(5)]
+        resumen[estado] += 1
+        juegos[rom] = {"titulo": titulo, "estado": estado, "puestos": puestos,
+                       "jugados": jugo}
+    return {"generado": int(time.time()), "resumen": resumen, "juegos": juegos}
 
 
 def dato_masjugados(orden, limite):

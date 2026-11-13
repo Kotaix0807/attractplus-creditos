@@ -94,7 +94,13 @@
     <h3>Más jugados</h3>
     <table><tbody id="masjugados"></tbody></table>
 
-    <h3>Puntajes <small id="punt-resumen"></small></h3>
+    <h3>Puntajes de todos los juegos <small id="punt-resumen"></small></h3>
+    <p>
+      <input id="punt-buscar" type="search" placeholder="Buscar juego…" style="max-width:16em;display:inline-block">
+      <label style="display:inline-block;margin-left:1em">
+        <input id="punt-solo-con" type="checkbox"> solo con tabla
+      </label>
+    </p>
     <p>
       <button id="btn-punt-regen" class="outline">Re-generar puntajes</button>
       <small id="punt-msg"></small>
@@ -222,28 +228,49 @@ function insignia(estado) {
   return `<span style="color:${col};font-weight:bold">${txt}</span>`;
 }
 
+let _puntajesCache = null;
+
 async function cargarPuntajes() {
   const d = await (await fetch("/api/puntajes")).json();
+  _puntajesCache = d;
   const r = d.resumen || {};
   $("punt-resumen").textContent =
     `(${r.confirmado || 0} confirmados · ${r.estimado || 0} estimados · ` +
     `${r.pendiente || 0} falta jugar · ${r.no_aplica || 0} no aplica` +
     (r.sin_puntaje ? ` · ${r.sin_puntaje} sin puntaje` : "") + `)`;
+  pintarPuntajes();
+}
+
+function pintarPuntajes() {
+  const d = _puntajesCache; if (!d) return;
   const juegos = d.juegos || {};
-  // confirmado, estimado, falta-jugar, no-aplica, sin-puntaje; dentro, por titulo
+  const soloCon = $("punt-solo-con") && $("punt-solo-con").checked;
+  const q = ($("punt-buscar") && $("punt-buscar").value || "").toLowerCase().trim();
+  // con puntajes primero (confirmado, estimado), luego el resto; dentro, por titulo
   const peso = { confirmado: 0, estimado: 1, pendiente: 2, no_aplica: 3, sin_puntaje: 4 };
-  const roms = Object.keys(juegos).sort((a, b) =>
+  let roms = Object.keys(juegos).sort((a, b) =>
     (peso[juegos[a].estado] - peso[juegos[b].estado]) ||
     juegos[a].titulo.localeCompare(juegos[b].titulo));
+  if (q) roms = roms.filter((rom) =>
+    juegos[rom].titulo.toLowerCase().includes(q) || rom.toLowerCase().includes(q));
+  if (soloCon) roms = roms.filter((rom) => (juegos[rom].puestos || []).length > 0);
   $("puntajes").innerHTML = roms.map((rom) => {
     const g = juegos[rom];
-    const filas = g.puestos.length
-      ? `<table><tbody>${g.puestos.map((p) =>
-          `<tr><td>${p.puesto}</td><td>${esc(p.puntos)}</td><td>${esc(p.nombre)}</td></tr>`).join("")}</tbody></table>`
+    const ps = g.puestos || [];
+    // resumen en la cabecera: el puntaje mas alto (el 1er puesto)
+    const top = ps.length ? ` &nbsp;·&nbsp; <b>${esc(ps[0].puntos)}</b>${
+      ps[0].nombre ? " " + esc(ps[0].nombre) : ""}${
+      ps[0].defecto ? ' <span style="color:#95a5a6">(fábrica)</span>' : ""}` : "";
+    const filas = ps.length
+      ? `<table><tbody>${ps.map((p) => {
+          const dim = p.defecto ? ' style="opacity:.55"' : "";
+          const tag = p.defecto ? ' <span style="color:#95a5a6;font-size:.8em">fábrica</span>' : "";
+          return `<tr${dim}><td>${p.puesto}</td><td>${esc(p.puntos)}</td><td>${esc(p.nombre)}${tag}</td></tr>`;
+        }).join("")}</tbody></table>`
       : (g.motivo ? `<small>${esc(g.motivo)}</small>`
-                  : `<small>sin partidas registradas</small>`);
-    return `<details><summary>${esc(g.titulo)} &nbsp; ${insignia(g.estado)}</summary>${filas}</details>`;
-  }).join("");
+                  : `<small>sin tabla de puntajes todavía</small>`);
+    return `<details><summary>${esc(g.titulo)} &nbsp; ${insignia(g.estado)}${top}</summary>${filas}</details>`;
+  }).join("") || `<small>ningún juego coincide</small>`;
 }
 
 // -- OPCIONES DE JUEGO: editar arranque.dat (nvram, negro, contador...) ------
@@ -313,6 +340,9 @@ function arrancarPanel() {
     $("punt-msg").textContent = r.ok ? " ¡listo!" : (" error: " + (r.error || ""));
     if (r.ok) cargarPuntajes();
   };
+  // filtros de la vista de puntajes (sin re-pedir al servidor)
+  $("punt-buscar").oninput = pintarPuntajes;
+  $("punt-solo-con").onchange = pintarPuntajes;
 
   // volumen: leer el nivel actual, actualizar la etiqueta al arrastrar, y
   // mandarlo al soltar (onchange) para no saturar amixer en cada pixel.
