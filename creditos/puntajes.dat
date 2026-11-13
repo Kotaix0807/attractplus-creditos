@@ -111,7 +111,7 @@ ddragon entradas=5 bytes=6 puntos=0,3,bcd confirmado=si   # pantalla: HI 20000
 # dkong3: [12000, 9000, 8000, 5400, 3200]
 dkong3 entradas=5 bytes=34 puntos=29,3,bcdle nombre=0,3,ascii confirmado=si   # pantalla: TOP 12000
 # ffight: [8540, 8000, 5000]
-ffight entradas=3 bytes=20 puntos=18,2,bcd nombre=1,3,idx:capcom confirmado=no
+ffight entradas=3 bytes=20 puntos=18,2,bcd nombre=1,3,idx:capcom confirmado=si
 # gradius: [57300, 48530, 33300, 25700, 21500, 17700]
 gradius entradas=10 bytes=14 puntos=10,4,bcd nombre=0,3,idx:capcom confirmado=si   # pantalla: HI 57300
 # kungfum: [951400, 851900, 352600, 183900]
@@ -125,7 +125,7 @@ sf2 entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=si   # pantall
 # simpsons2p: [1080200, 730100, 610300, 570000, 490000, 410100]
 simpsons2p entradas=10 bytes=8 puntos=3,4,bcd nombre=0,3,ascii confirmado=no
 # ssf2t: [50000, 45000, 40000, 35000, 30000, 25000]
-ssf2t entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=no
+ssf2t entradas=6 bytes=8 puntos=0,4,bcd nombre=4,3,ascii confirmado=si
 # ssriders: [100000, 90000, 80000, 70000, 60000, 50000]
 ssriders entradas=10 bytes=8 puntos=4,4,bcd nombre=0,3,ascii confirmado=si
 # timeplt: [10000, 8800, 8460, 6520, 4300]
