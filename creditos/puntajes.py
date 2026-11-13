@@ -569,7 +569,12 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                # muestra 100/90/80/70/60 (1ST TAK..5TH MAT), que es justo lo que
                # lee hi2txt -- no eran "imposibles", es la tabla de fabrica real.
                # Verificado en pantalla 2026-11-13.
-               "kof99", "kof2000"}
+               "kof99", "kof2000",
+               # simpsons2p: la pantalla SCORE RANKING (en una TV, a mitad de la
+               # atraccion) muestra 1 BAT 108 / 2 HOM 73 / 3 LIS 61 / 4 MAR 57 /
+               # 5 MAG 49 (iniciales = personajes), exacto a lo que lee hi2txt.
+               # Verificado en pantalla 2026-11-13.
+               "simpsons2p"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro

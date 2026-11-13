@@ -260,10 +260,12 @@ samsho2 fuente=saveram swap=2 desde=0x322 entradas=1 bytes=8 puntos=0,4,bcd nomb
 # Sale kev 3300 / mb. 3600 / mw. 3900 / sjf 4200 ... pm. 6000, y el patron se
 # repite seis veces: hay una tabla por fase. Se toma la primera.
 #
-# Sin confirmar la escala: 3300 parece poco para un Battletoads y podria llevar
-# un x100 (330000), pero eso hay que verlo en el marcador y no suponerlo -- con
-# dkong razone justo asi y me equivoque.
-btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,ascii orden=asc confirmado=no
+# CONFIRMADO en pantalla 2026-11-13: btoads NO tiene tabla de PUNTOS, solo
+# "MASTERS OF MISSION TIME" (tiempos por personaje). 0x503 es la columna PIMPLE:
+# nombre 3 ascii + tiempo 2 LE. 3300 (0x0ce4) = 55 min = el top "55m 00s" de la
+# pantalla; nombres kev/mb/mw = KEV/MB/MW. Es un ranking por TIEMPO (clase tekken),
+# leido correcto; se guarda el tiempo como "puntos".
+btoads fuente=nvram desde=0x503 entradas=10 bytes=5 puntos=3,2,le nombre=0,3,ascii orden=asc confirmado=si
 
 # galaxian: su bloque de hiscore.dat son 3 bytes y el XML de hi2txt declara un
 # campo de 4, asi que ahi no encaja y no descifraba. Es una sola puntuacion en
