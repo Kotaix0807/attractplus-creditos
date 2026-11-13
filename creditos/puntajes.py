@@ -553,7 +553,7 @@ VERIFICADOS = {"1943", "arkanoid", "bublbobl", "commando", "contra", "ddragon",
                "1942", "19xxu", "berzerk", "btime", "digdug", "dkongjr",
                "elevator", "frogger", "galaga", "gng", "mario", "missile",
                "popeye", "qbert", "snowbros", "starwars", "tron", "mwalk",
-               "nemesis", "avsp", "joust", "asteroid", "defender"}
+               "nemesis", "avsp", "joust", "asteroid", "defender", "wboy"}
 
 DB_HI2TXT = None          # lo fija main() con --hi2txt o buscandolo
 # Donde MAME deja la memoria persistente de cada juego. Se puede apuntar a otro
