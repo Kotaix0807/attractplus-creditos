@@ -46,6 +46,8 @@ class Arranque
 			"0 = este juego no guarda creditos ni puntuaciones entre sesiones" ],
 		[ "contador",  "Contador de creditos",
 			"1 = muestra CREDITOS N arriba a la derecha. Solo sale en los juegos cuya direccion de creditos conocemos" ],
+		[ "contador_pos", "Posicion del contador",
+			"Donde sale CREDITOS N / JUEGO GRATIS: sd=arriba dcha (def), si=arriba izq, id=abajo dcha, ii=abajo izq, sc=arriba centro, ic=abajo centro" ],
 		[ "auto",      "Alargar solo",
 			"1 = se alarga hasta detectar que la placa esta lista. Solo en los juegos que estan en creditos.dat" ],
 	];

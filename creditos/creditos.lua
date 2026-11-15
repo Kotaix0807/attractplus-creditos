@@ -386,6 +386,14 @@ local function ajuste(clave, var, defecto)
 	return num(var, defecto)
 end
 
+-- Igual que ajuste(), pero para ajustes de TEXTO (p.ej. contador_pos).
+local function ajuste_cadena(clave, var, defecto)
+	if AJUSTES then return (AJUSTES.cadena(clave, var, defecto)) end
+	local v = os.getenv(var)
+	if v and v ~= '' then return v end
+	return defecto
+end
+
 local function ajuste_frames(clave, var, defecto)
 	if AJUSTES then return (AJUSTES.frames(clave, var, defecto)) end
 	return num(var, defecto)
@@ -413,6 +421,9 @@ local INDICADOR = ajuste('indicador', 'GA_INDICADOR', 0) ~= 0
 -- la linea 'defecto' lo apaga para todos. Va por ajuste y no solo por variable
 -- de entorno porque se edita desde la cabina, con el plugin Arranque.
 local CONTADOR = ajuste('contador', 'GA_CONTADOR', 1) ~= 0
+-- Donde sale el rotulo CREDITOS N / JUEGO GRATIS: sd=arriba dcha (def),
+-- si=arriba izq, id=abajo dcha, ii=abajo izq, sc=arriba centro, ic=abajo centro.
+local CONTADOR_POS = (ajuste_cadena('contador_pos', 'GA_CONTADOR_POS', 'sd') or 'sd'):lower()
 
 -- limite=N en arranque.dat: cuantos creditos admite la placa. Al llegar ahi se
 -- CIERRA el boton de moneda, porque a partir de ese punto el juego tira las
@@ -2508,7 +2519,13 @@ end
 -- texto sin fondo.
 local MARGEN_X, MARGEN_Y = 0.010, 0.006
 
-local function rotulo_derecha(contenedor, texto, color)
+-- Rotulo con el recuadro PEGADO al texto, en la posicion 'pos' (dos letras):
+--   1a: s=arriba (superior), i=abajo (inferior)
+--   2a: d=derecha (def), i=izquierda, c=centro
+-- Asi el contador CREDITOS/JUEGO GRATIS se puede mover a donde no estorbe
+-- (ajuste contador_pos por juego en el plugin Arranque).
+local function rotulo(contenedor, texto, color, pos)
+	pos = (pos or 'sd'):lower()
 	local ancho, alto = 0.39, 0.030
 
 	local okw, w = pcall(function() return manager.ui:get_string_width(texto) end)
@@ -2517,13 +2534,25 @@ local function rotulo_derecha(contenedor, texto, color)
 	local okh, h = pcall(function() return manager.ui.line_height end)
 	if okh and (type(h) == 'number') and (h > 0) then alto = h end
 
-	local y0 = 0.015
-	local x1 = 1.0 - MARGEN_X
-	local x0 = math.max(0.0, x1 - ancho - (2 * MARGEN_X))
-	
-	contenedor:draw_box(x0, y0, x1 + MARGEN_X, y0 + alto + (2 * MARGEN_Y),
-	COLOR_FONDO, COLOR_FONDO)
+	local bw = ancho + (2 * MARGEN_X)   -- ancho del recuadro, pegado al texto
+	local bh = alto + (2 * MARGEN_Y)
+	local borde = 0.015                 -- separacion del borde de la pantalla
+
+	local lado = pos:sub(2, 2)
+	local x0
+	if lado == 'i' then x0 = borde
+	elseif lado == 'c' then x0 = math.max(0.0, 0.5 - (bw / 2))
+	else x0 = math.max(0.0, 1.0 - borde - bw) end   -- 'd' o cualquier otra: derecha
+
+	local y0 = (pos:sub(1, 1) == 'i') and (1.0 - borde - bh) or borde
+
+	contenedor:draw_box(x0, y0, x0 + bw, y0 + bh, COLOR_FONDO, COLOR_FONDO)
 	contenedor:draw_text(x0 + MARGEN_X, y0 + MARGEN_Y, texto, color or COLOR_INDICADOR)
+end
+
+-- Atajo para los indicadores que SIEMPRE van arriba a la derecha (carga, REC).
+local function rotulo_derecha(contenedor, texto, color)
+	rotulo(contenedor, texto, color, 'sd')
 end
 
 GA_ESTADO.pintor = function()
@@ -2563,11 +2592,11 @@ GA_ESTADO.pintor = function()
 	if CONTADOR and not e.arranque then
 		if FREEPLAY then
 			-- En free play el rotulo lo dice claro, para TODOS los juegos.
-			rotulo_derecha(contenedor, 'JUEGO GRATIS', COLOR_INDICADOR)
+			rotulo(contenedor, 'JUEGO GRATIS', COLOR_INDICADOR, CONTADOR_POS)
 		elseif e.memoria and not e.a_prueba then
 			local n = e.memoria.dentro()
 			if n and n > 0 then
-				rotulo_derecha(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR)
+				rotulo(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR, CONTADOR_POS)
 			end
 		end
 	end

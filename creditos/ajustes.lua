@@ -95,6 +95,23 @@ function M.para(tabla, juego, entorno)
 		return defecto, 'interno'
 	end
 
+	-- Como valor, pero para ajustes de TEXTO (p.ej. contador_pos=sd). El fichero
+	-- guarda el valor no-numerico tal cual (ver M.leer: numero(valor) or valor).
+	function a.cadena(clave, var, defecto)
+		if var then
+			local v = entorno(var)
+			if v and v ~= '' then return v, 'entorno' end
+		end
+
+		local v = a.propios[clave]
+		if type(v) == 'string' then return v, 'juego' end
+
+		v = a.defecto[clave]
+		if type(v) == 'string' then return v, 'defecto' end
+
+		return defecto, 'interno'
+	end
+
 	-- Igual, pero en segundos: se devuelve en frames
 	function a.frames(clave, var, defecto_frames, hz)
 		hz = hz or 60
