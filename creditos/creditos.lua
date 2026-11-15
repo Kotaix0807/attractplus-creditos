@@ -704,11 +704,8 @@ local ESCRIBIR_FREEPLAY = {
 	digdug = { contador = 0x19, valor = 9, tope = 9 },
 	dkong = { contador = 0x6001, valor = 9, tope = 99 },
 	dkongjr = { contador = 0x6001, valor = 9, tope = 99 },
-	-- frogger: NO va aqui. Escribir 0x83e1 por frame corrompe el video DURANTE la
-	-- partida (el juego reusa/gestiona ese byte jugando), igual que dkong3; en
-	-- atraccion se ve limpio, por eso enganaba (verificado por captura 2026-11-15).
-	-- Cae al free play por MONEDA (0x83e1 verificado en creditos.dat): pasa por el
-	-- codigo del juego y no corrompe nada.
+	-- frogger: NO va aqui. Escribir 0x83e1 por frame corrompe el video jugando; va en
+	-- FREEPLAY_TAP (tap de lectura, sin escribir la RAM). Ver alli.
 	rbtapper = { contador = 0xe011, valor = 9, tope = 99 },
 	-- robocop (Data East dec0, 68000): contador BCD en 0xff8dc5 (cheat Infinite
 	-- Credits=99). La main RAM se espeja en 0x318dc5 y 0xff8dc5 (mismo byte); el
@@ -788,11 +785,15 @@ end
 -- Cada juego es una LISTA de {dir, valor}: algunos tienen VARIAS copias del
 -- contador (Williams) y hay que forzar todas.
 local FREEPLAY_TAP = {
-	-- dkong3: NO va aqui. El TAP de lectura (forzar 0x6bf1 a 0x99 en CADA lectura) se
-	-- verifico limpio solo en ATRACCION; jugando (nivel invernadero) el juego lee
-	-- 0x6bf1 y el 0x99 forzado corrompe el render -> la "barra de basura" volvio
-	-- (reportado por Eloy 2026-11-15). Cae al free play por MONEDA, que era el arreglo
-	-- limpio ORIGINAL (verificado en cabina, partida incluida).
+	-- dkong3 y frogger: TAP de lectura con valor PEQUENO (2). Fuerzan el contador de
+	-- creditos a 2 en CADA lectura, asi nunca se agota -> siempre se puede jugar de a
+	-- 2. (El free play por MONEDA solo reponia 1 tras una partida 2P: su attract de
+	-- post-partida no vuelve a aceptar monedas. Verificado 2026-11-15.) No escribe la
+	-- RAM, asi no corrompe el video (lo que pasaba al ESCRIBIR frogger). El valor DEBE
+	-- ser pequeno: dkong3 con 0x99 pintaba una barra de basura en el invernadero; con
+	-- 2 esta limpio y arranca 2P (captura 2026-11-15, ambos juegos).
+	dkong3  = { { dir = 0x6bf1, valor = 2 } },
+	frogger = { { dir = 0x83e1, valor = 2 } },
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
 	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
