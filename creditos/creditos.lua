@@ -801,9 +801,10 @@ local FREEPLAY_TAP = {
 	--    queda pegada sobre "ONE OR TWO PLAYERS" (captura real 2026-11-15). El tap
 	--    cambia el valor leido sin que el juego redibuje.
 	-- Los dos usan free play por MONEDA: el juego gestiona su propio contador (START y
-	-- la rutina de moneda redibujan limpio). dkong3 ademas con tarifa generosa (ver
-	-- FREEPLAY_COINAGE); frogger con 1c/1c basta (su attract acepta monedas sin el
-	-- problema de dkong3, y el pulso rapido no deja arrancar la demo).
+	-- la rutina de moneda redibujan limpio). Y los dos, tras una partida 2P, solo
+	-- bancaban 1 credito en el attract, asi que necesitan tarifa GENEROSA (1 moneda =
+	-- muchos creditos): dkong3 por su Coinage (1C/6Cr en COIN1); frogger por la ranura
+	-- COIN2 (su Konami da B 1/6) -> ver FREEPLAY_COINAGE y FREEPLAY_MONEDA.
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
 	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
@@ -2379,7 +2380,13 @@ end
 -- reponer. El DIP lo lee la placa al ARRANCAR; MAME lo guarda en su .cfg, asi que
 -- surte efecto desde el siguiente arranque (en la cabina se dejo ya puesto a mano
 -- para que el primero tambien valga).
-local FREEPLAY_COINAGE = { dkong3 = '1 Coin/6 Credits' }
+local FREEPLAY_COINAGE = {
+	dkong3  = '1 Coin/6 Credits',
+	-- frogger: su tarifa Konami da "B 1/6" (COIN2 = 1 moneda/6 creditos); COIN1 (A)
+	-- solo llega a 1/1. Con esta opcion + pulsar COIN2 (FREEPLAY_MONEDA), 1 moneda da
+	-- 6 creditos -> sobra para 2P tras una partida (antes el pulso de COIN1 dejaba 1).
+	frogger = 'A 1/1 B 1/6 C 1/1',
+}
 do
 	local quiere = FREEPLAY_COINAGE[emu.romname and emu.romname() or '']
 	if quiere and FREEPLAY then
@@ -2395,6 +2402,25 @@ do
 					end
 				end
 			end
+		end
+	end
+end
+
+-- Ranura de moneda a pulsar en free play, por juego: algunos solo dan muchos
+-- creditos por moneda en OTRA ranura (frogger: la generosa es COIN2 = slot B, 1/6).
+-- En free play el jugador no mete monedas, asi que pulsar COIN2 no estorba. Se
+-- combina con FREEPLAY_COINAGE (que pone esa tarifa). Cambia el campo que pulsa la
+-- maquina de insertar(); el resto (contador) lee la RAM, no el conteo de monedas.
+local FREEPLAY_MONEDA = { frogger = 'COIN2' }
+do
+	local tk = FREEPLAY_MONEDA[emu.romname and emu.romname() or '']
+	if tk and FREEPLAY then
+		local c = campo_de_token(tk)
+		if c then
+			GA_ESTADO.campo = c
+			log('free play: pulsare %s (ranura generosa) en %s', tk, emu.romname())
+		else
+			log('free play: no encuentro la ranura %s en %s, sigo con la de por defecto', tk, emu.romname())
 		end
 	end
 end
