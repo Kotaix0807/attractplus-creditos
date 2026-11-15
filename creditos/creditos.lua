@@ -792,18 +792,18 @@ end
 -- Cada juego es una LISTA de {dir, valor}: algunos tienen VARIAS copias del
 -- contador (Williams) y hay que forzar todas.
 local FREEPLAY_TAP = {
-	-- frogger: TAP de lectura con valor PEQUENO (2): el contador se lee siempre 2,
-	-- nunca se agota, sin escribir la RAM (al ESCRIBIR se corrompia el video) y sin
-	-- barra (su 0x83e1 NO se reusa jugando; el tap sale limpio incluso con valores
-	-- altos, verificado 2026-11-15).
-	--
-	-- dkong3 NO va aqui: su contador 0x6bf1 SE REUSA como variable grafica en el
-	-- invernadero y el VIDEO lo lee directo. El tap solo falsea las lecturas de la
-	-- CPU (START ve creditos), pero el byte GUARDADO sigue mal -> barra de basura
-	-- (verificado con captura de la pantalla real de la cabina 2026-11-15). Hay que
-	-- dejar que el juego gestione su contador: free play por MONEDA + tarifa generosa
-	-- (ver FREEPLAY_COINAGE), asi 1 moneda da para varias partidas 2P y sale limpio.
-	frogger = { { dir = 0x83e1, valor = 2 } },
+	-- NI dkong3 NI frogger van aqui (los dos con el tap daban basura grafica):
+	--  * dkong3: su 0x6bf1 SE REUSA como variable grafica en el invernadero y el VIDEO
+	--    lo lee directo; el tap solo falsea las lecturas de la CPU, el byte guardado
+	--    queda mal -> barra de basura (captura real de la cabina 2026-11-15).
+	--  * frogger: el tap fuerza el credito a 2 CUANDO el attract ya habia empezado su
+	--    demo (a credito 0); el juego corta la demo pero NO borra la ranita, que se
+	--    queda pegada sobre "ONE OR TWO PLAYERS" (captura real 2026-11-15). El tap
+	--    cambia el valor leido sin que el juego redibuje.
+	-- Los dos usan free play por MONEDA: el juego gestiona su propio contador (START y
+	-- la rutina de moneda redibujan limpio). dkong3 ademas con tarifa generosa (ver
+	-- FREEPLAY_COINAGE); frogger con 1c/1c basta (su attract acepta monedas sin el
+	-- problema de dkong3, y el pulso rapido no deja arrancar la demo).
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
 	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
