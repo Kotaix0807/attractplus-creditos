@@ -95,6 +95,30 @@ function creditos_ajuste( valor, defecto, minimo )
 	return ( n < minimo ) ? minimo : n;
 }
 
+// --- Cerrojo compartido entre los plugins que lanzan algo desde el MENU ------
+// (Creditos/select, HuevoAdventure, Minijuegos). Los tres corren en el MISMO VM
+// de Squirrel, asi que comparten estado por el root table. El primero que
+// dispara "echa" el cerrojo y los demas se abstienen 350 ms (~21 frames a 60
+// fps): de sobra para que una pulsacion casi simultanea en dos botones no
+// arranque dos cosas a la vez, sin estorbar a una accion normal (una sola accion
+// no se consulta a si misma). El que queda ocupado (ceremonia/fundido) lo vuelve
+// a echar cada tick para mantenerlo mientras dura. ttime es el mismo reloj de
+// tick en los tres plugins; al recargar el layout vuelve a ~0 y entonces "hasta"
+// apunta a un futuro mayor que la ventana -imposible-, que se da por abierto.
+// Se define aqui guardado; HuevoAdventure/Minijuegos repiten el guardado para
+// funcionar aunque este plugin este desactivado (solo el primero en cargar crea
+// las ranuras). Los dos 350 deben coincidir.
+if ( !("ga_abierto" in getroottable()) )
+{
+	::ga_cerrojo_hasta <- 0;
+	::ga_echar <- function( ahora ) { ::ga_cerrojo_hasta = ahora + 350; }
+	::ga_abierto <- function( ahora )
+	{
+		if ( ::ga_cerrojo_hasta - ahora > 350 ) return true;   // ttime reinicio
+		return ahora >= ::ga_cerrojo_hasta;
+	}
+}
+
 class Creditos
 {
 	// --- ajustes ya normalizados ---
@@ -177,7 +201,7 @@ class Creditos
 			fe.nv[ NV_CLAVE ] <- m_creditos;
 
 		// El monedero se escribe en CADA cambio, no solo al lanzar el juego:
-		// es lo que lee el contador fisico de la cabina (contador_arduino.py), que tiene
+		// es lo que lee el contador fisico de la cabina (arduino/moneyBank.py), que tiene
 		// que enterarse de la moneda en el momento en que entra. De paso, el
 		// fichero se recrea solo si alguien lo borra.
 		//
@@ -432,13 +456,23 @@ class Creditos
 
 		// Sin creditos no se juega. Solo se bloquea el "select" de la lista:
 		// dentro de un menu del frontend hace falta para confirmar.
-		if (( sig == "select" ) && !fe.overlay.is_up && !hay_para_jugar() )
+		if (( sig == "select" ) && !fe.overlay.is_up )
 		{
-			// Destello del aviso para que se vea que falta credito. Se apoya en
-			// la hora del ultimo tick: con m_reloj = 0 el siguiente tick lo
-			// apagaria inmediatamente.
-			destellar();
-			return true;
+			if ( !hay_para_jugar() )
+			{
+				// Destello del aviso para que se vea que falta credito. Se apoya
+				// en la hora del ultimo tick: con m_reloj = 0 el siguiente tick
+				// lo apagaria inmediatamente.
+				destellar();
+				return true;
+			}
+
+			// Si un huevo de pascua o los minijuegos acaban de dispararse, no
+			// lanzar un juego encima: se consume el select y gana la otra accion.
+			// (Lanzar hace fork() de inmediato, asi que el select no necesita
+			// echar el cerrojo: fisicamente le quita el turno a los ticks.)
+			if ( !::ga_abierto( m_ahora ) )
+				return true;
 		}
 
 		return false;

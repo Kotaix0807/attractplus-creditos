@@ -27,6 +27,20 @@ class UserConfig </ help="Minijuegos de luces: P2 Start en el menu lanza el fron
 // fade-in: al volver se quita el velo de golpe (da igual, lo pidio asi Eloy).
 const FADE_MJ_MS = 800;
 
+// Cerrojo compartido con Creditos/HuevoAdventure (ver Creditos.nut). Guardado
+// aqui tambien para funcionar aunque Creditos este desactivado; solo el primer
+// plugin en cargar crea las ranuras. Los dos 350 deben coincidir.
+if ( !("ga_abierto" in getroottable()) )
+{
+	::ga_cerrojo_hasta <- 0;
+	::ga_echar <- function( ahora ) { ::ga_cerrojo_hasta = ahora + 350; }
+	::ga_abierto <- function( ahora )
+	{
+		if ( ::ga_cerrojo_hasta - ahora > 350 ) return true;   // ttime reinicio
+		return ahora >= ::ga_cerrojo_hasta;
+	}
+}
+
 class Minijuegos
 {
 	m_config = null;
@@ -91,6 +105,7 @@ class Minijuegos
 		// En pleno fundido para lanzar el minijuego: subir el velo y, ya en negro, lanzar.
 		if ( m_lanzando )
 		{
+			::ga_echar( ttime );   // mantener el cerrojo durante el fundido
 			if ( m_t0 < 0 ) m_t0 = ttime;
 			local a = ( ( ttime - m_t0 ) * 255 ) / FADE_MJ_MS;
 			if ( a > 255 ) a = 255;
@@ -121,9 +136,12 @@ class Minijuegos
 		else if ( m_pressed )
 		{
 			m_pressed = false;
+			if ( !::ga_abierto( ttime ) )   // otra accion del menu gano la carrera
+				return;
 			local exe = m_config[ "exe" ];
 			if ( exe != null && exe != "" )
 			{
+				::ga_echar( ttime );   // echa el cerrojo antes de empezar el fundido
 				m_lanzando = true;   // arranca el fundido; el lanzamiento va al terminar
 				m_t0 = -1;
 			}
