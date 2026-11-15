@@ -33,6 +33,8 @@ F_AJUSTES = os.path.join(ATTRACT, "panel_ajustes.json")
 F_TARIFA_GLOBAL = os.path.join(ATTRACT, "tarifa_global")  # 'freeplay' o pesos; lo lee creditos.lua
 F_BRILLO = os.path.join(ATTRACT, "brillo_leds")           # 0..255; lo lee moneyBank.py -> L<n>
 F_ARDUINO_FIFO = os.path.join(ATTRACT, "arduino_fifo")    # FIFO que drena moneyBank.py (unico dueno del puerto)
+F_ARDUINO_RESET = os.path.join(ATTRACT, "arduino_reset")  # el panel lo crea: moneyBank reinicia la placa (DTR)
+F_MONEDERO_RESET = os.path.join(ATTRACT, "monedero_reiniciar")  # el panel lo crea: moneyBank reinicia el monedero (con pulso de calibracion)
 DIR_STATS = os.path.join(ATTRACT, "stats", "groovymame")
 
 

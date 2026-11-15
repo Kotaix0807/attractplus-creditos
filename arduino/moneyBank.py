@@ -37,6 +37,9 @@ FIFO_PATH = os.path.expanduser("~/.attract/arduino_fifo")
 # El panel escribe este fichero para reiniciar la placa: cerrar y reabrir el
 # puerto la resetea por DTR y re-sincroniza todo el estado.
 RESET_PATH = os.path.expanduser("~/.attract/arduino_reset")
+# El panel escribe este para reiniciar el MONEDERO (no la placa): corta y
+# restaura su alimentacion con el solenoide activado, para que calibre bien.
+MONEDERO_RESET_PATH = os.path.expanduser("~/.attract/monedero_reiniciar")
 BAUD_RATE = 115200
 LOG_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 UPDATE_TIME = 0.1
@@ -246,6 +249,26 @@ while True:
             pass
         conection = None
         log("reinicio del Arduino pedido")
+        continue
+
+    # Reinicio del MONEDERO (el panel escribe ~/.attract/monedero_reiniciar):
+    # corta y restaura su alimentacion (R) con el solenoide ACTIVADO (M1), para
+    # que calibre al encender; luego apaga el solenoide. Al terminar se deja
+    # lastSwitch=None para que la vuelta siguiente re-mande la M correcta (segun
+    # haya partida o no) y no quede desincronizado.
+    if os.path.exists(MONEDERO_RESET_PATH):
+        try:
+            os.remove(MONEDERO_RESET_PATH)
+        except OSError:
+            pass
+        enviarCrudo("M1")          # solenoide ON (si no, no calibra)
+        enviarCrudo("R0")          # corta alimentacion del monedero
+        time.sleep(1.5)
+        enviarCrudo("R1")          # la restaura: calibra con el solenoide activo
+        time.sleep(2)
+        enviarCrudo("M0")          # solenoide OFF
+        lastSwitch = None          # re-sincroniza la M en la proxima vuelta
+        log("monedero reiniciado (pulso de calibracion del solenoide)")
         continue
 
     # Despertar en cuanto el FIFO tenga datos (minijuego: latencia de un write),

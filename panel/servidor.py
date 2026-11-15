@@ -352,6 +352,12 @@ def api_monedero():
     return jsonify(acciones.monedero_reiniciar())
 
 
+@app.post("/api/arduino/reiniciar")
+@requiere_csrf
+def api_arduino():
+    return jsonify(acciones.arduino_reiniciar())
+
+
 @app.post("/api/juego/salir")
 @requiere_csrf
 def api_salir():

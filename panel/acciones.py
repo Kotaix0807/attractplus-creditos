@@ -17,9 +17,10 @@ import os
 import shutil
 import time
 
-from comun import (ATTRACT, DIR_STATS, F_ARDUINO_FIFO, F_AUDITORIA, F_BRILLO,
-                   F_FRONTEND_DETENIDO, F_MANTENIMIENTO, F_MONEDAS, F_PANEL_CMD,
-                   F_PUNTAJES, F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
+from comun import (ATTRACT, DIR_STATS, F_ARDUINO_FIFO, F_ARDUINO_RESET,
+                   F_AUDITORIA, F_BRILLO, F_FRONTEND_DETENIDO, F_MANTENIMIENTO,
+                   F_MONEDAS, F_MONEDERO_RESET, F_PANEL_CMD, F_PUNTAJES,
+                   F_TARIFA_GLOBAL, RAIZ_REPO, auditar, ejecutar, entero,
                    escribir_atomico, leer_ajustes, guardar_ajustes)
 
 DIR_MAME = os.path.expanduser("~/.mame")
@@ -279,17 +280,26 @@ def _fifo_arduino(linea):
 
 
 def monedero_reiniciar():
-    """Apaga el monedero, espera 2 s y lo enciende otra vez: es el canal 13 del
-    PCA (comando R0/R1 del Arduino). moneyBank.py es el unico que escribe el
-    puerto, asi que la orden va por su FIFO y el demonio reenvia las lineas R; la
-    espera de 2 s la hace el panel."""
+    """Reinicia el monedero: corta y restaura su alimentacion con el solenoide
+    ACTIVADO para que CALIBRE al encender (si se enciende con el solenoide apagado
+    no calibra bien). Lo hace moneyBank.py (unico dueno del puerto) al ver el
+    fichero centinela, asi el panel no se bloquea."""
     auditar("monedero_reiniciar")
     try:
-        _fifo_arduino("R0")
-        time.sleep(2)
-        _fifo_arduino("R1")
+        open(F_MONEDERO_RESET, "w").close()
     except OSError as e:
-        return _err("no pude hablar con el monedero (demonio parado?): %s" % e)
+        return _err("no pude pedir el reinicio del monedero (demonio parado?): %s" % e)
+    return _ok()
+
+
+def arduino_reiniciar():
+    """Reinicia la placa Arduino entera: moneyBank.py cierra y reabre el puerto
+    (reset por DTR) y re-sincroniza todo el estado. Util si la placa se cuelga."""
+    auditar("arduino_reiniciar")
+    try:
+        open(F_ARDUINO_RESET, "w").close()
+    except OSError as e:
+        return _err("no pude pedir el reinicio del Arduino (demonio parado?): %s" % e)
     return _ok()
 
 
