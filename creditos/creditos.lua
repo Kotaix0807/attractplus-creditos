@@ -693,7 +693,11 @@ local ESCRIBIR_FREEPLAY = {
 	digdug = { contador = 0x19, valor = 9, tope = 9 },
 	dkong = { contador = 0x6001, valor = 9, tope = 99 },
 	dkongjr = { contador = 0x6001, valor = 9, tope = 99 },
-	frogger = { contador = 0x83e1, valor = 9, tope = 99 },
+	-- frogger: NO va aqui. Escribir 0x83e1 por frame corrompe el video DURANTE la
+	-- partida (el juego reusa/gestiona ese byte jugando), igual que dkong3; en
+	-- atraccion se ve limpio, por eso enganaba (verificado por captura 2026-11-15).
+	-- Cae al free play por MONEDA (0x83e1 verificado en creditos.dat): pasa por el
+	-- codigo del juego y no corrompe nada.
 	rbtapper = { contador = 0xe011, valor = 9, tope = 99 },
 	-- robocop (Data East dec0, 68000): contador BCD en 0xff8dc5 (cheat Infinite
 	-- Credits=99). La main RAM se espeja en 0x318dc5 y 0xff8dc5 (mismo byte); el
@@ -725,11 +729,17 @@ local ESCRIBIR_FREEPLAY = {
 	-- (creditos.dat lo creia 'solo lectura', pero escrito por frame si surte efecto).
 	berzerk    = { contador = 0x08a5,     valor = 0x90, tope = 0x90 },
 	bublbobl   = { contador = 0xe366,     valor = 9, tope = 9 },
-	-- ddragon: NO va aqui. Escribir 0x21 deja el juego en el demo de atraccion y
-	-- el marcador no refleja el valor (se ve "CREDIT 3" con 0x21=9). Insertar la
-	-- moneda SI lo lleva al titulo "PUSH START / CREDIT N" (verificado por ramdiff
-	-- + captura 2026-11-14): pasa por el codigo del juego. Sin entrada aqui, cae al
-	-- free play por MONEDA (tiene direccion verificada en creditos.dat: 0x21 BCD).
+	-- ddragon (Double Dragon, Technos/Taito, 6809): contador BCD 0x21 (DAA, topa en
+	-- 0x99), DEDICADO -- el juego no lo reescribe jugando (verificado 2026-11-15), asi
+	-- que mantenerlo por escritura NO corrompe (a diferencia de frogger/dkong3). PERO
+	-- escribir el contador no saca del modo atraccion: la placa solo "acepta" creditos
+	-- corriendo su rutina de moneda (reinicia la pila y entra al titulo). Probado que
+	-- ni escribir 0x21=9 ni ademas fijar el estado post-moneda (0x26=1,0xE71/72=0)
+	-- hace que START arranque. Por eso 'pulso_inicial': cuando el contador esta a 0
+	-- (atraccion) se mete UNA moneda por la ranura para salir, y luego se mantiene 9
+	-- por escritura. Verificado: 1 moneda + escribir 0x21=9 -> START consume (9->8),
+	-- 9 creditos jugables con un solo sonido de moneda.
+	ddragon    = { contador = 0x21, valor = 9, tope = 9, pulso_inicial = true },
 	mario      = { contador = 0x6bf1,     valor = 9, tope = 9 },   -- limpio, no como dkong3
 	megaman2   = { contador = 0xff8068,   valor = 9, tope = 9 },   -- CPS2
 	mvsc       = { contador = 0xff4499,   valor = 9, tope = 9 },   -- CPS2
@@ -767,7 +777,11 @@ end
 -- Cada juego es una LISTA de {dir, valor}: algunos tienen VARIAS copias del
 -- contador (Williams) y hay que forzar todas.
 local FREEPLAY_TAP = {
-	dkong3 = { { dir = 0x6bf1, valor = 0x99 } },   -- escribir por frame pelea con el marcador
+	-- dkong3: NO va aqui. El TAP de lectura (forzar 0x6bf1 a 0x99 en CADA lectura) se
+	-- verifico limpio solo en ATRACCION; jugando (nivel invernadero) el juego lee
+	-- 0x6bf1 y el 0x99 forzado corrompe el render -> la "barra de basura" volvio
+	-- (reportado por Eloy 2026-11-15). Cae al free play por MONEDA, que era el arreglo
+	-- limpio ORIGINAL (verificado en cabina, partida incluida).
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
 	-- 0xE0 es el flag de FREE PLAY (hallado comparando el EEPROM/RAM con free play
@@ -1663,8 +1677,22 @@ local function por_frame()
 		-- (si no, el credito escrito no surte efecto). Verificado por Eloy.
 		if e.fp_escribir and not e.arranque then
 			local w = e.fp_escribir
+			-- pulso_inicial (ddragon): escribir el contador NO saca del modo
+			-- atraccion; la placa solo acepta creditos corriendo su rutina de moneda.
+			-- Con el contador a 0 (atraccion, al arrancar o tras un game over) se mete
+			-- UNA moneda por la ranura y no se escribe todavia; al subir el contador
+			-- (ya en el titulo) se mantiene por escritura, como el resto. Reutiliza la
+			-- maquina de insertar() (e.restantes/e.fase).
+			local listo = true
 			local ok, v = pcall(w.space.read_u8, w.space, w.contador)
-			if ok and type(v) == 'number' and v < (w.umbral or w.tope) then
+			if w.pulso_inicial and ok and type(v) == 'number' and v == 0 then
+				listo = false
+				if e.fase == 'fin' or e.fase == 'inactivo' then
+					e.restantes = 1
+					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+				end
+			end
+			if listo and ok and type(v) == 'number' and v < (w.umbral or w.tope) then
 				pcall(w.space.write_u8, w.space, w.contador, w.valor)
 				if w.disparo then
 					pcall(w.space.write_u8, w.space, w.disparo, w.disparo_valor)
@@ -1672,7 +1700,7 @@ local function por_frame()
 			end
 			-- 2o contador independiente (ssriders: slots de moneda separados, P2
 			-- tiene su propio credito en w.contador2; sin esto P2 no puede entrar)
-			if w.contador2 then
+			if listo and w.contador2 then
 				local ok2, v2 = pcall(w.space.read_u8, w.space, w.contador2)
 				if ok2 and type(v2) == 'number' and v2 < (w.umbral or w.tope) then
 					pcall(w.space.write_u8, w.space, w.contador2, w.valor)
