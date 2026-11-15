@@ -764,6 +764,13 @@ local ESCRIBIR_FREEPLAY = {
 	-- fija creditos.dat), igual que digdug. Solo SUBE (nunca baja), que es lo que hace
 	-- fp_escribir. 'CREDIT 09' verificado en pantalla.
 	xevious    = { contador = 0x19,       valor = 9, tope = 9 },
+	-- polepos (Pole Position, Namco): contador en el 51xx (data 0x19) como
+	-- digdug/xevious. Va TAMBIEN en SIN_DIP_FREEPLAY (tarifa.lua): su DIP "Coin A =
+	-- Free Play" dispara el "AUTO START" del juego (arranca carreras solo, con sonido
+	-- de ficha). Por eso se mantiene el credito por ESCRITURA (sin sonido) con la
+	-- tarifa en monedas, y el jugador arranca. El TAP de lectura NO vale: rompe el
+	-- 51xx (pantalla de basura, verificado 2026-11-15).
+	polepos    = { contador = 0x19,       valor = 2, tope = 2 },
 }
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
@@ -834,6 +841,13 @@ local function tarifa_vigente()
 			FREEPLAY_DIP = true
 			log('tarifa global FREE PLAY: DIP(s) a partida gratis')
 		else
+			-- Sin DIP de free play utilizable (o excluido en SIN_DIP_FREEPLAY). Por si
+			-- quedo un Free Play guardado en el .cfg, se quita: en polepos el "Coin A =
+			-- Free Play" dispara su AUTO START (arranca carreras solo). Se deja la tarifa
+			-- en monedas y se mantiene el credito por RAM; el jugador arranca.
+			if T.quitar_freeplay() then
+				log('tarifa global FREE PLAY: quito el free play de DIP guardado (lo mantengo por RAM)')
+			end
 			log('tarifa global FREE PLAY: sin DIP; mantengo %d credito(s) por RAM si se puede', FREEPLAY_N)
 		end
 		return 1, 1, true

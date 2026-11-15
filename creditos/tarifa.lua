@@ -156,7 +156,7 @@ end
 -- Lives=0 desde el frame 0. Para estos devolvemos false (no tocamos DIP) y el free
 -- play se hace por RAM (freeplay_ram), que en zaxxon SI funciona: mantener 0x6012
 -- >=1 pone el estado en "credito listo" y START arranca la partida (verificado).
-local SIN_DIP_FREEPLAY = { zaxxon = true }
+local SIN_DIP_FREEPLAY = { zaxxon = true, polepos = true }
 
 function M.aplicar_freeplay()
 	if SIN_DIP_FREEPLAY[emu.romname and emu.romname() or ''] then return false end
