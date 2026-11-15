@@ -34,6 +34,9 @@ BOTONES_PATH = os.path.expanduser("~/.attract/botones_juego")
 AVISO_LED_PATH = os.path.expanduser("~/.attract/aviso_led")
 BRILLO_PATH = os.path.expanduser("~/.attract/brillo_leds")
 FIFO_PATH = os.path.expanduser("~/.attract/arduino_fifo")
+# El panel escribe este fichero para reiniciar la placa: cerrar y reabrir el
+# puerto la resetea por DTR y re-sincroniza todo el estado.
+RESET_PATH = os.path.expanduser("~/.attract/arduino_reset")
 BAUD_RATE = 115200
 LOG_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 UPDATE_TIME = 0.1
@@ -98,7 +101,9 @@ def initArduino():
         return False
 
     try:
-        conection = serial.Serial(port, BAUD_RATE)
+        # write_timeout: una escritura a una placa colgada/desenchufada falla en
+        # vez de bloquear el demonio para siempre.
+        conection = serial.Serial(port, BAUD_RATE, write_timeout=2)
         # Abrir el puerto reinicia la placa: esperar a que arranque y volver a
         # mandarle todo, porque ha vuelto a su estado inicial.
         time.sleep(ARDUINO_TIME)
@@ -195,6 +200,10 @@ def enviarCrudo(texto):
         conection.write((texto + "\n").encode())
     except (serial.SerialException, serial.SerialTimeoutException, OSError) as e:
         log(e)
+        try:
+            conection.close()   # cierra el handle muerto para poder reabrir limpio
+        except Exception:
+            pass
         conection = None
         return False
     logOk()
@@ -222,6 +231,21 @@ while True:
 
     if initArduino() is False:
         time.sleep(RETRY_TIME)
+        continue
+
+    # Reinicio manual de la placa (el panel escribe ~/.attract/arduino_reset):
+    # cerrar y reabrir el puerto la resetea por DTR, y initArduino re-manda todo.
+    if os.path.exists(RESET_PATH):
+        try:
+            os.remove(RESET_PATH)
+        except OSError:
+            pass
+        try:
+            conection.close()
+        except Exception:
+            pass
+        conection = None
+        log("reinicio del Arduino pedido")
         continue
 
     # Despertar en cuanto el FIFO tenga datos (minijuego: latencia de un write),
