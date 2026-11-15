@@ -12,7 +12,7 @@
          min-height: 100vh; display: flex; flex-direction: column;
          align-items: center; justify-content: center; }
   #img { max-width: 100%; max-height: 100vh; image-rendering: pixelated; display: none; }
-  #msg { padding: 1.5rem; text-align: center; line-height: 1.6; max-width: 32rem; }
+  #msg { padding: 1.5rem; text-align: center; line-height: 1.6; max-width: 34rem; }
   #msg a { color: #6cf; }
   #barra { position: fixed; top: 0; left: 0; right: 0; z-index: 2;
            display: flex; gap: .6rem; align-items: center;
@@ -41,37 +41,45 @@
       estado = document.getElementById('estado'),
       pausa = document.getElementById('pausa'),
       fit = document.getElementById('fit'),
-      activo = true, fallos = 0;
+      activo = true;
 
-  function luego(ms) { if (activo) setTimeout(cargar, ms); }
-  function cargar() { if (activo) img.src = '/api/pantalla.jpg?t=' + Date.now(); }
+  // Stream MJPEG en vivo en un <img>: fluido y con poco retardo. Si falla (sin
+  // sesion = 401, o cabina/X caida) salta onerror -> mensaje + reintento.
+  function conectar() {
+    if (!activo) return;
+    estado.textContent = 'conectando…';
+    img.src = '/api/pantalla.mjpeg?t=' + Date.now();
+  }
+  function parar() { img.src = ''; }   // corta el stream (el servidor mata ffmpeg)
 
-  img.onload = function () {
-    img.style.display = ''; msg.textContent = '';
-    estado.textContent = 'en vivo'; fallos = 0;
-    luego(120);                 // encadena fotogramas lo mas rapido que deje la red
+  img.onload = function () {            // primer fotograma del stream
+    img.style.display = ''; msg.textContent = ''; estado.textContent = 'en vivo';
   };
   img.onerror = function () {
-    if (++fallos >= 2) {
-      img.style.display = 'none';
-      estado.textContent = 'sin señal';
-      msg.innerHTML = 'No se ve la pantalla.<br>' +
-        'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
-        'o puede que la cabina esté apagada.';
-    }
-    luego(1500);
+    if (!activo) return;
+    img.style.display = 'none';
+    estado.textContent = 'sin señal';
+    msg.innerHTML = 'No se ve la pantalla.<br>' +
+      'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
+      'o puede que la cabina esté apagada.';
+    setTimeout(conectar, 2500);        // reintenta
   };
   pausa.onclick = function () {
     activo = !activo;
     pausa.textContent = activo ? 'pausa' : 'seguir';
-    estado.textContent = activo ? 'en vivo' : 'en pausa';
-    if (activo) cargar();
+    if (activo) { estado.textContent = 'conectando…'; conectar(); }
+    else { parar(); estado.textContent = 'en pausa'; }
   };
   fit.onchange = function () {
     img.style.maxHeight = fit.checked ? '100vh' : 'none';
     img.style.maxWidth = fit.checked ? '100%' : 'none';
   };
-  cargar();
+  // soltar el stream al ocultar la pestaña (ahorra CPU/ffmpeg en la cabina)
+  document.addEventListener('visibilitychange', function () {
+    if (!activo) return;
+    if (document.hidden) parar(); else conectar();
+  });
+  conectar();
 })();
 </script>
 </body>

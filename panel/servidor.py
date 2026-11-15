@@ -521,6 +521,16 @@ def api_retencion_set():
 # Ficheros estaticos (la GUI de Eloy)
 # ---------------------------------------------------------------------------
 
+@app.get("/api/pantalla.mjpeg")
+@requiere_login
+def api_pantalla_mjpeg():
+    """Stream MJPEG en vivo de la pantalla (fluido, poco retardo). La GUI lo pone
+    en un <img>. La cookie de sesion va en la peticion del <img>."""
+    return Response(acciones.stream_pantalla(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/pantalla.jpg")
 @requiere_login
 def api_pantalla_jpg():

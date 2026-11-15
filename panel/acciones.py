@@ -973,3 +973,40 @@ def capturar_pantalla(ancho=640, calidad=70):
     except Exception:
         pass
     return None
+
+
+def stream_pantalla(fps=12, ancho=640, calidad=6):
+    """Generador de un stream MJPEG (multipart/x-mixed-replace) de la pantalla :0,
+    para un <img> en el navegador: fluido y con poco retardo. Usa ffmpeg x11grab
+    (ya instalado; captura el framebuffer con el shader incluido). Al cerrar el
+    cliente, Flask cierra el generador y el 'finally' mata ffmpeg."""
+    env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
+    cmd = ["ffmpeg", "-loglevel", "error", "-f", "x11grab",
+           "-framerate", str(int(fps)), "-i", ":0",
+           "-vf", "scale=%d:-2" % int(ancho), "-q:v", str(int(calidad)),
+           "-f", "mjpeg", "pipe:1"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=env, bufsize=0)
+    buf = b""
+    try:
+        while True:
+            trozo = proc.stdout.read(16384)
+            if not trozo:
+                break
+            buf += trozo
+            while True:                       # separar cada JPEG (FFD8..FFD9)
+                ini = buf.find(b"\xff\xd8")
+                if ini < 0:
+                    break
+                fin = buf.find(b"\xff\xd9", ini + 2)
+                if fin < 0:
+                    break
+                jpg = buf[ini:fin + 2]
+                buf = buf[fin + 2:]
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                       + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
