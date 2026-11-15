@@ -16,6 +16,7 @@ import glob
 import os
 import shutil
 import subprocess
+import threading
 import time
 
 from comun import (ATTRACT, DIR_STATS, F_ARDUINO_FIFO, F_ARDUINO_RESET,
@@ -1010,3 +1011,62 @@ def stream_pantalla(fps=12, ancho=640, calidad=6):
             proc.kill()
         except Exception:
             pass
+
+
+# --- Capturador en segundo plano: mantiene el ultimo fotograma listo ---------
+# Asi /api/pantalla.jpg responde al instante (sin xwd+convert por peticion), y un
+# bucle de <img> encadenados en el navegador alcanza buena tasa (lo limita la red,
+# no la captura). Peticiones CORTAS (una por fotograma): render fiable y sin que
+# una VPN/proxy que bufferiza un stream largo lo deje en negro (lo del MJPEG). El
+# ffmpeg vive solo mientras haya demanda y se apaga tras unos segundos sin uso.
+_cap = {"frame": None, "hilo": None, "ultimo_uso": 0.0, "lock": threading.Lock()}
+_CAP_OCIO = 12.0   # segundos sin peticiones -> se apaga ffmpeg
+
+
+def _capturador():
+    env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
+    cmd = ["ffmpeg", "-loglevel", "error", "-f", "x11grab", "-framerate", "15",
+           "-i", ":0", "-vf", "scale=640:-2", "-q:v", "6", "-f", "mjpeg", "pipe:1"]
+    try:
+        while time.time() - _cap["ultimo_uso"] < _CAP_OCIO:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, env=env, bufsize=0)
+            buf = b""
+            try:
+                while time.time() - _cap["ultimo_uso"] < _CAP_OCIO:
+                    trozo = proc.stdout.read(16384)
+                    if not trozo:
+                        break                      # ffmpeg murio (p.ej. X reinicio)
+                    buf += trozo
+                    while True:
+                        ini = buf.find(b"\xff\xd8")
+                        if ini < 0:
+                            break
+                        fin = buf.find(b"\xff\xd9", ini + 2)
+                        if fin < 0:
+                            break
+                        _cap["frame"] = buf[ini:fin + 2]
+                        buf = buf[fin + 2:]
+            finally:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            if time.time() - _cap["ultimo_uso"] < _CAP_OCIO:
+                time.sleep(0.5)                    # ffmpeg cayo con demanda: reintenta
+    finally:
+        _cap["hilo"] = None
+        _cap["frame"] = None
+
+
+def frame_actual():
+    """Ultimo fotograma JPEG (bytes) o None. Arranca el capturador si hace falta."""
+    _cap["ultimo_uso"] = time.time()
+    with _cap["lock"]:
+        if _cap["hilo"] is None:
+            _cap["hilo"] = threading.Thread(target=_capturador, daemon=True)
+            _cap["hilo"].start()
+    espera = 0.0
+    while _cap["frame"] is None and espera < 2.0:   # espera al 1er fotograma
+        time.sleep(0.05); espera += 0.05
+    return _cap["frame"]

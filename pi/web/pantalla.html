@@ -29,6 +29,7 @@
   <div id="barra">
     <strong>Cabina</strong>
     <span id="estado">conectando…</span>
+    <span id="fps"></span>
     <label class="sp"><input type="checkbox" id="fit" checked> ajustar</label>
     <button id="pausa">pausa</button>
   </div>
@@ -36,50 +37,62 @@
   <div id="msg"></div>
 <script>
 (function () {
+  // Fotogramas JPEG sueltos encadenados (peticiones cortas): render fiable en todo
+  // navegador y no se rompe con VPN/proxy que bufferizan un stream largo (lo que
+  // dejaba el MJPEG en negro). Se pide el siguiente en cuanto llega el anterior.
   var img = document.getElementById('img'),
       msg = document.getElementById('msg'),
       estado = document.getElementById('estado'),
+      fpsEl = document.getElementById('fps'),
       pausa = document.getElementById('pausa'),
       fit = document.getElementById('fit'),
-      activo = true;
+      activo = true, t0 = 0, n = 0, url = null;
 
-  // Stream MJPEG en vivo en un <img>: fluido y con poco retardo. Si falla (sin
-  // sesion = 401, o cabina/X caida) salta onerror -> mensaje + reintento.
-  function conectar() {
+  function liberar() { if (url) { URL.revokeObjectURL(url); url = null; } }
+
+  async function tick() {
     if (!activo) return;
-    estado.textContent = 'conectando…';
-    img.src = '/api/pantalla.mjpeg?t=' + Date.now();
+    try {
+      var r = await fetch('/api/pantalla.jpg?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      var blob = await r.blob();
+      liberar();
+      url = URL.createObjectURL(blob);
+      img.src = url;                      // onload encadena el siguiente
+    } catch (e) {
+      img.style.display = 'none';
+      estado.textContent = 'sin señal';
+      msg.innerHTML = 'No se ve la pantalla.<br>' +
+        'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
+        'o puede que la cabina esté apagada.';
+      setTimeout(tick, 1500);
+    }
   }
-  function parar() { img.src = ''; }   // corta el stream (el servidor mata ffmpeg)
 
-  img.onload = function () {            // primer fotograma del stream
+  img.onload = function () {
     img.style.display = ''; msg.textContent = ''; estado.textContent = 'en vivo';
+    n++;
+    var ahora = performance.now();
+    if (!t0) t0 = ahora;
+    else if (ahora - t0 > 1000) { fpsEl.textContent = Math.round(n * 1000 / (ahora - t0)) + ' fps'; t0 = ahora; n = 0; }
+    if (activo) tick();                   // siguiente fotograma ya
   };
-  img.onerror = function () {
-    if (!activo) return;
-    img.style.display = 'none';
-    estado.textContent = 'sin señal';
-    msg.innerHTML = 'No se ve la pantalla.<br>' +
-      'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
-      'o puede que la cabina esté apagada.';
-    setTimeout(conectar, 2500);        // reintenta
-  };
+
   pausa.onclick = function () {
     activo = !activo;
     pausa.textContent = activo ? 'pausa' : 'seguir';
-    if (activo) { estado.textContent = 'conectando…'; conectar(); }
-    else { parar(); estado.textContent = 'en pausa'; }
+    if (activo) { estado.textContent = 'conectando…'; tick(); }
+    else { estado.textContent = 'en pausa'; }
   };
   fit.onchange = function () {
     img.style.maxHeight = fit.checked ? '100vh' : 'none';
     img.style.maxWidth = fit.checked ? '100%' : 'none';
   };
-  // soltar el stream al ocultar la pestaña (ahorra CPU/ffmpeg en la cabina)
   document.addEventListener('visibilitychange', function () {
     if (!activo) return;
-    if (document.hidden) parar(); else conectar();
+    if (!document.hidden) tick();
   });
-  conectar();
+  tick();
 })();
 </script>
 </body>

@@ -536,7 +536,7 @@ def api_pantalla_mjpeg():
 def api_pantalla_jpg():
     """Compartir pantalla (solo ver): un fotograma JPEG del CRT. La GUI lo refresca
     en un <img>. Requiere sesion (la cookie va en la peticion del <img>)."""
-    datos = acciones.capturar_pantalla()
+    datos = acciones.frame_actual()
     if not datos:
         return jsonify({"error": "no se pudo capturar la pantalla"}), 503
     return Response(datos, mimetype="image/jpeg",
