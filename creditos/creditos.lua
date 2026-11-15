@@ -725,7 +725,11 @@ local ESCRIBIR_FREEPLAY = {
 	-- (creditos.dat lo creia 'solo lectura', pero escrito por frame si surte efecto).
 	berzerk    = { contador = 0x08a5,     valor = 0x90, tope = 0x90 },
 	bublbobl   = { contador = 0xe366,     valor = 9, tope = 9 },
-	ddragon    = { contador = 0x0021,     valor = 9, tope = 9 },   -- BCD (9 = 0x09)
+	-- ddragon: NO va aqui. Escribir 0x21 deja el juego en el demo de atraccion y
+	-- el marcador no refleja el valor (se ve "CREDIT 3" con 0x21=9). Insertar la
+	-- moneda SI lo lleva al titulo "PUSH START / CREDIT N" (verificado por ramdiff
+	-- + captura 2026-11-14): pasa por el codigo del juego. Sin entrada aqui, cae al
+	-- free play por MONEDA (tiene direccion verificada en creditos.dat: 0x21 BCD).
 	mario      = { contador = 0x6bf1,     valor = 9, tope = 9 },   -- limpio, no como dkong3
 	megaman2   = { contador = 0xff8068,   valor = 9, tope = 9 },   -- CPS2
 	mvsc       = { contador = 0xff4499,   valor = 9, tope = 9 },   -- CPS2
