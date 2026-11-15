@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Pantalla de la cabina</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000; color: #cfcfcf;
+         font-family: system-ui, -apple-system, sans-serif;
+         min-height: 100vh; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; }
+  #img { max-width: 100%; max-height: 100vh; image-rendering: pixelated; display: none; }
+  #msg { padding: 1.5rem; text-align: center; line-height: 1.6; max-width: 32rem; }
+  #msg a { color: #6cf; }
+  #barra { position: fixed; top: 0; left: 0; right: 0; z-index: 2;
+           display: flex; gap: .6rem; align-items: center;
+           padding: .4rem .7rem; background: rgba(0,0,0,.55);
+           font-size: .85rem; opacity: .15; transition: opacity .2s; }
+  #barra:hover, #barra:focus-within { opacity: 1; }
+  #barra .sp { margin-left: auto; }
+  button { background: #222; color: #ccc; border: 1px solid #444;
+           border-radius: 5px; padding: .3rem .7rem; cursor: pointer; }
+  button:hover { background: #333; }
+</style>
+</head>
+<body>
+  <div id="barra">
+    <strong>Cabina</strong>
+    <span id="estado">conectando…</span>
+    <label class="sp"><input type="checkbox" id="fit" checked> ajustar</label>
+    <button id="pausa">pausa</button>
+  </div>
+  <img id="img" alt="pantalla de la cabina">
+  <div id="msg"></div>
+<script>
+(function () {
+  var img = document.getElementById('img'),
+      msg = document.getElementById('msg'),
+      estado = document.getElementById('estado'),
+      pausa = document.getElementById('pausa'),
+      fit = document.getElementById('fit'),
+      activo = true, fallos = 0;
+
+  function luego(ms) { if (activo) setTimeout(cargar, ms); }
+  function cargar() { if (activo) img.src = '/api/pantalla.jpg?t=' + Date.now(); }
+
+  img.onload = function () {
+    img.style.display = ''; msg.textContent = '';
+    estado.textContent = 'en vivo'; fallos = 0;
+    luego(120);                 // encadena fotogramas lo mas rapido que deje la red
+  };
+  img.onerror = function () {
+    if (++fallos >= 2) {
+      img.style.display = 'none';
+      estado.textContent = 'sin señal';
+      msg.innerHTML = 'No se ve la pantalla.<br>' +
+        'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
+        'o puede que la cabina esté apagada.';
+    }
+    luego(1500);
+  };
+  pausa.onclick = function () {
+    activo = !activo;
+    pausa.textContent = activo ? 'pausa' : 'seguir';
+    estado.textContent = activo ? 'en vivo' : 'en pausa';
+    if (activo) cargar();
+  };
+  fit.onchange = function () {
+    img.style.maxHeight = fit.checked ? '100vh' : 'none';
+    img.style.maxWidth = fit.checked ? '100%' : 'none';
+  };
+  cargar();
+})();
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@ auditoria.  Nunca lanza excepcion hacia el servidor.
 import glob
 import os
 import shutil
+import subprocess
 import time
 
 from comun import (ATTRACT, DIR_STATS, F_ARDUINO_FIFO, F_ARDUINO_RESET,
@@ -944,3 +945,31 @@ def limpiar_logs():
     except OSError:
         pass
     return borrados
+
+
+# ---------------------------------------------------------------------------
+# Compartir pantalla (solo ver): captura del CRT :0 como JPEG
+# ---------------------------------------------------------------------------
+
+def _xauth():
+    """El X de GroovyArcade arranca con '-auth /tmp/serverauth.XXX'; ese fichero es
+    mas fiable que ~/.Xauthority para abrir :0 (verificado capturando la cabina)."""
+    cands = sorted(glob.glob("/tmp/serverauth.*"), key=os.path.getmtime, reverse=True)
+    return cands[0] if cands else os.path.expanduser("~/.Xauthority")
+
+
+def capturar_pantalla(ancho=640, calidad=70):
+    """Devuelve un JPEG (bytes) de la pantalla :0 escalado a 'ancho' px, o None.
+    Usa xwd + convert (ImageMagick), que capturan el framebuffer tal cual (incluye
+    el juego con shader, como las capturas que ya hacemos con xwd)."""
+    env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
+    try:
+        pr = subprocess.run(
+            "xwd -root -silent -display :0 | convert xwd:- -resize %dx -quality %d jpg:-"
+            % (int(ancho), int(calidad)),
+            shell=True, env=env, capture_output=True, timeout=6)
+        if pr.returncode == 0 and pr.stdout[:2] == b"\xff\xd8":   # cabecera JPEG
+            return pr.stdout
+    except Exception:
+        pass
+    return None
