@@ -525,8 +525,20 @@ def api_retencion_set():
 @requiere_login
 def api_pantalla_mjpeg():
     """Stream MJPEG en vivo de la pantalla (fluido, poco retardo). La GUI lo pone
-    en un <img>. La cookie de sesion va en la peticion del <img>."""
-    return Response(acciones.stream_pantalla(),
+    en un <img>. La cookie de sesion va en la peticion del <img>.
+    Ajustable en caliente por URL para encajar en el ancho de banda (el shader CRT
+    comprime mal en JPEG): ?ancho=px&calidad=2..31 (mas calidad = mas comprimido =
+    menos bytes = mas fps) &fps=. Defecto 480/12: ~15 KB/cuadro, apto para 4G."""
+    def _rango(nombre, defecto, lo, hi):
+        try:
+            v = int(request.args.get(nombre, defecto))
+        except (TypeError, ValueError):
+            v = defecto
+        return max(lo, min(hi, v))
+    gen = acciones.stream_pantalla(fps=_rango("fps", 30, 5, 30),
+                                   ancho=_rango("ancho", 480, 240, 1024),
+                                   calidad=_rango("calidad", 12, 2, 31))
+    return Response(gen,
                     mimetype="multipart/x-mixed-replace; boundary=frame",
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 

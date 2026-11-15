@@ -172,21 +172,31 @@ class Portero(BaseHTTPRequestHandler):
         self.end_headers()
         # SSE (flujo infinito): hay que mandar CADA linea segun llega, no esperar
         # a llenar un buffer, o las metricas y los botones en vivo se atascarian.
-        es_sse = "text/event-stream" in (resp.getheader("Content-Type") or "").lower()
+        ct = (resp.getheader("Content-Type") or "").lower()
+        es_sse = "text/event-stream" in ct
+        # MJPEG en vivo: trozos pequenos y flush para poco retardo (un read grande
+        # acumularia varios cuadros antes de soltarlos).
+        es_mjpeg = "multipart/x-mixed-replace" in ct
         try:
             if es_sse:
                 for linea in resp:          # readline: cede cada linea al instante
                     self.wfile.write(linea)
                     self.wfile.flush()
             else:
+                tam = 8192 if es_mjpeg else 65536
                 while True:
-                    trozo = resp.read(65536)
+                    trozo = resp.read(tam)
                     if not trozo:
                         break
                     self.wfile.write(trozo)
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
             pass
+        finally:
+            try:
+                resp.close()   # corta el stream a la cabina -> Flask mata ffmpeg
+            except Exception:
+                pass
 
     do_GET = do_POST = do_PUT = do_DELETE = _manejar
 

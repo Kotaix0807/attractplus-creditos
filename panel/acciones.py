@@ -976,14 +976,16 @@ def capturar_pantalla(ancho=640, calidad=70):
     return None
 
 
-def stream_pantalla(fps=12, ancho=640, calidad=6):
+def stream_pantalla(fps=30, ancho=640, calidad=7):
     """Generador de un stream MJPEG (multipart/x-mixed-replace) de la pantalla :0,
     para un <img> en el navegador: fluido y con poco retardo. Usa ffmpeg x11grab
     (ya instalado; captura el framebuffer con el shader incluido). Al cerrar el
-    cliente, Flask cierra el generador y el 'finally' mata ffmpeg."""
+    cliente, Flask cierra el generador y el 'finally' mata ffmpeg.
+    nobuffer/low_delay: ffmpeg no acumula cuadros a la entrada -> menos retardo."""
     env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
-    cmd = ["ffmpeg", "-loglevel", "error", "-f", "x11grab",
-           "-framerate", str(int(fps)), "-i", ":0",
+    cmd = ["ffmpeg", "-loglevel", "error",
+           "-fflags", "nobuffer", "-flags", "low_delay",
+           "-f", "x11grab", "-framerate", str(int(fps)), "-i", ":0",
            "-vf", "scale=%d:-2" % int(ancho), "-q:v", str(int(calidad)),
            "-f", "mjpeg", "pipe:1"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
