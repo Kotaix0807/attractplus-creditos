@@ -792,14 +792,17 @@ end
 -- Cada juego es una LISTA de {dir, valor}: algunos tienen VARIAS copias del
 -- contador (Williams) y hay que forzar todas.
 local FREEPLAY_TAP = {
-	-- dkong3 y frogger: TAP de lectura con valor PEQUENO (2). Fuerzan el contador de
-	-- creditos a 2 en CADA lectura, asi nunca se agota -> siempre se puede jugar de a
-	-- 2. (El free play por MONEDA solo reponia 1 tras una partida 2P: su attract de
-	-- post-partida no vuelve a aceptar monedas. Verificado 2026-11-15.) No escribe la
-	-- RAM, asi no corrompe el video (lo que pasaba al ESCRIBIR frogger). El valor DEBE
-	-- ser pequeno: dkong3 con 0x99 pintaba una barra de basura en el invernadero; con
-	-- 2 esta limpio y arranca 2P (captura 2026-11-15, ambos juegos).
-	dkong3  = { { dir = 0x6bf1, valor = 2 } },
+	-- frogger: TAP de lectura con valor PEQUENO (2): el contador se lee siempre 2,
+	-- nunca se agota, sin escribir la RAM (al ESCRIBIR se corrompia el video) y sin
+	-- barra (su 0x83e1 NO se reusa jugando; el tap sale limpio incluso con valores
+	-- altos, verificado 2026-11-15).
+	--
+	-- dkong3 NO va aqui: su contador 0x6bf1 SE REUSA como variable grafica en el
+	-- invernadero y el VIDEO lo lee directo. El tap solo falsea las lecturas de la
+	-- CPU (START ve creditos), pero el byte GUARDADO sigue mal -> barra de basura
+	-- (verificado con captura de la pantalla real de la cabina 2026-11-15). Hay que
+	-- dejar que el juego gestione su contador: free play por MONEDA + tarifa generosa
+	-- (ver FREEPLAY_COINAGE), asi 1 moneda da para varias partidas 2P y sale limpio.
 	frogger = { { dir = 0x83e1, valor = 2 } },
 	-- atetris: la tarifa (free play) vive en el menu de servicio -> EEPROM (chip XICOR
 	-- X2804, 0x2400-0x25FF), no en un DIP. El juego cachea ese ajuste en RAM: 0x08bc =
@@ -2362,6 +2365,36 @@ do
 		end
 		if #GA_ESTADO.fp_taps > 0 then
 			GA_ESTADO.freeplay_ram = false     -- el tap reemplaza al pulso de moneda/RAM
+		end
+	end
+end
+
+-- --- Free play por MONEDA con tarifa GENEROSA (dkong3) ---
+-- Algunos juegos no admiten ni escritura ni tap del contador (dkong3 reusa su 0x6bf1
+-- como variable grafica en el invernadero y el VIDEO lo lee directo -> barra de
+-- basura). Ahi el credito lo tiene que gestionar el propio juego (free play por
+-- moneda, que sale limpio). Pero el pulso de moneda solo reponia 1 tras una partida
+-- 2P. Solucion: poner la tarifa del juego en MUCHOS creditos por moneda, asi UNA
+-- moneda (un pulso, un sonido) da para varias partidas 2P y casi nunca hay que
+-- reponer. El DIP lo lee la placa al ARRANCAR; MAME lo guarda en su .cfg, asi que
+-- surte efecto desde el siguiente arranque (en la cabina se dejo ya puesto a mano
+-- para que el primero tambien valga).
+local FREEPLAY_COINAGE = { dkong3 = '1 Coin/6 Credits' }
+do
+	local quiere = FREEPLAY_COINAGE[emu.romname and emu.romname() or '']
+	if quiere and FREEPLAY then
+		for _, port in pairs(manager.machine.ioport.ports) do
+			for nombre, campo in pairs(port.fields) do
+				if campo.type_class == 'dipswitch' and campo.settings then
+					for valor, texto in pairs(campo.settings) do
+						if texto == quiere and campo.user_value ~= valor then
+							campo.user_value = valor
+							log('free play: tarifa de %s a "%s" (creditos de sobra por moneda)',
+								emu.romname(), quiere)
+						end
+					end
+				end
+			end
 		end
 	end
 end
