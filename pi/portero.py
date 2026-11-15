@@ -174,16 +174,16 @@ class Portero(BaseHTTPRequestHandler):
         # a llenar un buffer, o las metricas y los botones en vivo se atascarian.
         ct = (resp.getheader("Content-Type") or "").lower()
         es_sse = "text/event-stream" in ct
-        # MJPEG en vivo: trozos pequenos y flush para poco retardo (un read grande
-        # acumularia varios cuadros antes de soltarlos).
-        es_mjpeg = "multipart/x-mixed-replace" in ct
+        # Video en vivo (MJPEG o MP4/H.264 fragmentado): trozos pequenos y flush para
+        # poco retardo (un read grande acumularia varios cuadros antes de soltarlos).
+        es_video = "multipart/x-mixed-replace" in ct or "video/mp4" in ct
         try:
             if es_sse:
                 for linea in resp:          # readline: cede cada linea al instante
                     self.wfile.write(linea)
                     self.wfile.flush()
             else:
-                tam = 8192 if es_mjpeg else 65536
+                tam = 8192 if es_video else 65536
                 while True:
                     trozo = resp.read(tam)
                     if not trozo:

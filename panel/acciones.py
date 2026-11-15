@@ -1015,6 +1015,41 @@ def stream_pantalla(fps=30, ancho=640, calidad=7):
             pass
 
 
+def stream_pantalla_h264(fps=30, ancho=640, kbps=1500):
+    """Generador de MP4 fragmentado (H.264) de la pantalla :0, para reproducir en
+    el navegador con MSE (<video>). H.264 comprime ENTRE cuadros, asi que gasta
+    ~10-30x menos que el MJPEG -> fluido en 4G con calidad mucho mejor. Baseline +
+    yuv420p = maxima compatibilidad con MediaSource; ultrafast/zerolatency para que
+    el i3 encode en vivo y con poco retardo. Al cerrar el cliente, Flask cierra el
+    generador y el 'finally' mata ffmpeg."""
+    env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
+    br = "%dk" % int(kbps)
+    g = str(int(fps))                       # keyframe cada ~1 s: arranque y fragmentos
+    cmd = ["ffmpeg", "-loglevel", "error",
+           "-fflags", "nobuffer", "-flags", "low_delay",
+           "-f", "x11grab", "-framerate", str(int(fps)), "-i", ":0",
+           "-vf", "scale=%d:-2" % int(ancho),
+           "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+           "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
+           "-g", g, "-keyint_min", g,
+           "-b:v", br, "-maxrate", br, "-bufsize", "%dk" % (int(kbps) * 2),
+           "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+           "-f", "mp4", "pipe:1"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=env, bufsize=0)
+    try:
+        while True:
+            trozo = proc.stdout.read(16384)
+            if not trozo:
+                break
+            yield trozo
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 # --- Capturador en segundo plano: mantiene el ultimo fotograma listo ---------
 # Asi /api/pantalla.jpg responde al instante (sin xwd+convert por peticion), y un
 # bucle de <img> encadenados en el navegador alcanza buena tasa (lo limita la red,

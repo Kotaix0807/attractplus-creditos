@@ -11,10 +11,7 @@
          font-family: system-ui, -apple-system, sans-serif;
          min-height: 100vh; display: flex; flex-direction: column;
          align-items: center; justify-content: center; }
-  /* OJO: nada de "display:none" aqui. Un #img{display:none} en la hoja de estilos
-     gana a img.style.display='' (que solo borra el estilo en linea), y dejaba la
-     imagen oculta para siempre aunque el stream llegara -> pantalla en negro. */
-  #img { max-width: 100%; max-height: 100vh; image-rendering: pixelated; }
+  #video { max-width: 100%; max-height: 100vh; image-rendering: pixelated; background: #000; }
   #msg { padding: 1.5rem; text-align: center; line-height: 1.6; max-width: 34rem; display: none; }
   #msg a { color: #6cf; }
   #barra { position: fixed; top: 0; left: 0; right: 0; z-index: 2;
@@ -32,59 +29,113 @@
   <div id="barra">
     <strong>Cabina</strong>
     <span id="estado">conectando…</span>
-    <select id="cal" title="calidad / fluidez (si va a tirones, elige Fluido)">
-      <option value="ancho=320&calidad=22" selected>Fluido</option>
-      <option value="ancho=480&calidad=12">Equilibrio</option>
-      <option value="ancho=720&calidad=7">Nítido</option>
+    <select id="cal" title="calidad / ancho de banda">
+      <option value="ancho=480&kbps=800" selected>Fluido</option>
+      <option value="ancho=640&kbps=1500">Equilibrio</option>
+      <option value="ancho=960&kbps=3000">Nítido</option>
     </select>
     <label class="sp"><input type="checkbox" id="fit" checked> ajustar</label>
     <button id="pausa">pausa</button>
   </div>
-  <img id="img" alt="pantalla de la cabina">
+  <video id="video" muted autoplay playsinline></video>
   <div id="msg"></div>
 <script>
 (function () {
-  // Stream MJPEG (multipart/x-mixed-replace): UNA conexion que el navegador
-  // repinta en cada fotograma. Fluido, sin una peticion por cuadro, poco retardo.
-  // No dependemos de img.onload: en multipart no dispara de forma fiable.
-  // Los fps los limita el ancho de banda (el shader CRT comprime mal en JPEG),
-  // asi que el selector cambia tamano/compresion en caliente para encajar.
-  var img = document.getElementById('img'),
+  // Pantalla en vivo por H.264 (MP4 fragmentado) con MediaSource. H.264 comprime
+  // entre cuadros -> fluido en 4G. El servidor genera el stream con ffmpeg x11grab
+  // + libx264 (ultrafast/zerolatency, baseline). Reusa el pipeline (Flask+portero).
+  var MIME = 'video/mp4; codecs="avc1.42E01F"';   // baseline 3.1 (lo que emite x264)
+  var video = document.getElementById('video'),
       msg = document.getElementById('msg'),
       estado = document.getElementById('estado'),
       cal = document.getElementById('cal'),
       pausa = document.getElementById('pausa'),
       fit = document.getElementById('fit'),
-      activo = true;
+      activo = true, ms = null, sb = null, cola = [], reader = null, abort = null;
+
+  function parar() {
+    try { if (abort) abort.abort(); } catch (e) {}
+    try { if (reader) reader.cancel(); } catch (e) {}
+    reader = null; abort = null; cola = []; sb = null;
+    try { if (ms && ms.readyState === 'open') ms.endOfStream(); } catch (e) {}
+    ms = null;
+    try { video.removeAttribute('src'); video.load(); } catch (e) {}
+  }
+
+  function recortar() {              // tira lo ya visto: evita QuotaExceeded
+    try {
+      if (sb && !sb.updating && sb.buffered.length &&
+          video.currentTime - sb.buffered.start(0) > 6)
+        sb.remove(sb.buffered.start(0), video.currentTime - 2);
+    } catch (e) {}
+  }
+  function bombear() {
+    if (!sb || sb.updating || !cola.length) return;
+    try { sb.appendBuffer(cola[0]); cola.shift(); }
+    catch (e) { if (e.name === 'QuotaExceededError') recortar(); }  // reintenta en updateend
+  }
+  function alDia() {                 // no quedarse atras del borde en vivo
+    try {
+      var b = video.buffered;
+      if (b.length && b.end(b.length - 1) - video.currentTime > 2.5)
+        video.currentTime = b.end(b.length - 1) - 0.4;
+    } catch (e) {}
+  }
+
+  function fallo(t) {
+    parar();
+    video.style.display = 'none'; estado.textContent = 'sin señal';
+    msg.style.display = ''; msg.innerHTML = (t || 'Se cortó la conexión.') + '<br>' +
+      'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
+      'o puede que la cabina esté apagada.';
+    if (activo) setTimeout(arrancar, 2500);
+  }
 
   function arrancar() {
     if (!activo) return;
-    estado.textContent = 'en vivo';
-    img.style.display = '';
-    msg.style.display = 'none';
-    img.src = '/api/pantalla.mjpeg?' + cal.value + '&t=' + Date.now();
+    parar();
+    if (!('MediaSource' in window) || !MediaSource.isTypeSupported(MIME))
+      return fallo('Tu navegador no soporta reproducción H.264 por MSE.');
+    estado.textContent = 'conectando…';
+    video.style.display = ''; msg.style.display = 'none';
+    ms = new MediaSource();
+    video.src = URL.createObjectURL(ms);
+    ms.addEventListener('sourceopen', function () {
+      try {
+        sb = ms.addSourceBuffer(MIME);
+        sb.mode = 'sequence';
+        sb.addEventListener('updateend', function () { recortar(); bombear(); });
+        abort = new AbortController();
+        fetch('/api/pantalla.mp4?' + cal.value + '&t=' + Date.now(),
+              { signal: abort.signal, cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) throw new Error(r.status);
+            estado.textContent = 'en vivo';
+            video.play().catch(function () {});
+            reader = r.body.getReader();
+            (function leer() {
+              reader.read().then(function (p) {
+                if (p.done || !activo) return;
+                cola.push(p.value); bombear(); leer();
+              }).catch(function () { if (activo) fallo(); });
+            })();
+          })
+          .catch(function () { if (activo) fallo(); });
+      } catch (e) { if (activo) fallo(); }
+    }, { once: true });
   }
 
-  img.onerror = function () {
-    img.style.display = 'none';
-    estado.textContent = 'sin señal';
-    msg.style.display = '';
-    msg.innerHTML = 'No se ve la pantalla.<br>' +
-      'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
-      'o puede que la cabina esté apagada.';
-    if (activo) setTimeout(arrancar, 2000);
-  };
-
-  cal.onchange = arrancar;   // cambia la calidad y reabre el stream al vuelo
+  video.addEventListener('timeupdate', alDia);
+  cal.onchange = arrancar;           // cambia calidad y reabre el stream
   pausa.onclick = function () {
     activo = !activo;
     pausa.textContent = activo ? 'pausa' : 'seguir';
-    if (activo) { estado.textContent = 'conectando…'; arrancar(); }
-    else { img.src = ''; estado.textContent = 'en pausa'; }
+    if (activo) arrancar();
+    else { parar(); estado.textContent = 'en pausa'; }
   };
   fit.onchange = function () {
-    img.style.maxHeight = fit.checked ? '100vh' : 'none';
-    img.style.maxWidth = fit.checked ? '100%' : 'none';
+    video.style.maxHeight = fit.checked ? '100vh' : 'none';
+    video.style.maxWidth = fit.checked ? '100%' : 'none';
   };
   arrancar();
 })();

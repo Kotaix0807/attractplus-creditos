@@ -521,23 +521,37 @@ def api_retencion_set():
 # Ficheros estaticos (la GUI de Eloy)
 # ---------------------------------------------------------------------------
 
+def _arg_rango(nombre, defecto, lo, hi):
+    """Lee request.args[nombre] como entero acotado a [lo, hi] (a prueba de basura:
+    los valores van a un comando ffmpeg)."""
+    try:
+        v = int(request.args.get(nombre, defecto))
+    except (TypeError, ValueError):
+        v = defecto
+    return max(lo, min(hi, v))
+
+
+@app.get("/api/pantalla.mp4")
+@requiere_login
+def api_pantalla_mp4():
+    """Stream H.264 (MP4 fragmentado) en vivo, para <video> por MSE en el navegador.
+    H.264 comprime entre cuadros -> fluido en 4G. Ajustable: ?ancho=&kbps=&fps=."""
+    gen = acciones.stream_pantalla_h264(fps=_arg_rango("fps", 30, 5, 30),
+                                        ancho=_arg_rango("ancho", 640, 320, 1280),
+                                        kbps=_arg_rango("kbps", 1500, 300, 8000))
+    return Response(gen, mimetype="video/mp4",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/pantalla.mjpeg")
 @requiere_login
 def api_pantalla_mjpeg():
-    """Stream MJPEG en vivo de la pantalla (fluido, poco retardo). La GUI lo pone
+    """Stream MJPEG en vivo de la pantalla (respaldo del H.264). La GUI lo pone
     en un <img>. La cookie de sesion va en la peticion del <img>.
-    Ajustable en caliente por URL para encajar en el ancho de banda (el shader CRT
-    comprime mal en JPEG): ?ancho=px&calidad=2..31 (mas calidad = mas comprimido =
-    menos bytes = mas fps) &fps=. Defecto 480/12: ~15 KB/cuadro, apto para 4G."""
-    def _rango(nombre, defecto, lo, hi):
-        try:
-            v = int(request.args.get(nombre, defecto))
-        except (TypeError, ValueError):
-            v = defecto
-        return max(lo, min(hi, v))
-    gen = acciones.stream_pantalla(fps=_rango("fps", 30, 5, 30),
-                                   ancho=_rango("ancho", 480, 240, 1024),
-                                   calidad=_rango("calidad", 12, 2, 31))
+    Ajustable en caliente por URL: ?ancho=px&calidad=2..31&fps=."""
+    gen = acciones.stream_pantalla(fps=_arg_rango("fps", 30, 5, 30),
+                                   ancho=_arg_rango("ancho", 480, 240, 1024),
+                                   calidad=_arg_rango("calidad", 12, 2, 31))
     return Response(gen,
                     mimetype="multipart/x-mixed-replace; boundary=frame",
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
