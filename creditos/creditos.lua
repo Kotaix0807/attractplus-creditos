@@ -1569,7 +1569,9 @@ local function por_frame()
 		-- de parada (comprobado). Eso lo resuelve el demonio (moneyBank.py):
 		-- si MAME no esta corriendo, el rele va apagado. Aqui solo reflejamos el
 		-- estado MIENTRAS MAME corre.
-		local v = e.arranque and '0' or '1'
+		-- En FREE PLAY el monedero va CERRADO aunque el juego este en marcha: es
+		-- gratis, aceptar una moneda solo se la comeria sin dar credito.
+		local v = (e.arranque or FREEPLAY) and '0' or '1'
 		if v ~= e.switch_ultimo then
 			escribir_switch(v)
 			e.switch_ultimo = v
