@@ -48,7 +48,7 @@ class UserConfig </ help="Huevo de pascua: codigo Konami del Jugador 2 -> port d
 	snd_unlock="49. Secret Exit!.mp3";
 
 	</ label="Ejecutable del port", help="Binario del port de Adventure a lanzar", order=13 />
-	port_exe="/home/eloy/Dev/arcade/Adventure_linux/adventure";
+	port_exe="/home/arcade/Adventure_linux/adventure";
 	</ label="Argumentos del port", help="Normalmente vacio", order=14 />
 	port_args="";
 }
@@ -57,18 +57,19 @@ const RESET_TIME = 2000;    // 2 s sin avanzar = incorrecto (regla de Eloy)
 const FADE_MS = 800;        // fundido a negro al desbloquear
 const SND_MAX = 6000;       // red de seguridad por si un sonido no reportara su fin
 
-// Cerrojo compartido con Creditos/Minijuegos (ver Creditos.nut). Guardado aqui
-// tambien para funcionar aunque Creditos este desactivado; solo el primer plugin
-// en cargar crea las ranuras. Los dos 350 deben coincidir.
-if ( !("ga_abierto" in getroottable()) )
+// --- Cerrojo compartido huevo / minijuegos / lanzar-juego -------------------
+// Una accion en marcha bloquea a las otras: evita que al accionar una (y mientras
+// funde la transicion) se dispare otra o se lance un juego con SELECT. Vive en la
+// root table (AM+ comparte la VM entre plugins). Se "echa" cada tick mientras la
+// accion sigue; dura 1 s tras el ultimo tick (cubre el fade de 800 ms). Un 'hasta'
+// mas lejano que la ventana = ttime reinicio (recarga de layout) -> se da por abierto.
+// El mismo bloque, identico, esta en Minijuegos.nut: lo crea el primero que cargue.
+if ( !("ga_bloqueo_hasta" in getroottable()) )
 {
-	::ga_cerrojo_hasta <- 0;
-	::ga_echar <- function( ahora ) { ::ga_cerrojo_hasta = ahora + 350; }
-	::ga_abierto <- function( ahora )
-	{
-		if ( ::ga_cerrojo_hasta - ahora > 350 ) return true;   // ttime reinicio
-		return ahora >= ::ga_cerrojo_hasta;
-	}
+	::ga_bloqueo_hasta <- 0;
+	::ga_echar <- function( t ) { ::ga_bloqueo_hasta = t + 1000; };
+	::ga_abierto <- function( t ) { local d = ::ga_bloqueo_hasta - t; return !( d > 0 && d <= 1000 ); };
+	::ga_en_juego <- false;   // true mientras se lanza/corre un juego de MAME (ToGame..FromGame)
 }
 
 class HuevoAdventure
@@ -113,6 +114,19 @@ class HuevoAdventure
 
 		fe.add_ticks_callback( this, "on_tick" );
 		fe.add_transition_callback( this, "on_transition" );
+		fe.add_signal_handler( this, "on_signal" );
+	}
+
+	// Mientras la ceremonia esta en marcha (codigo completado -> llave -> apertura
+	// -> port -> fundido de vuelta), se COME el SELECT para que no se lance un juego
+	// ENCIMA del huevo: ese era el bug (en la transicion aun se podia elegir juego y
+	// se accionaban las dos cosas a la vez). Fuera de la ceremonia (m_fase=="escucha")
+	// no se toca nada, el frontend funciona normal.
+	function on_signal( sig )
+	{
+		if ( m_fase != "escucha" && sig == "select" )
+			return true;   // consumido: AM+ no lanza el juego
+		return false;
 	}
 
 	function cargar_sonido( ruta )
@@ -166,6 +180,7 @@ class HuevoAdventure
 	{
 		if ( m_fase != "escucha" )
 		{
+			::ga_echar( ttime );      // mantener el cerrojo mientras dura la ceremonia
 			avanzar_ceremonia( ttime );
 			return;
 		}
@@ -189,14 +204,12 @@ class HuevoAdventure
 
 			if ( m_current >= m_commands.len() )
 			{
-				// Combo completo: solo arranca la ceremonia si otra accion del
-				// menu (select/minijuego) no acaba de dispararse. Si esta echado
-				// el cerrojo, se descarta el combo en silencio.
-				if ( ::ga_abierto( ttime ) )
-					empezar_ceremonia( ttime );   // echa el cerrojo dentro
+				// Solo si NO hay otra accion en marcha (minijuego/lanzar un juego).
+				if ( ::ga_abierto( ttime ) && !::ga_en_juego )
+					empezar_ceremonia( ttime );
 				else
 				{
-					m_current = 0;
+					m_current = 0;      // descartar el combo: hay algo mas en transicion
 					m_pressed = false;
 				}
 			}
@@ -226,7 +239,6 @@ class HuevoAdventure
 	// --- Ceremonia: llave -> (fin) -> apertura -> (fin) -> lanzar -------------
 	function empezar_ceremonia( ttime )
 	{
-		::ga_echar( ttime );   // echa el cerrojo; avanzar_ceremonia lo mantiene
 		m_fase = "llave";
 		m_t0 = ttime;
 		m_current = 0;
@@ -237,11 +249,6 @@ class HuevoAdventure
 
 	function avanzar_ceremonia( ttime )
 	{
-		// Mientras dura la ceremonia (llave/salida/entrada, incluido el fade-in
-		// al volver del port) se mantiene el cerrojo echado, para que un select
-		// no lance un juego por encima.
-		::ga_echar( ttime );
-
 		if ( m_fase == "llave" )
 		{
 			// Pantalla normal; solo suena la llave. Al terminar -> apertura + fade out.
@@ -301,6 +308,13 @@ class HuevoAdventure
 	{
 		if ( ttype == Transition.StartLayout )
 		{
+			// Al arrancar el frontend, matar cualquier port de Adventure colgado de una
+			// sesion anterior: si AM+ murio mientras lo ejecutaba (bloqueado en
+			// plugin_command), el binario queda huerfano y reaparece al relanzar AM+.
+			// Aqui no puede haber uno legitimo (uno legitimo tiene AM+ bloqueado).
+			local exe = m_config[ "port_exe" ];
+			if ( exe != null && exe != "" )
+				fe.plugin_command_bg( "/usr/bin/pkill", "-f " + exe );
 			// El velo se crea AQUI (no en el constructor) para quedar POR ENCIMA de
 			// los logos del layout (umag.png/dic.png), que usan el MISMO zorder
 			// maximo (2147483647): con zorder igual gana el creado mas tarde, y
@@ -316,6 +330,15 @@ class HuevoAdventure
 			m_velo.alpha = 0;
 			m_current = 0;
 			m_fase = "escucha";
+		}
+		if ( ttype == Transition.FromGame )
+		{
+			// Un combo a medias NO sobrevive a una partida. Si el boton esperado quedo
+			// pulsado al entrar al juego, al volver la rama de avance (else if m_pressed)
+			// corre ANTES que la del RESET_TIME: completaba el combo con el reloj
+			// saltado y lanzaba el port. Jugar en medio mata el combo entero.
+			m_current = 0;
+			m_pressed = false;
 		}
 	}
 }

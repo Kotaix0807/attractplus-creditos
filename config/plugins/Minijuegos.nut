@@ -27,18 +27,15 @@ class UserConfig </ help="Minijuegos de luces: P2 Start en el menu lanza el fron
 // fade-in: al volver se quita el velo de golpe (da igual, lo pidio asi Eloy).
 const FADE_MJ_MS = 800;
 
-// Cerrojo compartido con Creditos/HuevoAdventure (ver Creditos.nut). Guardado
-// aqui tambien para funcionar aunque Creditos este desactivado; solo el primer
-// plugin en cargar crea las ranuras. Los dos 350 deben coincidir.
-if ( !("ga_abierto" in getroottable()) )
+// --- Cerrojo compartido huevo / minijuegos / lanzar-juego -------------------
+// (El MISMO bloque, identico, esta en HuevoAdventure/plugin.nut; lo crea el primero
+// que cargue.) Una accion en marcha bloquea a las otras hasta que acaba su fade.
+if ( !("ga_bloqueo_hasta" in getroottable()) )
 {
-	::ga_cerrojo_hasta <- 0;
-	::ga_echar <- function( ahora ) { ::ga_cerrojo_hasta = ahora + 350; }
-	::ga_abierto <- function( ahora )
-	{
-		if ( ::ga_cerrojo_hasta - ahora > 350 ) return true;   // ttime reinicio
-		return ahora >= ::ga_cerrojo_hasta;
-	}
+	::ga_bloqueo_hasta <- 0;
+	::ga_echar <- function( t ) { ::ga_bloqueo_hasta = t + 1000; };
+	::ga_abierto <- function( t ) { local d = ::ga_bloqueo_hasta - t; return !( d > 0 && d <= 1000 ); };
+	::ga_en_juego <- false;   // true mientras se lanza/corre un juego de MAME (ToGame..FromGame)
 }
 
 class Minijuegos
@@ -48,12 +45,24 @@ class Minijuegos
 	m_velo = null;        // rectangulo negro del fundido (se crea en StartLayout)
 	m_lanzando = false;   // true mientras funde antes de lanzar el minijuego
 	m_t0 = 0;
+	m_rearmar = false;    // tras volver de un juego: exige soltar P2 antes de admitir pulsacion
 
 	constructor()
 	{
 		m_config = fe.get_config();
 		fe.add_ticks_callback( this, "on_tick" );
 		fe.add_transition_callback( this, "on_transition" );
+		fe.add_signal_handler( this, "on_signal" );
+	}
+
+	// Mientras funde para lanzar el minijuego, se COME el SELECT: si no, pulsar START
+	// en la transicion lanzaba un juego ENCIMA del minijuego (se jugaba el juego y al
+	// salir arrancaba el minijuego). Fuera del fundido no se toca nada.
+	function on_signal( sig )
+	{
+		if ( m_lanzando && sig == "select" )
+			return true;   // consumido: AM+ no lanza el juego
+		return false;
 	}
 
 	function activo( token )
@@ -68,6 +77,13 @@ class Minijuegos
 	{
 		if ( ttype == Transition.StartLayout )
 		{
+			// Al arrancar el frontend, matar cualquier minijuego colgado de una sesion
+			// anterior: si AM+ murio mientras lo ejecutaba (bloqueado en plugin_command),
+			// el ejecutable queda huerfano y reaparece al relanzar AM+. Aqui no puede
+			// haber uno legitimo (uno legitimo tiene AM+ bloqueado, sin StartLayout).
+			local exe = m_config[ "exe" ];
+			if ( exe != null && exe != "" )
+				fe.plugin_command_bg( "/usr/bin/pkill", "-f " + exe );
 			// El velo se crea AQUI para quedar por ENCIMA de los logos del layout
 			// (mismo zorder maximo; gana el creado mas tarde, y StartLayout corre
 			// despues del codigo del layout). alpha 0 = invisible mientras no se funde.
@@ -79,12 +95,14 @@ class Minijuegos
 			}
 			m_velo.alpha = 0;
 			m_lanzando = false;
+			::ga_en_juego = false;
 			return 0;
 		}
 		if ( m_velo == null )
 			return 0;
 		if ( ttype == Transition.ToGame )
 		{
+			::ga_en_juego = true;   // se esta lanzando un juego de MAME: bloquea huevo/minijuego
 			local a = ( ttime * 255 ) / FADE_MJ_MS;
 			if ( a > 255 ) a = 255;
 			m_velo.alpha = a;
@@ -94,11 +112,15 @@ class Minijuegos
 		}
 		if ( ttype == Transition.FromGame )
 		{
-			// Un P2-Start iniciado ANTES de entrar a un juego no debe disparar el
-			// huevo al volver: on_tick no vio soltarlo, m_pressed sigue true y el
-			// cerrojo ya caduco (el reloj del frontend salta toda la partida).
+			// Limpiar el estado del huevo que sobrevive a la partida: un P2-Start
+			// pulsado antes de entrar al juego dejaba m_pressed=true, y on_tick no
+			// vio soltarlo. Al volver, ga_en_juego ya se apago en este mismo
+			// FromGame, asi que la guarda de abajo no frena y disparaba el minijuego.
 			m_pressed = false;
+			m_lanzando = false;
+			m_rearmar = true;             // exigir soltar P2 antes de admitir una pulsacion nueva
 			m_velo.alpha = 0;              // sin fade-in: quitar el velo de golpe
+			::ga_en_juego = false;        // de vuelta del juego: se libera el cerrojo
 			return 0;
 		}
 		return 0;
@@ -109,7 +131,7 @@ class Minijuegos
 		// En pleno fundido para lanzar el minijuego: subir el velo y, ya en negro, lanzar.
 		if ( m_lanzando )
 		{
-			::ga_echar( ttime );   // mantener el cerrojo durante el fundido
+			::ga_echar( ttime );      // mantener el cerrojo mientras dura el fundido
 			if ( m_t0 < 0 ) m_t0 = ttime;
 			local a = ( ( ttime - m_t0 ) * 255 ) / FADE_MJ_MS;
 			if ( a > 255 ) a = 255;
@@ -132,6 +154,16 @@ class Minijuegos
 			return;
 		}
 
+		// Tras volver de un juego: un P2 que venia pulsado de ANTES de la partida no
+		// cuenta. Hay que verlo soltar primero. Si no, mantener P2 durante el juego y
+		// soltarlo ya en el menu se leia como pulsacion nueva y disparaba el huevo.
+		if ( m_rearmar )
+		{
+			if ( !activo( "start" ) ) m_rearmar = false;   // soltado: rearmado para la proxima
+			m_pressed = false;
+			return;
+		}
+
 		// Lanzar al SOLTAR (evita repeticion mientras se mantiene pulsado).
 		if ( activo( "start" ) )
 		{
@@ -140,12 +172,13 @@ class Minijuegos
 		else if ( m_pressed )
 		{
 			m_pressed = false;
-			if ( !::ga_abierto( ttime ) )   // otra accion del menu gano la carrera
+			// No arrancar si hay otra accion en marcha (huevo) o se esta lanzando/
+			// corriendo un juego: evita que se solapen (lo pidio Eloy).
+			if ( !::ga_abierto( ttime ) || ::ga_en_juego )
 				return;
 			local exe = m_config[ "exe" ];
 			if ( exe != null && exe != "" )
 			{
-				::ga_echar( ttime );   // echa el cerrojo antes de empezar el fundido
 				m_lanzando = true;   // arranca el fundido; el lanzamiento va al terminar
 				m_t0 = -1;
 			}
