@@ -1179,6 +1179,7 @@ for tag, scr in pairs(manager.machine.screens) do scr:snapshot('/ruta.png') brea
 | `GA_ARRANQUE_SIN` | 900 | arranque en juegos sin dirección conocida |
 | `GA_ESTABLE` | 120 | frames que el contador debe estar a cero para darlo por listo |
 | `GA_LIMPIAR` | 1 | `0` para no quitar los créditos que la máquina trae puestos |
+| `GA_GRACIA` | 600 | frames tras el arranque en que se sigue barriendo lo que aparezca sin moneda del jugador (defender copia su NVRAM a la RAM un pelín tarde y el barrido de un disparo no lo veía) |
 | `GA_COMPROBAR` | 90 | frames de gracia para ver si la moneda llegó; si no, se devuelve |
 | `GA_ANTIRREBOTE` | 8 | frames que se ignoran tras una moneda, contra el rebote |
 | `GA_VELOCIDAD` | 0 | velocidad al arrancar, en % (100 normal, 0 sin freno) |

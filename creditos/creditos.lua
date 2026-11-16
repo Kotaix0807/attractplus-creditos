@@ -64,6 +64,9 @@
 --   GA_TURBO     0 para no acelerar el emulador durante ese arranque
 --   GA_ASENTAR   frames que se deja asentar la RAM antes de contar (180)
 --   GA_LIMPIAR   0 para no quitar los creditos que la maquina trae puestos
+--   GA_GRACIA    frames tras el arranque en que se sigue barriendo lo que
+--                aparezca sin moneda del jugador (600); defender copia su
+--                NVRAM un pelin tarde y el barrido normal no lo ve
 --   GA_COBRO     'meter' (por defecto) o 'jugar': cuando se cobra el credito
 --   GA_CERROJO   0 para no limitar las monedas del jugador al monedero
 --   GA_MONEDA    token de entrada a usar            (por defecto COIN1)
@@ -147,6 +150,12 @@ local COMPROBAR = math.max(0, num('GA_COMPROBAR', 90))      -- ~1,5 s de gracia
 local CONFIRMAR = math.max(1, num('GA_CONFIRMAR', 45))      -- ~0,75 s
 local REBOTE = math.max(0, num('GA_ANTIRREBOTE', 8))        -- ~130 ms a 60 Hz
 local LIMPIAR = os.getenv('GA_LIMPIAR') ~= '0'
+-- Gracia del barrido: hay placas (defender) que copian los creditos de su NVRAM
+-- a la RAM un pelin DESPUES de que demos el arranque por terminado, asi que el
+-- barrido de un solo disparo los ve a 0 y se los pierde. Durante esta ventana
+-- (frames tras el arranque) se sigue barriendo lo que aparezca SIN moneda del
+-- jugador. 0 la apaga.
+local GRACIA = math.max(0, math.floor(num('GA_GRACIA', 600)))   -- ~10 s de juego
 local COBRO = (os.getenv('GA_COBRO') or 'meter'):lower()
 if COBRO ~= 'jugar' then COBRO = 'meter' end
 
@@ -1604,6 +1613,39 @@ local function por_frame()
 	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
 	if e.cerrojo then e.cerrojo.frame() end
 
+	-- La gracia del barrido. Defender (Williams) copia los creditos de su CMOS
+	-- a la RAM un pelin DESPUES de que demos el arranque por terminado (medido:
+	-- fin en el frame 720 con a037=0, y el 8 de la NVRAM aparece en el 721-750),
+	-- asi que el barrido de un solo disparo los veia a 0 y se quedaban puestos.
+	-- Mientras el jugador no haya metido NI UNA moneda, un credito que aparezca
+	-- en esta ventana solo puede venir de la NVRAM: se barre igual. La primera
+	-- moneda real desarma la gracia: lo del jugador es suyo, y un bonus
+	-- legitimo (Missile, 4 monedas) llega siempre con metidos > 0, o sea que
+	-- jamas se toca. Va DESPUES del gancho de la moneda a proposito: asi, si
+	-- una placa acreditara en el mismo frame de la pulsacion, metidos ya esta
+	-- contado y la gracia se desarma antes de poder barrer lo del jugador.
+	if (not e.arranque) and e.gracia then
+		if (e.metidos or 0) > 0 then
+			e.gracia = nil                      -- hay dinero del jugador: fuera
+		else
+			e.gracia = (e.gracia > 1) and (e.gracia - 1) or nil
+			if e.limpiar and e.leer_ram then
+				local okg, vg = pcall(e.leer_ram)
+				if okg and (type(vg) == 'number') and (vg > 0) then
+					e.gracia_barridas = (e.gracia_barridas or 0) + 1
+					if e.gracia_barridas > 8 then
+						-- La placa repone mas rapido de lo que barremos:
+						-- rendirse y decirlo, mejor que pelear cada frame.
+						log('AVISO: la placa repone sus creditos tras %d barridos; desisto', 8)
+						e.gracia = nil
+					else
+						e.limpiar(vg)
+					end
+				end
+			end
+		end
+	end
+
 	-- Estado del monedero para el demonio del Arduino, por CICLO DE VIDA (pedido
 	-- por Eloy 2026-09-28): '0' mientras la placa arranca (y con MAME apagado /
 	-- en el menu, que es el ultimo valor que se dejo), '1' cuando el juego ya
@@ -2536,6 +2578,10 @@ function fin_del_arranque()
 	-- asentamiento del contador (que dispara la limpieza de creditos no
 	-- pagados) en el momento bueno, no a un numero fijo de frames.
 	if e.memoria then pcall(e.memoria.asentar_ya) end
+
+	-- Y se arma la gracia del barrido: si los creditos de la NVRAM aparecen
+	-- un pelin DESPUES de este punto (defender), que no se escapen.
+	if e.limpiar and (GRACIA > 0) then e.gracia = GRACIA end
 
 	if e.turbo then
 		pcall(function() e.turbo.video.throttled = e.turbo.throttled end)
