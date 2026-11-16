@@ -1033,7 +1033,10 @@ def stream_pantalla_h264(fps=30, ancho=640, kbps=1500):
            "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
            "-g", g, "-keyint_min", g,
            "-b:v", br, "-maxrate", br, "-bufsize", "%dk" % (int(kbps) * 2),
-           "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+           # Fragmentos cortos (250 ms) -> el navegador recibe datos a menudo y el
+           # buffer se llena suave, en vez de a golpes de 1 s (eso daba tirones).
+           "-movflags", "+empty_moov+default_base_moof+frag_keyframe",
+           "-frag_duration", "250000",
            "-f", "mp4", "pipe:1"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, env=env, bufsize=0)

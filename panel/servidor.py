@@ -536,7 +536,9 @@ def _arg_rango(nombre, defecto, lo, hi):
 def api_pantalla_mp4():
     """Stream H.264 (MP4 fragmentado) en vivo, para <video> por MSE en el navegador.
     H.264 comprime entre cuadros -> fluido en 4G. Ajustable: ?ancho=&kbps=&fps=."""
-    gen = acciones.stream_pantalla_h264(fps=_arg_rango("fps", 30, 5, 30),
+    # 60fps por defecto: la cabina va a 60Hz; capturar a 30 muestrea 1 de cada 2
+    # cuadros sin sincronizar -> tironeo. El i3 encode a 60 a speed 1.0 (medido).
+    gen = acciones.stream_pantalla_h264(fps=_arg_rango("fps", 60, 5, 60),
                                         ancho=_arg_rango("ancho", 640, 320, 1280),
                                         kbps=_arg_rango("kbps", 1500, 300, 8000))
     return Response(gen, mimetype="video/mp4",

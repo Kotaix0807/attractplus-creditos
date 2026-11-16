@@ -37,48 +37,83 @@
     <label class="sp"><input type="checkbox" id="fit" checked> ajustar</label>
     <button id="pausa">pausa</button>
   </div>
-  <video id="video" muted autoplay playsinline></video>
+  <video id="video" muted playsinline></video>
   <div id="msg"></div>
 <script>
 (function () {
-  // Pantalla en vivo por H.264 (MP4 fragmentado) con MediaSource. H.264 comprime
-  // entre cuadros -> fluido en 4G. El servidor genera el stream con ffmpeg x11grab
-  // + libx264 (ultrafast/zerolatency, baseline). Reusa el pipeline (Flask+portero).
+  // Pantalla en vivo por H.264 (MP4 fragmentado) con MediaSource.
+  // CLAVE de la fluidez: NO reproducir pegado al borde en vivo. Primero se acumula
+  // un COLCHON (COJIN s) de buffer y recien ahi se reproduce, quedando ese colchon
+  // por detras del borde. Asi un hipo de red no vacia el buffer (que daba tirones).
   var MIME = 'video/mp4; codecs="avc1.42E01F"';   // baseline 3.1 (lo que emite x264)
+  var COJIN = 2.0;                                 // segundos de colchon antes de play
   var video = document.getElementById('video'),
       msg = document.getElementById('msg'),
       estado = document.getElementById('estado'),
       cal = document.getElementById('cal'),
       pausa = document.getElementById('pausa'),
       fit = document.getElementById('fit'),
-      activo = true, ms = null, sb = null, cola = [], reader = null, abort = null;
+      activo = true, ms = null, sb = null, cola = [], reader = null,
+      abort = null, reproduciendo = false,
+      ultCal = 0, ultFrames = 0, diag = '';   // diagnostico: fps decodificados + perdidos
 
   function parar() {
     try { if (abort) abort.abort(); } catch (e) {}
     try { if (reader) reader.cancel(); } catch (e) {}
-    reader = null; abort = null; cola = []; sb = null;
+    reader = null; abort = null; cola = []; sb = null; reproduciendo = false;
     try { if (ms && ms.readyState === 'open') ms.endOfStream(); } catch (e) {}
     ms = null;
-    try { video.removeAttribute('src'); video.load(); } catch (e) {}
+    try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) {}
   }
 
   function recortar() {              // tira lo ya visto: evita QuotaExceeded
     try {
       if (sb && !sb.updating && sb.buffered.length &&
-          video.currentTime - sb.buffered.start(0) > 6)
-        sb.remove(sb.buffered.start(0), video.currentTime - 2);
+          video.currentTime - sb.buffered.start(0) > 8)
+        sb.remove(sb.buffered.start(0), video.currentTime - 4);
     } catch (e) {}
   }
   function bombear() {
     if (!sb || sb.updating || !cola.length) return;
     try { sb.appendBuffer(cola[0]); cola.shift(); }
-    catch (e) { if (e.name === 'QuotaExceededError') recortar(); }  // reintenta en updateend
+    catch (e) { if (e.name === 'QuotaExceededError') recortar(); }
   }
-  function alDia() {                 // no quedarse atras del borde en vivo
+
+  function trasAppend() {
+    recortar();
+    // Arrancar la reproduccion SOLO cuando hay colchon suficiente.
+    if (!reproduciendo && sb && sb.buffered.length) {
+      var ini = sb.buffered.start(0), fin = sb.buffered.end(sb.buffered.length - 1);
+      if (fin - ini >= COJIN) {
+        reproduciendo = true;
+        try { video.currentTime = ini; } catch (e) {}
+        video.play().catch(function () {});
+        estado.textContent = 'en vivo';
+      }
+    }
+    bombear();
+  }
+
+  function vigilar() {               // mantiene el colchon, sin saltos bruscos
+    if (!reproduciendo) return;
     try {
       var b = video.buffered;
-      if (b.length && b.end(b.length - 1) - video.currentTime > 2.5)
-        video.currentTime = b.end(b.length - 1) - 0.4;
+      if (!b.length) return;
+      var retardo = b.end(b.length - 1) - video.currentTime;
+      if (retardo > 8) video.currentTime = b.end(b.length - 1) - COJIN;   // resync raro
+      else if (retardo > COJIN + 2) video.playbackRate = 1.05;            // recupera suave
+      else if (retardo <= COJIN + 0.5) video.playbackRate = 1.0;
+      // diagnostico: fps que el navegador DECODIFICA y cuadros que DESCARTA
+      if (video.getVideoPlaybackQuality) {
+        var q = video.getVideoPlaybackQuality(), t = performance.now();
+        if (t - ultCal > 1000) {
+          var fps = ((q.totalVideoFrames - ultFrames) * 1000 / (t - ultCal)).toFixed(0);
+          diag = ' · ' + fps + 'fps dec · ' + q.droppedVideoFrames + ' perd';
+          ultCal = t; ultFrames = q.totalVideoFrames;
+        }
+      }
+      estado.textContent = 'en vivo · buf ' + retardo.toFixed(1) + 's' +
+                           (video.playbackRate !== 1 ? ' ·' + video.playbackRate + '×' : '') + diag;
     } catch (e) {}
   }
 
@@ -96,7 +131,7 @@
     parar();
     if (!('MediaSource' in window) || !MediaSource.isTypeSupported(MIME))
       return fallo('Tu navegador no soporta reproducción H.264 por MSE.');
-    estado.textContent = 'conectando…';
+    estado.textContent = 'cargando…';
     video.style.display = ''; msg.style.display = 'none';
     ms = new MediaSource();
     video.src = URL.createObjectURL(ms);
@@ -104,14 +139,12 @@
       try {
         sb = ms.addSourceBuffer(MIME);
         sb.mode = 'sequence';
-        sb.addEventListener('updateend', function () { recortar(); bombear(); });
+        sb.addEventListener('updateend', trasAppend);
         abort = new AbortController();
         fetch('/api/pantalla.mp4?' + cal.value + '&t=' + Date.now(),
               { signal: abort.signal, cache: 'no-store' })
           .then(function (r) {
             if (!r.ok) throw new Error(r.status);
-            estado.textContent = 'en vivo';
-            video.play().catch(function () {});
             reader = r.body.getReader();
             (function leer() {
               reader.read().then(function (p) {
@@ -125,7 +158,7 @@
     }, { once: true });
   }
 
-  video.addEventListener('timeupdate', alDia);
+  video.addEventListener('timeupdate', vigilar);
   cal.onchange = arrancar;           // cambia calidad y reabre el stream
   pausa.onclick = function () {
     activo = !activo;
