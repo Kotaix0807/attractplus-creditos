@@ -261,11 +261,18 @@ while True:
             os.remove(MONEDERO_RESET_PATH)
         except OSError:
             pass
+        RELE_ON_S = 2.030          # rele/solenoide vivo EXACTAMENTE esto (medido por Eloy);
+                                   # mas rato dejaba aceptar monedas de mas
+        CORTE_S = 1.5              # alimentacion cortada para que recalibre al volver
+        assert CORTE_S < RELE_ON_S, "el corte no cabe en la ventana del rele"
         enviarCrudo("M1")          # solenoide ON (si no, no calibra)
+        t0 = time.monotonic()      # el rele queda vivo desde aqui
         enviarCrudo("R0")          # corta alimentacion del monedero
-        time.sleep(1.5)
+        time.sleep(CORTE_S)
         enviarCrudo("R1")          # la restaura: calibra con el solenoide activo
-        time.sleep(2)
+        resto = RELE_ON_S - (time.monotonic() - t0)
+        if resto > 0:
+            time.sleep(resto)      # apaga a los 2.030 s EXACTOS del M1, ni uno mas
         enviarCrudo("M0")          # solenoide OFF
         lastSwitch = None          # re-sincroniza la M en la proxima vuelta
         log("monedero reiniciado (pulso de calibracion del solenoide)")
