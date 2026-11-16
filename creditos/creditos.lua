@@ -433,6 +433,24 @@ local CONTADOR = ajuste('contador', 'GA_CONTADOR', 1) ~= 0
 -- Donde sale el rotulo CREDITOS N / JUEGO GRATIS: sd=arriba dcha (def),
 -- si=arriba izq, id=abajo dcha, ii=abajo izq, sc=arriba centro, ic=abajo centro.
 local CONTADOR_POS = (ajuste_cadena('contador_pos', 'GA_CONTADOR_POS', 'sd') or 'sd'):lower()
+-- Ajuste fino por ejes, en PORCENTAJE de pantalla (0..100): contador_x mueve el
+-- rotulo en horizontal (0=izquierda, 100=derecha) y contador_y en vertical
+-- (0=arriba, 100=abajo). Cada eje es independiente: el que no se ponga sigue
+-- saliendo de contador_pos. Pedido por Eloy 2026-11-15: en algunos juegos el
+-- rotulo tapa algo y las seis esquinas no bastan.
+-- OJO: por la via NUMERICA (AJUSTES.valor), no por ajuste_cadena: el lector del
+-- fichero guarda los valores numericos como numeros, y cadena() solo devuelve
+-- strings -- un contador_x=50 del fichero era invisible (bug cazado 2026-11-16).
+local function ajuste_opcional(clave, var)
+	if AJUSTES then
+		local v = AJUSTES.valor(clave, var, nil)
+		return (type(v) == 'number') and v or nil
+	end
+	local v = os.getenv(var)
+	return v and tonumber(v) or nil
+end
+local CONTADOR_X = ajuste_opcional('contador_x', 'GA_CONTADOR_X')
+local CONTADOR_Y = ajuste_opcional('contador_y', 'GA_CONTADOR_Y')
 
 -- limite=N en arranque.dat: cuantos creditos admite la placa. Al llegar ahi se
 -- CIERRA el boton de moneda, porque a partir de ese punto el juego tira las
@@ -773,14 +791,23 @@ local ESCRIBIR_FREEPLAY = {
 	-- fija creditos.dat), igual que digdug. Solo SUBE (nunca baja), que es lo que hace
 	-- fp_escribir. 'CREDIT 09' verificado en pantalla.
 	xevious    = { contador = 0x19,       valor = 9, tope = 9 },
-	-- polepos (Pole Position, Namco): contador en el 51xx (data 0x19) como
-	-- digdug/xevious. Va TAMBIEN en SIN_DIP_FREEPLAY (tarifa.lua): su DIP "Coin A =
-	-- Free Play" dispara el "AUTO START" del juego (arranca carreras solo, con sonido
-	-- de ficha). Por eso se mantiene el credito por ESCRITURA (sin sonido) con la
-	-- tarifa en monedas, y el jugador arranca. El TAP de lectura NO vale: rompe el
-	-- 51xx (pantalla de basura, verificado 2026-11-15).
-	polepos    = { contador = 0x19,       valor = 2, tope = 2 },
 }
+
+-- Juegos SIN boton de start: el programa arranca la partida EL SOLO en cuanto
+-- entra una moneda (polepos: medido 2026-11-15, moneda en el frame 1500 ->
+-- "PREPARE" y carrera; control sin moneda -> sigue en attract). El mueble
+-- original no tiene start (volante, pedales y palanca; el "START 1" del driver
+-- es auto_start_r, lo pulsa el programa). Consecuencia: mantenerles un credito
+-- en free play (por escritura O por pulso) encadena partidas sin fin, porque al
+-- terminar el programa ve credito y arranca otra -- que es lo que veia Eloy.
+-- En free play NO se les mantiene nada: el boton de moneda hace de start
+-- gratis, una pulsacion = una partida, y al terminar vuelve al attract.
+-- (polepos estuvo en ESCRIBIR_FREEPLAY con valor=2: de ahi venia el encadenado.)
+local FREEPLAY_NADA = { polepos = true }
+-- El rotulo de free play de estos juegos ensena COMO jugar: sin el, el jugador
+-- (y Eloy) ve el attract quieto y cree que el free play no existe.
+local ROTULO_GRATIS = FREEPLAY_NADA[emu.romname and emu.romname() or '']
+	and 'GRATIS: PULSA START' or 'JUEGO GRATIS'
 -- clones (misma direccion que su set base)
 for _, c in ipairs({ 'robocopu', 'robocopu0', 'robocopw', 'robocopb', 'robocopj' }) do
 	ESCRIBIR_FREEPLAY[c] = ESCRIBIR_FREEPLAY.robocop
@@ -1378,6 +1405,7 @@ local function por_frame()
 							pulsar_control(ctrl)
 						end
 					elseif n and n > 0 and e.campo then
+						e.gracia = nil   -- creditos pedidos por el panel: no son NVRAM, no se barren
 						if e.arranque then
 							log('panel: "insertar %d" ignorado, la placa aun arranca', n)
 						elseif emu.romname() == 'mwalk' and e.leer_ram and e.escribir_ram then
@@ -1401,7 +1429,7 @@ local function por_frame()
 						else
 							e.restantes = (e.restantes or 0) + n
 							if e.fase == 'fin' or e.fase == 'inactivo' then
-								e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+								e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 								e.reloj = 0
 							end
 							registrar_moneda('panel', n)
@@ -1542,8 +1570,11 @@ local function por_frame()
 				e.mensaje = 'ESPERA, LA MAQUINA ESTA ARRANCANDO'
 				log('moneda rechazada: la placa todavia esta arrancando y la tiraria')
 			elseif e.cerrojo.motivo() == 'lleno' then
-				e.mensaje = string.format('MAQUINA LLENA: %d CREDITOS. JUEGA ANTES DE METER MAS',
-					e.tope or 0)
+				-- Con start-moneda (polepos) no se pinta nada: pedido por Eloy.
+				e.mensaje = (not e.moneda_gratis)
+					and string.format('MAQUINA LLENA: %d CREDITOS. JUEGA ANTES DE METER MAS',
+						e.tope or 0)
+					or nil
 				log('moneda rechazada: la maquina ya tiene sus %d creditos y la tiraria',
 					e.tope or 0)
 			else
@@ -1559,7 +1590,11 @@ local function por_frame()
 			e.metidos = e.metidos + CREDITOS_POR
 			-- Una moneda de verdad = un ingreso. Se apunta 1 (monedas, no
 			-- creditos): los ingresos del panel son monedas * valor_moneda.
-			registrar_moneda('moneda', 1)
+			if not e.moneda_gratis then
+				-- En los juegos FREEPLAY_NADA en free play los START operan la
+				-- moneda: esas pulsaciones no son dinero y no se apuntan.
+				registrar_moneda('moneda', 1)
+			end
 
 			-- Direccion importada todavia sin comprobar: esta es la moneda
 			-- con la que se prueba. Con monedas de verdad no insertamos
@@ -1625,7 +1660,13 @@ local function por_frame()
 	-- una placa acreditara en el mismo frame de la pulsacion, metidos ya esta
 	-- contado y la gracia se desarma antes de poder barrer lo del jugador.
 	if (not e.arranque) and e.gracia then
-		if (e.metidos or 0) > 0 then
+		-- Desarma con CUALQUIER credito legitimo sin gancho: moneda contada
+		-- (metidos), pulsos de insercion en cola (restantes: panel y monedero
+		-- de lanzamiento, que van por set_value y el gancho no los ve), o una
+		-- pulsacion fisica aunque el cerrojo la rechazara (veces).
+		if (e.metidos or 0) > 0
+			or (e.restantes or 0) > 0
+			or ((e.pulso_moneda and e.pulso_moneda.veces or 0) > (e.gracia_veces0 or 0)) then
 			e.gracia = nil                      -- hay dinero del jugador: fuera
 		else
 			e.gracia = (e.gracia > 1) and (e.gracia - 1) or nil
@@ -1701,7 +1742,7 @@ local function por_frame()
 				-- No se pudo escribir: se vuelve al metodo de siempre
 				log('vuelvo a insertar monedas')
 				e.restantes = MONEDAS
-				e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+				e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 			end
 			e.sincro = nil
 		end
@@ -1761,7 +1802,7 @@ local function por_frame()
 				listo = false
 				if e.fase == 'fin' or e.fase == 'inactivo' then
 					e.restantes = 1
-					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+					e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 				end
 			end
 			if listo and ok and type(v) == 'number' and v < (w.umbral or w.tope) then
@@ -1821,9 +1862,14 @@ local function por_frame()
 
 				if (e.freeplay_cooldown or 0) > 0 then
 					e.freeplay_cooldown = e.freeplay_cooldown - 1
-				elseif e.freeplay_ram and v < objetivo then
-					e.restantes = objetivo - v
-					e.fase = (ESPERA > 0) and 'espera' or 'pulso'
+				-- Regla de Eloy (2026-11-16): se recarga cuando el contador queda
+				-- en 2 o menos (con la tarifa generosa, una moneda repone de sobra).
+				-- UNA pulsacion: antes era objetivo - v, que con v=2 daba 0 y no
+				-- pulsaba nada (por eso frogger/dkong3 se quedaban en 1-2). Con la
+				-- tarifa generosa (FREEPLAY_COINAGE) una moneda repone de sobra.
+				elseif e.freeplay_ram and v <= objetivo then
+					e.restantes = 1
+					e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 					e.freeplay_intento = v   -- valor antes de pulsar, para medir el resultado
 				end
 			end
@@ -1901,6 +1947,34 @@ local function por_frame()
 	end
 end
 
+-- FREEPLAY_NADA en free play: los START de P1/P2 OPERAN LA MONEDA (pedido por
+-- Eloy 2026-11-16). polepos no tiene boton de start que el juego lea -- el
+-- programa arranca la carrera al entrar la moneda -- asi que lo natural es que
+-- los START del panel metan la moneda gratis. Se anexa a la secuencia del campo
+-- con set_default_input_seq, que NO toca el .cfg: en tarifa normal no se entra
+-- aqui y el mapeo de siempre queda intacto sin hacer nada. Va ANTES de que el
+-- detector copie la secuencia, para que esas pulsaciones cuenten como moneda.
+if FREEPLAY and FREEPLAY_NADA[emu.romname and emu.romname() or ''] and CAMPO then
+	local okm, err = pcall(function()
+		local entrada = manager.machine.input
+		local iop = manager.machine.ioport
+		local trozos = { entrada:seq_to_tokens(CAMPO:input_seq('standard')) }
+		for _, tk in ipairs({ 'START1', 'START2' }) do
+			local tipo, jug = iop:token_to_input_type(tk)
+			local sq = iop:type_seq(tipo, jug, 'standard')
+			local t = sq and entrada:seq_to_tokens(sq)
+			if t and t ~= '' then trozos[#trozos + 1] = t end
+		end
+		CAMPO:set_default_input_seq('standard', entrada:seq_from_tokens(table.concat(trozos, ' OR ')))
+	end)
+	if okm then
+		GA_ESTADO.moneda_gratis = true   -- esas pulsaciones no son dinero: no apuntar ingreso
+		log('free play: START de P1/P2 operan la moneda en este juego (solo esta sesion)')
+	else
+		log('AVISO: no pude mapear los START a la moneda: %s', tostring(err))
+	end
+end
+
 -- --- la cuenta del monedero y los botones que la mueven ---
 if VIGILAR and MON then
 	-- input_seq('standard') + input:seq_pressed() leen el boton FISICO, aparte
@@ -1947,6 +2021,15 @@ if VIGILAR and MON then
 					-- una lectura dudosa seria peor que perder una moneda.
 					lleno = function()
 						local e = GA_ESTADO
+						-- Start-moneda (FREEPLAY_NADA): solo se admite con el
+						-- contador a 0 (tope 1); si no, aporrear START
+						-- acumula creditos sin tope (pedido Eloy 2026-11-16).
+						-- Se lee el byte en crudo: la direccion de polepos va
+						-- marcada (cheat) pero esta confirmada por Eloy.
+						if e.moneda_gratis and e.leer_ram then
+							local okv, v = pcall(e.leer_ram)
+							if okv and (type(v) == 'number') and (v >= 1) then return true end
+						end
 						if not e.tope or not e.memoria or e.a_prueba then return false end
 						local n = e.memoria.dentro()
 						return (type(n) == 'number') and (n >= e.tope)
@@ -2281,9 +2364,13 @@ if MEM then
 			-- en ese juego. Decision de Eloy (2026-11): probar primero las
 			-- importadas; si algun juego se corrompe, se pasa al plan B (monedas).
 			GA_ESTADO.freeplay_ram = FREEPLAY and not FREEPLAY_DIP and (GA_ESTADO.escribir_ram ~= nil)
+				and not FREEPLAY_NADA[emu.romname and emu.romname() or '']
 			GA_ESTADO.freeplay_n = FREEPLAY_N
 			GA_ESTADO.freeplay_prueba = GA_ESTADO.freeplay_ram and not entrada.comprobada or nil
-			if GA_ESTADO.freeplay_ram and entrada.comprobada then
+			if FREEPLAY and FREEPLAY_NADA[emu.romname and emu.romname() or ''] then
+				log('free play: este juego arranca solo al entrar la moneda (sin boton '
+					.. 'de start); no mantengo credito -- el boton de moneda da partidas gratis')
+			elseif GA_ESTADO.freeplay_ram and entrada.comprobada then
 				log('free play: mantendre %d credito(s) en la RAM de este juego', FREEPLAY_N)
 			elseif GA_ESTADO.freeplay_ram then
 				log('free play: PROBANDO escribir %d credito(s) en direccion importada '
@@ -2580,8 +2667,17 @@ function fin_del_arranque()
 	if e.memoria then pcall(e.memoria.asentar_ya) end
 
 	-- Y se arma la gracia del barrido: si los creditos de la NVRAM aparecen
-	-- un pelin DESPUES de este punto (defender), que no se escapen.
-	if e.limpiar and (GRACIA > 0) then e.gracia = GRACIA end
+	-- un pelin DESPUES de este punto (defender), que no se escapen. SOLO sin
+	-- creditos de lanzamiento: los que inserta el propio script (GA_CREDITOS /
+	-- monedero) entran por set_value justo despues del arranque, no cuentan en
+	-- metidos, y la gracia se los comeria (paso: pacman con GA_CREDITOS=3
+	-- acababa en CREDIT 0).
+	if e.limpiar and (GRACIA > 0) and (INSERTA == 0) then
+		e.gracia = GRACIA
+		-- Foto del contador de pulsaciones fisicas: una pulsacion del boton de
+		-- moneda POSTERIOR al arranque (contada o rechazada) desarma la gracia.
+		e.gracia_veces0 = e.pulso_moneda and e.pulso_moneda.veces or 0
+	end
 
 	if e.turbo then
 		pcall(function() e.turbo.video.throttled = e.turbo.throttled end)
@@ -2644,7 +2740,7 @@ local MARGEN_X, MARGEN_Y = 0.010, 0.006
 --   2a: d=derecha (def), i=izquierda, c=centro
 -- Asi el contador CREDITOS/JUEGO GRATIS se puede mover a donde no estorbe
 -- (ajuste contador_pos por juego en el plugin Arranque).
-local function rotulo(contenedor, texto, color, pos)
+local function rotulo(contenedor, texto, color, pos, px, py)
 	pos = (pos or 'sd'):lower()
 	local ancho, alto = 0.39, 0.030
 
@@ -2665,6 +2761,12 @@ local function rotulo(contenedor, texto, color, pos)
 	else x0 = math.max(0.0, 1.0 - borde - bw) end   -- 'd' o cualquier otra: derecha
 
 	local y0 = (pos:sub(1, 1) == 'i') and (1.0 - borde - bh) or borde
+
+	-- Ajuste fino por ejes (contador_x/contador_y), en % de pantalla. Cada eje
+	-- manda sobre su mitad del preset; se recorta para que el recuadro no se
+	-- salga de la pantalla.
+	if type(px) == 'number' then x0 = math.max(0.0, math.min(px / 100, 1.0 - bw)) end
+	if type(py) == 'number' then y0 = math.max(0.0, math.min(py / 100, 1.0 - bh)) end
 
 	contenedor:draw_box(x0, y0, x0 + bw, y0 + bh, COLOR_FONDO, COLOR_FONDO)
 	contenedor:draw_text(x0 + MARGEN_X, y0 + MARGEN_Y, texto, color or COLOR_INDICADOR)
@@ -2712,11 +2814,11 @@ GA_ESTADO.pintor = function()
 	if CONTADOR and not e.arranque then
 		if FREEPLAY then
 			-- En free play el rotulo lo dice claro, para TODOS los juegos.
-			rotulo(contenedor, 'JUEGO GRATIS', COLOR_INDICADOR, CONTADOR_POS)
+			rotulo(contenedor, ROTULO_GRATIS, COLOR_INDICADOR, CONTADOR_POS, CONTADOR_X, CONTADOR_Y)
 		elseif e.memoria and not e.a_prueba then
 			local n = e.memoria.dentro()
 			if n and n > 0 then
-				rotulo(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR, CONTADOR_POS)
+				rotulo(contenedor, string.format('CREDITOS %d', n), COLOR_INDICADOR, CONTADOR_POS, CONTADOR_X, CONTADOR_Y)
 			end
 		end
 	end

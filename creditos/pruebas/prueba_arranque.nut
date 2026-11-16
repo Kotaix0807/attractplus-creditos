@@ -98,9 +98,9 @@ print( "\n6. el menu edita el juego seleccionado\n" );
 	local p = cargar();
 	MOCK.juego = "dkong"; MOCK.titulo = "Donkey Kong";
 
-	MOCK.elecciones = [ 0, 9 ];        // "Velocidad de carga", luego "Salir"
+	MOCK.elecciones = [ 0, 11 ];       // "Velocidad de carga", luego "Salir"
 	// OJO: "Salir" es la ultima opcion, o sea AJUSTES.len()+1. Al exponer
-	// un ajuste nuevo en el plugin, este numero sube.
+	// un ajuste nuevo en el plugin, este numero sube (hoy: 10 filas -> 11).
 	MOCK.escrituras = [ "3" ];
 	MOCK.senal( "custom2" );
 
@@ -117,7 +117,7 @@ print( "\n7b. la tecla directa abre el menu al soltarla\n" );
 	local p = cargar();
 	MOCK.juego = "frogger"; MOCK.titulo = "Frogger";
 
-	MOCK.elecciones = [ 1, 9 ];        // "Segundos en negro", luego "Salir"
+	MOCK.elecciones = [ 1, 11 ];       // "Segundos en negro", luego "Salir"
 	MOCK.escrituras = [ "12" ];
 
 	// pulsar y soltar: el menu sale al soltar

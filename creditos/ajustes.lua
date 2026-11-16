@@ -41,7 +41,10 @@ function M.leer(ruta)
 			local nombre = linea:match('^(%S+)')
 			local ajustes = {}
 
-			for clave, valor in linea:gmatch('(%w+)%s*=%s*([%w%.%-]+)') do
+			-- [%w_]: %w NO incluye el guion bajo, asi que de 'contador_x=40'
+			-- salia la clave 'x' y el ajuste se perdia en silencio (cazado el
+			-- 2026-11-16; contador_pos nunca funciono desde el fichero por esto).
+			for clave, valor in linea:gmatch('([%w_]+)%s*=%s*([%w%.%-]+)') do
 				ajustes[clave:lower()] = numero(valor) or valor
 			end
 
