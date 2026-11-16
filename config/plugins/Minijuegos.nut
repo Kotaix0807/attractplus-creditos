@@ -94,6 +94,10 @@ class Minijuegos
 		}
 		if ( ttype == Transition.FromGame )
 		{
+			// Un P2-Start iniciado ANTES de entrar a un juego no debe disparar el
+			// huevo al volver: on_tick no vio soltarlo, m_pressed sigue true y el
+			// cerrojo ya caduco (el reloj del frontend salta toda la partida).
+			m_pressed = false;
 			m_velo.alpha = 0;              // sin fade-in: quitar el velo de golpe
 			return 0;
 		}
