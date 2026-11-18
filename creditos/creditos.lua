@@ -783,7 +783,6 @@ local ESCRIBIR_FREEPLAY = {
 	ncv2       = { contador = 0x400da9,   valor = 9, tope = 9 },
 	snowbros   = { contador = 0x100195,   valor = 9, tope = 9 },
 	ssf2t      = { contador = 0xff82e9,   valor = 9, tope = 9 },   -- CPS2
-	ssriders   = { contador = 0x104044, contador2 = 0x104046, valor = 9, tope = 9 },   -- slots independientes: 044=P1, 046=P2
 	tapper     = { contador = 0xe011,     valor = 9, tope = 9 },   -- como rbtapper
 	tekken     = { contador = 0x267038,   valor = 9, tope = 9 },   -- System11
 	tekken2    = { contador = 0x801c8d80, valor = 9, tope = 9 },   -- System11 (RAM PSX KSEG0)
@@ -805,7 +804,12 @@ local ESCRIBIR_FREEPLAY = {
 -- En free play NO se les mantiene nada: el boton de moneda hace de start
 -- gratis, una pulsacion = una partida, y al terminar vuelve al attract.
 -- (polepos estuvo en ESCRIBIR_FREEPLAY con valor=2: de ahi venia el encadenado.)
-local FREEPLAY_NADA = { polepos = true }
+-- ssriders: START solo vale en la pantalla que sale justo tras una moneda; con
+-- creditos dentro vuelve a la demo y ahi START no hace nada (medido en la cabina
+-- 2026-11-18), asi que mantenerle creditos por RAM no sirve. Mismo remedio que
+-- polepos: START mete la moneda y la 2a pulsacion empieza. Sus ranuras son
+-- independientes: el START de P2 mete en COIN2 (credito de P2 en 0x104046).
+local FREEPLAY_NADA = { polepos = true, ssriders = { START2 = 'COIN2' } }
 -- El rotulo de free play de estos juegos ensena COMO jugar: sin el, el jugador
 -- (y Eloy) ve el attract quieto y cree que el free play no existe.
 local ROTULO_GRATIS = FREEPLAY_NADA[emu.romname and emu.romname() or '']
@@ -2034,14 +2038,21 @@ if FREEPLAY and FREEPLAY_NADA[emu.romname and emu.romname() or ''] and CAMPO the
 	local okm, err = pcall(function()
 		local entrada = manager.machine.input
 		local iop = manager.machine.ioport
-		local trozos = { entrada:seq_to_tokens(CAMPO:input_seq('standard')) }
-		for _, tk in ipairs({ 'START1', 'START2' }) do
+		local otra = FREEPLAY_NADA[emu.romname()]
+		otra = (type(otra) == 'table') and otra or {}
+		local function anexar(campo, tk)
 			local tipo, jug = iop:token_to_input_type(tk)
 			local sq = iop:type_seq(tipo, jug, 'standard')
 			local t = sq and entrada:seq_to_tokens(sq)
-			if t and t ~= '' then trozos[#trozos + 1] = t end
+			if t and t ~= '' then
+				local base = entrada:seq_to_tokens(campo:input_seq('standard'))
+				campo:set_default_input_seq('standard', entrada:seq_from_tokens(base .. ' OR ' .. t))
+			end
 		end
-		CAMPO:set_default_input_seq('standard', entrada:seq_from_tokens(table.concat(trozos, ' OR ')))
+		for _, tk in ipairs({ 'START1', 'START2' }) do
+			local c = otra[tk] and campo_de_token(otra[tk]) or CAMPO
+			if c then anexar(c, tk) end
+		end
 	end)
 	if okm then
 		GA_ESTADO.moneda_gratis = true   -- esas pulsaciones no son dinero: no apuntar ingreso
