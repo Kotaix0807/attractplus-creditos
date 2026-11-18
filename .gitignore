@@ -39,3 +39,7 @@ arduino/log*.txt
 # cache de Python (generado, atado a una version concreta)
 __pycache__/
 *.pyc
+# salida de MAME en pruebas (capturas y tablas de records en el directorio de trabajo)
+snap/
+hiscore/
+a.out
