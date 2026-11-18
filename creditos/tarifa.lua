@@ -197,7 +197,7 @@ end
 -- (zaxxon: vive en "Lives"=0). Antes solo tocaba el suelto, asi que zaxxon y
 -- compania se quedaban gratis PARA SIEMPRE al volver a tarifa de pago. La tarifa
 -- normal (1c1c / N monedas) ajusta luego el Coinage al valor exacto. true si toco algo.
-local COINAGE_NORMAL = { mk = 'USA-3', mk2 = 'USA-3', mk3 = 'USA-3' }
+local COINAGE_NORMAL = { mk = 'USA-3', mk2 = 'USA-3', mk3 = 'USA-3', kinst = 'USA-3' }
 
 function M.quitar_freeplay()
 	local tocado = false

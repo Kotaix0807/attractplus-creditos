@@ -809,7 +809,9 @@ local ESCRIBIR_FREEPLAY = {
 -- 2026-11-18), asi que mantenerle creditos por RAM no sirve. Mismo remedio que
 -- polepos: START mete la moneda y la 2a pulsacion empieza. Sus ranuras son
 -- independientes: el START de P2 mete en COIN2 (credito de P2 en 0x104046).
-local FREEPLAY_NADA = { polepos = true, ssriders = { START2 = 'COIN2' } }
+-- 'tope2': contador de la otra ranura; su START solo mete moneda con el a 0 (si
+-- no, P2 acumulaba creditos sin fin: el cerrojo solo vigila COIN1).
+local FREEPLAY_NADA = { polepos = true, ssriders = { START2 = 'COIN2', tope2 = 0x104046 } }
 -- El rotulo de free play de estos juegos ensena COMO jugar: sin el, el jugador
 -- (y Eloy) ve el attract quieto y cree que el free play no existe.
 local ROTULO_GRATIS = FREEPLAY_NADA[emu.romname and emu.romname() or '']
@@ -1707,6 +1709,18 @@ local function por_frame()
 	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
 	if e.cerrojo then e.cerrojo.frame() end
 
+	-- Tope de la otra ranura en START-moneda (ssriders P2): su START solo mete
+	-- moneda mientras su contador este a 0.
+	local t2 = e.tope2
+	if t2 then
+		local ok, v = pcall(t2.space.read_u8, t2.space, t2.dir)
+		local quiere = ok and (v == 0)
+		if ok and (quiere ~= t2.puesto) then
+			t2.campo:set_default_input_seq('standard', quiere and t2.con or t2.sin)
+			t2.puesto = quiere
+		end
+	end
+
 	-- La gracia del barrido. Defender (Williams) copia los creditos de su CMOS
 	-- a la RAM un pelin DESPUES de que demos el arranque por terminado (medido:
 	-- fin en el frame 720 con a037=0, y el 8 de la NVRAM aparece en el 721-750),
@@ -2046,12 +2060,21 @@ if FREEPLAY and FREEPLAY_NADA[emu.romname and emu.romname() or ''] and CAMPO the
 			local t = sq and entrada:seq_to_tokens(sq)
 			if t and t ~= '' then
 				local base = entrada:seq_to_tokens(campo:input_seq('standard'))
-				campo:set_default_input_seq('standard', entrada:seq_from_tokens(base .. ' OR ' .. t))
+				local con = entrada:seq_from_tokens(base .. ' OR ' .. t)
+				campo:set_default_input_seq('standard', con)
+				return con, entrada:seq_from_tokens(base)
 			end
 		end
 		for _, tk in ipairs({ 'START1', 'START2' }) do
 			local c = otra[tk] and campo_de_token(otra[tk]) or CAMPO
-			if c then anexar(c, tk) end
+			if c then
+				local con, sin = anexar(c, tk)
+				-- la otra ranura no tiene cerrojo: su tope se lleva aparte, por frame
+				if c ~= CAMPO and otra.tope2 and con then
+					GA_ESTADO.tope2 = { campo = c, con = con, sin = sin, dir = otra.tope2, puesto = true,
+						space = manager.machine.devices[':maincpu'].spaces['program'] }
+				end
+			end
 		end
 	end)
 	if okm then
