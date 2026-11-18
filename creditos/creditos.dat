@@ -1001,7 +1001,7 @@ columns @:maincpu,program,fffcc1   # (cheat)
 columns2 @:maincpu,program,fffcc1   # (cheat)
 columnsj @:maincpu,program,fffcc1   # (cheat)
 columnsu @:maincpu,program,fffcc1   # (cheat)
-commando @:maincpu,program,e030   # (cheat)
+commando @:maincpu,program,e030 bcd   # (cheat) BCD medido 2026-11-17: la 10a moneda lee 0x10=16
 commandob @:maincpu,program,e030   # (cheat)
 commandob2 @:maincpu,program,e030   # (cheat)
 commandob3 @:maincpu,program,e030   # (cheat)
@@ -1354,7 +1354,7 @@ djgirl @:maincpu,program,f88c   # (cheat)
 dking @:maincpu,program,6001   # (cheat)
 dkingjr @:maincpu,program,6001
 dkong @:maincpu,program,6001 bcd
-dkong3 @:maincpu,program,6004+6bf1
+dkong3 @:maincpu,program,6bf1
 dkong3abl @:maincpu,program,6bf1   # (cheat)
 dkong3b @:maincpu,program,6bf1   # (cheat)
 dkong3hs @:maincpu,program,6bf1   # (cheat)
@@ -2880,7 +2880,7 @@ mspacmbmc @:maincpu,program,4e6e   # (cheat)
 mspacmbn @:maincpu,program,4e6e   # (cheat)
 mspacmnf @:maincpu,program,4e6e   # (cheat)
 mspacpls @:maincpu,program,4e6e   # (cheat)
-mspactwin @:maincpu,program,4e6e   # (cheat)
+mspactwin @:maincpu,program,4e6e bcd   # (cheat) BCD medido 2026-11-17: la 10a moneda lee 0x10=16
 mspactwina @:maincpu,program,4e6e   # (cheat)
 mspuzzle @:maincpu,program,100829   # (cheat)
 mspuzzlea @:maincpu,program,100829   # (cheat)
@@ -5031,3 +5031,4 @@ samsho2 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
 samsho3 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
 samsho4 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
 samsho5 @:maincpu,program,d00034 bcd   # (cheat) BIOS Neo-Geo MVS (0xD00034)
+starwars @:maincpu,program,4814   # verificado 2026-11-17 en la cabina: diff de RAM con 3 monedas (0,1,2,3), baja al tirar del gatillo; en pantalla "3 CREDITS". 4813 sube igual pero NO baja (contador de monedas)

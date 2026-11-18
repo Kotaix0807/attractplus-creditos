@@ -455,9 +455,11 @@ local CONTADOR_Y = ajuste_opcional('contador_y', 'GA_CONTADOR_Y')
 -- limite=N en arranque.dat: cuantos creditos admite la placa. Al llegar ahi se
 -- CIERRA el boton de moneda, porque a partir de ese punto el juego tira las
 -- monedas en silencio (1943 se queda clavado en 9: medido metiendo 30).
--- Si no se pone, se aprende sola la primera vez que una moneda se pierde con
--- el contador quieto -- ver 'tope aprendido'. Ponerla evita perder esa.
-local LIMITE = math.max(0, ajuste('limite', 'GA_LIMITE', 0))
+-- LIMITE GLOBAL 9 (pedido por Eloy 2026-11-17): ningun juego admite mas de 9
+-- creditos; limite=N por juego lo baja (placas que se clavan antes) y limite=0
+-- lo apaga. Si una placa se clava por debajo, el 'tope aprendido' lo baja solo
+-- la primera vez que una moneda se pierde con el contador quieto.
+local LIMITE = math.max(0, ajuste('limite', 'GA_LIMITE', 9))
 local AUTO = ajuste('auto', 'GA_AUTO', 0) ~= 0
 local FIJO = not AUTO
 
@@ -938,7 +940,60 @@ local function tarifa_vigente()
 	return monedas_por, creditos_por, false
 end
 
+-- Foto de todos los DIP, para saber si la tarifa ha cambiado alguno.
+local function foto_dips()
+	local f = {}
+	for tag, port in pairs(manager.machine.ioport.ports) do
+		for nombre, campo in pairs(port.fields) do
+			if campo.type_class == 'dipswitch' then
+				f[tag .. '|' .. nombre .. '|' .. campo.mask] = campo.user_value
+			end
+		end
+	end
+	return f
+end
+
+local dips_antes = foto_dips()
 local MONEDAS_POR, CREDITOS_POR, GRATIS = tarifa_vigente()
+
+-- La placa lee la tarifa en el ARRANQUE EN FRIO, antes de que este script pueda
+-- cambiar nada: sin esto cada cambio de tarifa se notaba un arranque tarde
+-- (mwalk, 2026-11-17, medido en la cabina). Un soft_reset NO basta (mwalk ve la
+-- RAM ya inicializada y no relee). hard_reset es apagar y encender: MAME guarda el
+-- .cfg con el DIP nuevo, monta la maquina otra vez y relanza este script, que ya
+-- encuentra los DIP bien y sigue. Se hace ANTES de montar nada (GA_ESTADO, avisos,
+-- notificadores): la maquina vieja se destruye entera. Una sola vez por proceso.
+do
+	local antes, cambio = dips_antes, false
+	for k, v in pairs(foto_dips()) do
+		if antes[k] ~= v then cambio = true end
+	end
+	if cambio and not GA_RESET_TARIFA and os.getenv('GA_RESET_TARIFA') ~= '0' then
+		GA_RESET_TARIFA = true
+		GA_ESTADO = nil   -- es de la maquina que se destruye: nada que deshacer
+		-- La maquina vieja guarda su NVRAM al destruirse: con nvram=0 hay que
+		-- apagarlo ya (medido: mwalk dejaba su nvram escrita, y con ella creditos).
+		if not GUARDAR_NVRAM then
+			pcall(function() manager.machine.options.entries['nvram_save']:value(false) end)
+		end
+		log('la tarifa cambio un DIP: reinicio la maquina para que la placa lo lea ya')
+		manager.machine:hard_reset()
+		return
+	end
+end
+
+-- Cuantos creditos puede meter UNA moneda. La maquina se da por llena cuando la
+-- PROXIMA moneda ya no cabe entera (caso de Eloy: limite 9 con 1 moneda = 2
+-- creditos y 8 dentro -> la moneda daria 10 y se perderia uno). Sale de la
+-- tarifa y se corrige con lo que se OBSERVA (e.cpm_visto): un DIP que da mas de
+-- lo que creemos o un bonus (Missile regala uno cada 4) suben la cifra.
+local CPM_TARIFA = math.max(1, math.ceil(CREDITOS_POR / math.max(1, MONEDAS_POR)))
+local function maquina_llena(e)
+	if not e.tope or not e.memoria or e.a_prueba then return false end
+	local n = e.memoria.dentro()
+	if type(n) ~= 'number' then return false end
+	return (n + math.max(CPM_TARIFA, e.cpm_visto or 0)) > e.tope
+end
 
 -- Cuantas monedas hay que meter para conseguir los creditos pedidos.
 -- Redondeo hacia arriba: preferimos regalar un credito antes que comerselo.
@@ -1523,7 +1578,7 @@ local function por_frame()
 					-- tope para cerrar el boton y no perder las siguientes.
 					-- Equivocarse aqui sale barato: en cuanto el jugador gaste
 					-- un credito el contador baja y el boton se abre solo.
-					if (llegados == 0) and (p.antes > 0) and not e.tope then
+					if (llegados == 0) and (p.antes > 0) and ((not e.tope) or (p.antes < e.tope)) then
 						e.tope, e.tope_medido = p.antes, true
 						log('tope aprendido: la placa no admite mas de %d creditos '
 							.. '(pon "limite=%d" en arranque.dat y no se pierde ni esa)',
@@ -1687,6 +1742,22 @@ local function por_frame()
 		end
 	end
 
+	-- Cuantos creditos da una moneda DE VERDAD en esta placa (subida de 1..4 en
+	-- un solo frame; los saltos grandes son reinicios o free play). Lo usa
+	-- maquina_llena para no dejar entrar una moneda que no cabe entera.
+	if (not e.arranque) and (not FREEPLAY) and e.memoria and e.leer_ram then
+		local okc, vc = pcall(e.leer_ram)
+		if okc and (type(vc) == 'number') then
+			local d = e.cpm_prev and (vc - e.cpm_prev) or 0
+			if (d >= 1) and (d <= 4) and (d > math.max(CPM_TARIFA, e.cpm_visto or 0)) then
+				e.cpm_visto = d
+				log('una moneda da %d creditos en este juego: cierro el monedero %d antes del limite',
+					d, d - 1)
+			end
+			e.cpm_prev = vc
+		end
+	end
+
 	-- Estado del monedero para el demonio del Arduino, por CICLO DE VIDA (pedido
 	-- por Eloy 2026-09-28): '0' mientras la placa arranca (y con MAME apagado /
 	-- en el menu, que es el ultimo valor que se dejo), '1' cuando el juego ya
@@ -1702,12 +1773,17 @@ local function por_frame()
 		-- estado MIENTRAS MAME corre.
 		-- En FREE PLAY el monedero va CERRADO aunque el juego este en marcha: es
 		-- gratis, aceptar una moneda solo se la comeria sin dar credito.
-		local v = (e.arranque or FREEPLAY) and '0' or '1'
+		-- Y con la maquina LLENA (limite global 9): el rele apagado hace que la
+		-- ranura DEVUELVA la moneda (comprobado por Eloy). Cerrar solo el boton
+		-- en MAME no basta: la moneda ya habria caido en la caja.
+		local llena = (not e.arranque) and (not FREEPLAY) and maquina_llena(e)
+		local v = (e.arranque or FREEPLAY or llena) and '0' or '1'
 		if v ~= e.switch_ultimo then
 			escribir_switch(v)
 			e.switch_ultimo = v
 			log('monedero switch -> %s (%s)', v,
-				e.arranque and 'arrancando' or 'juego en marcha')
+				e.arranque and 'arrancando' or (llena and 'maquina llena, devuelve monedas')
+				or 'juego en marcha')
 		end
 	end
 
@@ -2030,9 +2106,7 @@ if VIGILAR and MON then
 							local okv, v = pcall(e.leer_ram)
 							if okv and (type(v) == 'number') and (v >= 1) then return true end
 						end
-						if not e.tope or not e.memoria or e.a_prueba then return false end
-						local n = e.memoria.dentro()
-						return (type(n) == 'number') and (n >= e.tope)
+						return maquina_llena(e)
 					end,
 					bloquear = function()
 						CAMPO:set_default_input_seq('standard', vacia)

@@ -197,6 +197,8 @@ end
 -- (zaxxon: vive en "Lives"=0). Antes solo tocaba el suelto, asi que zaxxon y
 -- compania se quedaban gratis PARA SIEMPRE al volver a tarifa de pago. La tarifa
 -- normal (1c1c / N monedas) ajusta luego el Coinage al valor exacto. true si toco algo.
+local COINAGE_NORMAL = { mk = 'USA-3', mk2 = 'USA-3', mk3 = 'USA-3' }
+
 function M.quitar_freeplay()
 	local tocado = false
 	for _, port in pairs(manager.machine.ioport.ports) do
@@ -211,13 +213,35 @@ function M.quitar_freeplay()
 					campo.user_value = campo.defvalue   -- fabrica: nunca es free play
 					tocado = true
 				end
-				-- Midway (mk/mk2/mk3): devolver la fuente de tarifa a CMOS (pricing normal)
+				-- Midway (mk/mk2/mk3): la fuente de tarifa se queda en el DIP, NUNCA se
+				-- vuelve a CMOS. Con fuente=Dipswitch el juego COPIA el Coinage a su CMOS
+				-- (0x1096=1 en mk1 tras una sesion gratis), y volver a CMOS dejaba el free
+				-- play pegado para siempre (medido en la cabina 2026-11-18). Con el DIP en
+				-- Dipswitch + Coinage normal, el propio juego reescribe su CMOS bien.
 				if nombre == 'Coinage Source' then
 					for valor, texto in pairs(campo.settings) do
-						if texto == 'CMOS' and campo.user_value ~= valor then
+						if texto == 'Dipswitch' and campo.user_value ~= valor then
 							campo.user_value = valor
 							tocado = true
 						end
+					end
+				end
+			end
+		end
+	end
+	-- Tarifa normal propia de juegos cuyo Coinage no se entiende como "N monedas/1
+	-- credito". MK: el USA-1 de fabrica pide 2 creditos para empezar y 2 para
+	-- continuar; USA-3 es 1 moneda = 1 credito, 1 para empezar y 1 para continuar
+	-- (pantalla de tarifa de mk1, medido en la cabina 2026-11-18).
+	local quiere = COINAGE_NORMAL[emu.romname and emu.romname() or '']
+	if quiere then
+		for _, port in pairs(manager.machine.ioport.ports) do
+			local c = port.fields['Coinage']
+			if c and c.type_class == 'dipswitch' then
+				for valor, texto in pairs(c.settings) do
+					if texto == quiere and c.user_value ~= valor then
+						c.user_value = valor
+						tocado = true
 					end
 				end
 			end

@@ -113,7 +113,7 @@ sf2 segundos=14.5 velocidad=0
 # hay es sfiii3, que arranca del CHD tras grabar la flash una vez.
 sfiii3 segundos=25 velocidad=0
 simpsons2p segundos=10.6 velocidad=0 video=16
-mwalk segundos=11.8 velocidad=0 nvram=0 videodura=16
+mwalk velocidad=0 videodura=16 segundos=11.8 nvram=0
 # Berzerk guarda los creditos en su NVRAM y NO se ha podido localizar el
 # contador: 8a3 sube con cada moneda pero no es el almacen (escribirle 0 y
 # reiniciar deja los creditos puestos). Aqui nvram=0 SI vale, y esta medido:
