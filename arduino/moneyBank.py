@@ -127,7 +127,10 @@ def getFileData(path):
         return file.read()
 
 def mameRunning():
-    return subprocess.run(["pgrep", "-x", "mame"], stdout=subprocess.DEVNULL).returncode == 0
+    # "Hay partida": MAME o Hypseus (laserdisc). En Hypseus no corre creditos.lua:
+    # botones_juego lo escribe su lanzador (creditos/lanzar_hypseus.sh) y
+    # monedero_switch=1 el propio Hypseus parcheado cuando la placa esta lista.
+    return subprocess.run(["pgrep", "-x", "mame|hypseus"], stdout=subprocess.DEVNULL).returncode == 0
 
 def getMoneyBankState(running):
     # Sin MAME no hay partida: monedero cerrado, diga lo que diga el fichero

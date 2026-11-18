@@ -1,0 +1,292 @@
+diff --git a/src/cpu/cpu.cpp b/src/cpu/cpu.cpp
+index ec9285d..e97fbb7 100644
+--- a/src/cpu/cpu.cpp
++++ b/src/cpu/cpu.cpp
+@@ -65,6 +65,7 @@ unsigned char g_count = 0;	// how many cpu's have been added
+ bool g_initialized[type::COUNT] = { false };	// whether cpu core has been initialized
+ Uint32 g_timer = 0;	// used to make cpu's run at the right speed
+ Uint32 g_expected_elapsed_ms = 0;	// how many ms we expect to have elapsed since last cpu execution loop
++static bool g_cpu_turbo = false;	// cabina: ver cpu::set_turbo
+ Uint8 g_active = 0;	// which cpu is currently active
+ unsigned int g_uInterleavePerMs = 1; // number of times the cpus switch in 1 ms 
+ 
+@@ -633,8 +634,17 @@ void execute()
+ 		unsigned int uStartMs = actual_elapsed_ms;
+ #endif
+ 
++		// cabina: en turbo no se espera al reloj; se rebasa g_timer para que al
++		// salir del turbo no parezca que vamos adelantados (y no se duerma)
++		// tope de seguridad: si la ROM nunca diera la senal, no seguir sin freno
++		if (g_cpu_turbo && g_expected_elapsed_ms > 60000) g_cpu_turbo = false;
++		if (g_cpu_turbo)
++		{
++			g_timer = refresh_ms_time() - g_expected_elapsed_ms;
++			g_uCPUMsBehind = 0;
++		}
+ 		// if we're behind, then compute how far behind we are ...
+-		if (actual_elapsed_ms > g_expected_elapsed_ms)
++		else if (actual_elapsed_ms > g_expected_elapsed_ms)
+ 		{
+ 			g_uCPUMsBehind = actual_elapsed_ms - g_expected_elapsed_ms;
+ 		}
+@@ -751,6 +761,9 @@ void set_event(unsigned int uCpuID, unsigned int uCyclesTilEvent, void (*event_c
+ //  pauses on top of each other.
+ // Personally, I'd prefer to put in an assert that guarantees that the cpu can only be
+ //  paused by 1 function at a time, but that is on the future TODO ...
++void set_turbo(bool v) { g_cpu_turbo = v; }
++bool get_turbo() { return g_cpu_turbo; }
++
+ void pause()
+ {
+ 	g_paused_timer.push(refresh_ms_time());
+diff --git a/src/cpu/cpu.h b/src/cpu/cpu.h
+index 45fea57..2451f78 100644
+--- a/src/cpu/cpu.h
++++ b/src/cpu/cpu.h
+@@ -98,6 +98,9 @@ void reset();
+ // Each even is just a one-shot deal, it doesn't loop.
+ void set_event(unsigned int uCpuID, unsigned int uCyclesTilEvent, void (*event_callback)(void *data), void *event_data);
+ 
++// Cabina: sin freno (no espera al reloj) mientras la placa arranca.
++void set_turbo(bool);
++bool get_turbo();
+ void pause();
+ void unpause();
+ Uint32 get_timer();
+diff --git a/src/game/game.cpp b/src/game/game.cpp
+index dc9e31e..69572ad 100644
+--- a/src/game/game.cpp
++++ b/src/game/game.cpp
+@@ -44,6 +44,7 @@
+ #include "../video/video.h"       // for get_screen
+ #include "../video/palette.h"
+ #include "game.h"
++#include "../cpu/cpu.h"
+ 
+ using namespace std; // for STL string to compile without problems ...
+ 
+@@ -444,6 +445,14 @@ void Scale(SDL_Surface *src, SDL_Surface *dst, long *matrix)
+ // will call repaint()
+ void game::blit()
+ {
++    // cabina: en el turbo del arranque se emulan muchos fotogramas por cada uno
++    // real; dibujarlos todos se come la CPU. Como mucho uno cada 16 ms reales.
++    if (cpu::get_turbo()) {
++        static Uint32 ultimo = 0;
++        Uint32 ahora = SDL_GetTicks();
++        if (ahora - ultimo < 16) return;
++        ultimo = ahora;
++    }
+     // if something has actually changed in the game's video, blit() will
+     // probably get called regularly on each screen refresh,
+     // and we don't want to call the potentially expensive repaint()
+diff --git a/src/game/lair.cpp b/src/game/lair.cpp
+index 85d28a1..189c092 100644
+--- a/src/game/lair.cpp
++++ b/src/game/lair.cpp
+@@ -162,6 +162,9 @@ void lair::set_version(int version)
+ 
+ void lair::patch_roms()
+ {
++    // cabina: arranque sin freno hasta que la ROM pida su primera escena (ldp::pre_search)
++    if (m_fastboot) cpu::set_turbo(true);
++
+     if (m_fastboot) {
+         m_cpumem[0x121b] = 0x00;
+         m_cpumem[0x1235] = 0x00;
+@@ -187,6 +190,9 @@ dle11::dle11()
+ 
+ void dle11::patch_roms()
+ {
++    // cabina: arranque sin freno hasta que la ROM pida su primera escena (ldp::pre_search)
++    if (m_fastboot) cpu::set_turbo(true);
++
+     bool passed_test = false;
+ 
+     // NOW check to make sure the DLE readme file is present and unaltered
+@@ -255,6 +261,9 @@ void dle2::set_version(int version)
+ // DLE v2.x test to make sure readme20.txt file is present and unaltered
+ void dle2::patch_roms()
+ {
++    // cabina: arranque sin freno hasta que la ROM pida su primera escena (ldp::pre_search)
++    if (m_fastboot) cpu::set_turbo(true);
++
+     bool passed_test = false;
+ 
+     if (strcasecmp(m_shortgamename, "dle20") == 0) {
+@@ -727,7 +736,9 @@ void lair::cpu_mem_write(Uint16 Addr, Uint8 Value)
+ 
+         if (m_game_type == GAME_DLE2) {
+ 
+-            if (a_frame == (stoi(LAIR_BOOTFRAME))) {
++            // Cabina: saltar al titulo en cuanto el disco reproduce, sin esperar
++            // a que llegue solo hasta el 173 (~7 s de pelicula a oscuras).
++            if (a_frame > 0 && a_frame <= (stoi(LAIR_BOOTFRAME))) {
+                 if (g_ldp->pre_search(LAIR_SPLASHFRAME, true)) {
+                     m_cpumem[0x121b] = 0xF0;
+                     m_cpumem[0x123d] = 0xC5;
+diff --git a/src/ldp-out/ldp.cpp b/src/ldp-out/ldp.cpp
+index cc3899b..8be1814 100644
+--- a/src/ldp-out/ldp.cpp
++++ b/src/ldp-out/ldp.cpp
+@@ -43,6 +43,7 @@
+ #include "../timer/timer.h"
+ #include "framemod.h"
+ #include "ldp.h"
++#include "../video/video.h"
+ #include <plog/Log.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -132,6 +133,21 @@ void ldp::pre_shutdown()
+ void ldp::shutdown_player() {}
+ 
+ // see .h file for usage
++// cabina: escribe "1" en el fichero de HYPSEUS_LISTO (temporal + rename, para
++// que quien lo lea nunca lo vea a medias). Sin la variable no hace nada.
++static void avisar_listo()
++{
++    const char *ruta = getenv("HYPSEUS_LISTO");
++    if (!ruta || !*ruta) return;
++    std::string tmp = std::string(ruta) + ".tmp";
++    FILE *f = fopen(tmp.c_str(), "w");
++    if (!f) { LOGW << "no puedo escribir " << tmp; return; }
++    fputs("1", f);
++    fclose(f);
++    if (rename(tmp.c_str(), ruta) != 0) LOGW << "no puedo renombrar a " << ruta;
++    else LOGI << "placa lista: avisado en " << ruta;
++}
++
+ bool ldp::pre_search(const char *pszFrame, bool block_until_search_finishes)
+ {
+     char frame[FRAME_ARRAY_SIZE + 1] = {0};
+@@ -169,6 +185,16 @@ bool ldp::pre_search(const char *pszFrame, bool block_until_search_finishes)
+     frame[fs]     = 0; // terminate the string ...
+     frame_number = (Uint32)atoi(frame);
+ 
++    // cabina: la primera escena que pide la ROM (que no sea el titulo 355 al
++    // que salta el -fastboot de DLE) marca la placa como lista: se quita el
++    // turbo del arranque y se avisa por el fichero de HYPSEUS_LISTO (el
++    // demonio del monedero abre la ranura solo entonces).
++    if (cpu::get_turbo() && frame_number != 355) {
++        cpu::set_turbo(false);
++        video::restore_vsync();
++        avisar_listo();
++    }
++
+     // If we're seeking to the frame we're already on, then don't seek
+     // This optimizes performance for many games and especially improves the
+     // coin insert delay
+diff --git a/src/sound/sound.cpp b/src/sound/sound.cpp
+index 2961427..6d03f34 100644
+--- a/src/sound/sound.cpp
++++ b/src/sound/sound.cpp
+@@ -49,6 +49,7 @@
+ #include "samples.h"
+ #include "sn_intf.h"
+ #include "sound.h"
++#include "../cpu/cpu.h"
+ #include "tonegen.h"
+ 
+ namespace sound
+@@ -674,8 +675,24 @@ void SDLCALL callback(void *data, Uint8 *stream, int length)
+         cur                 = cur->next;
+     }
+ 
++    // cabina: el chip de la PLACA (no el audio del disco) suena a volumen
++    // maximo al arrancar y justo al empezar el attract: un golpe que asusta.
++    // Se silencia durante el turbo del arranque y 600 ms despues de acabar.
++    {
++        static bool turbo_antes = false;
++        static Uint32 fin_turbo = 0;
++        bool turbo = cpu::get_turbo();
++        if (turbo_antes && !turbo) fin_turbo = SDL_GetTicks();
++        turbo_antes = turbo;
++        if (turbo || (fin_turbo && SDL_GetTicks() - fin_turbo < 600)) {
++            for (struct chip *c = g_chip_head; c; c = c->next)
++                if (c->type != CHIP_VLDP) memset(c->buffer, 0, g_uSoundChipBufSize);
++        }
++    }
++
+     // do the actual mixing now
+     g_soundmix_callback(stream, length);
++
+ }
+ 
+ void writedata(Uint8 id, Uint8 data)
+diff --git a/src/video/video.cpp b/src/video/video.cpp
+index e24ced0..ab965f9 100644
+--- a/src/video/video.cpp
++++ b/src/video/video.cpp
+@@ -34,6 +34,7 @@
+ #include "../io/mpo_mem.h"
+ #include "icon.h"
+ #include "video.h"
++#include "../cpu/cpu.h"
+ #include <SDL_syswm.h> // rdg2010
+ #include <SDL_image.h> // screenshot
+ #include <plog/Log.h>
+@@ -396,12 +397,15 @@ bool init_display()
+     constexpr char title[] = "HYPSEUS Singe: Multiple Arcade Laserdisc Emulator";
+ 
+     SDL_SysWMinfo info;
+-    Uint32 sdl_flags = SDL_WINDOW_SHOWN;
++    // Cabina: en pantalla completa la ventana nace OCULTA y sin bordes, para que
++    // el gestor de ventanas no la ensene "windowed" antes de maximizar. Se muestra
++    // tras el primer frame negro (ver SDL_ShowWindow despues del renderer).
++    Uint32 sdl_flags = g_fullscreen ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
+     Uint32 sdl_scoreboard_flags = SDL_WINDOW_BORDERLESS;
+     Uint8 sdl_render_flags = SDL_RENDERER_TARGETTEXTURE;
+ 
+     if (g_fullscreen)
+-        sdl_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
++        sdl_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_BORDERLESS;
+     else if (g_fakefullscreen && g_alloc_screen == 0)
+         sdl_flags |= SDL_WINDOW_MAXIMIZED | SDL_WINDOW_BORDERLESS;
+ 
+@@ -523,11 +527,20 @@ bool init_display()
+ 
+         Uint8 sdl_scoreboard_render_flags = sdl_render_flags;
+ 
+-        if (g_vsync && (sdl_render_flags & SDL_RENDERER_ACCELERATED))
++        // cabina: durante el turbo del arranque el vsync frenaria la emulacion a
++        // tiempo real; se enciende al acabar el turbo (video::restore_vsync)
++        if (g_vsync && !cpu::get_turbo() && (sdl_render_flags & SDL_RENDERER_ACCELERATED))
+             sdl_render_flags |= SDL_RENDERER_PRESENTVSYNC;
+ 
+         g_renderer = SDL_CreateRenderer(g_window, -1, sdl_render_flags);
+ 
++        if (g_renderer && (sdl_flags & SDL_WINDOW_HIDDEN)) {
++            SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
++            SDL_RenderClear(g_renderer);
++            SDL_RenderPresent(g_renderer);
++            SDL_ShowWindow(g_window);
++        }
++
+         SDL_RaiseWindow(g_window);
+         SDL_SetWindowInputFocus(g_window);
+ 
+@@ -1238,6 +1251,12 @@ void free_bmps()
+ //////////////////////////////////////////////////////////////////////////////////////////
+ 
+ SDL_Renderer *get_renderer() { return g_renderer; }
++
++// cabina: vuelve a poner el vsync que pidio el usuario, al acabar el turbo
++void restore_vsync()
++{
++    if (g_renderer && g_vsync) SDL_RenderSetVSync(g_renderer, 1);
++}
+ SDL_Texture *get_overlay_texture() { return g_overlay_texture; }
+ SDL_Surface *get_screen_leds() { return g_overlay_surface; }
+ SDL_Rect get_scoreboard_rect() { return g_scoreboard_bezel_rect; }
+diff --git a/src/video/video.h b/src/video/video.h
+index 4b0f14b..ff6f5cc 100644
+--- a/src/video/video.h
++++ b/src/video/video.h
+@@ -122,6 +122,7 @@ void draw_singleline_LDP1450(char *LDP1450_String, int start_x, int y);
+ bool draw_othergfx(int which, int x, int y);
+ void free_bmps();
+ SDL_Renderer *get_renderer();
++void restore_vsync();
+ SDL_Texture *get_overlay_texture();
+ SDL_Surface *get_screen_leds();
+ SDL_Rect get_aux_rect();

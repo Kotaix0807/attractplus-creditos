@@ -15,4 +15,17 @@
 		<display type="raster" rotate="0"/>
 		<driver status="good"/>
 	</machine>
+	<!-- Dragon's Lair Enhancement 2.1 (Dave Hallock): la misma pelicula que lair,
+	     pero recupera el puente levadizo y otras escenas que la recreativa
+	     original no usaba. Su framefile apunta al video de vldp/lair. -->
+	<machine name="dle21">
+		<description>Dragon's Lair Enhancement v2.1</description>
+		<year>1983</year>
+		<manufacturer>Cinematronics</manufacturer>
+		<input players="1" buttons="1">
+			<control type="joy" ways="4"/>
+		</input>
+		<display type="raster" rotate="0"/>
+		<driver status="good"/>
+	</machine>
 </mame>

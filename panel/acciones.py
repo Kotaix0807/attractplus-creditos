@@ -74,6 +74,8 @@ def creditos(n):
     if n < 1 or n > 20:
         return _err("n fuera de rango (1-20)")
     auditar("creditos", str(n))
+    if _hypseus_corriendo():
+        return _creditos_hypseus(n)
     if not _enviar_mame("insertar %d" % n):
         return _err("no se pudo escribir la orden")
     return _ok(nota="se inyectaran si hay un juego en marcha")
@@ -81,6 +83,10 @@ def creditos(n):
 
 def juego_salir():
     auditar("juego_salir")
+    if _hypseus_corriendo():
+        if _tecla_x(_XK_HYPSEUS["salir"]):
+            return _ok()
+        return _err("no se pudo enviar la tecla a la pantalla")
     if not _enviar_mame("salir"):
         return _err("no se pudo escribir la orden")
     return _ok()
@@ -143,6 +149,43 @@ def _mame_corriendo():
     return rc == 0
 
 
+# Hypseus (laserdisc: Dragon's Lair) no corre creditos.lua, asi que NO lee
+# panel_cmd: una orden dejada ahi se quedaria esperando y la cumpliria el
+# siguiente juego de MAME (un 'salir' viejo lo cerraria nada mas abrir). Ahi el
+# panel hace de teclado (XTEST), con las teclas de config/cabina/hypinput.ini.
+_XK_HYPSEUS = {"salir": 0xff1b, "start1": 0x31, "start2": 0x32,
+               "p1_up": 0xff52, "p1_down": 0xff54, "p1_left": 0xff51, "p1_right": 0xff53,
+               "p1_b1": 0xffe3}   # espada = Ctrl izquierdo (KEY_BUTTON1)
+_XK_MONEDA = 0x35                 # tecla 5 = KEY_COIN1
+
+
+def _hypseus_corriendo():
+    rc, _, _ = ejecutar(["pgrep", "-x", "hypseus"], timeout=5)
+    return rc == 0
+
+
+def _creditos_hypseus(n):
+    """Mete n monedas en Hypseus pulsando su tecla de moneda. Cuentan para el
+    juego igual que una moneda de verdad, pero se apuntan como regalo del panel
+    (evento 'panel' en monedas.log, como hace creditos.lua), no como ingreso."""
+    for i in range(n):
+        if i:
+            time.sleep(0.15)      # hueco entre monedas: la ROM cuenta flancos
+        if not _tecla_x(_XK_MONEDA):
+            return _err("no se pudo enviar la tecla a la pantalla")
+    try:
+        with open(os.path.join(ATTRACT, "juego_actual"), encoding="utf-8") as f:
+            rom = f.read().split("\t", 1)[0].strip() or "?"
+    except OSError:
+        rom = "?"
+    try:
+        with open(F_MONEDAS, "a", encoding="utf-8") as f:
+            f.write("%d\t%s\tpanel\t%d\n" % (int(time.time()), rom, n))
+    except OSError:
+        pass
+    return _ok(nota="en Dragon's Lair (Hypseus)")
+
+
 def juego_menu():
     """Abre (o cierra) el menu de MAME con TAB.  Solo con un juego en marcha:
     sin el, la tecla iria al frontend.  Se navega con los controles de la
@@ -190,6 +233,13 @@ def pulsar(control):
     if control not in _CONTROLES:
         return _err("control desconocido: %r" % control)
     auditar("pulsar", control)
+    if _hypseus_corriendo():
+        ks = _XK_HYPSEUS.get(control)
+        if ks is None:
+            return _ok(nota="Dragon's Lair no usa ese control")
+        if _tecla_x(ks):
+            return _ok(nota="en el juego")
+        return _err("no se pudo enviar la tecla a la pantalla")
     if _mame_corriendo():
         # 'salir' cierra la maquina; el resto se acciona por el ioport en creditos.lua
         orden = "salir" if control == "salir" else ("pulsar " + control)

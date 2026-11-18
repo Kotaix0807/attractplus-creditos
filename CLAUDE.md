@@ -2322,6 +2322,103 @@ Tres detalles mas de `hypseus.cfg`:
 Y `dlair.zip` sale del rompath de MAME (a `retirados/`), o los dos emuladores se
 pelearian por el mismo juego.
 
+### «Se salta escenas»: es la ROM, no el vídeo (2026-11-18)
+
+Medido: el `lair.m2v` está alineado fotograma a fotograma con el disco (leído
+el número de imagen del VBI del CHD), y MAME con el CHD original hace lo mismo.
+**La recreativa rev F2 no usa el puente levadizo ni los tentáculos del foso**
+(disco 1572–1818): salta del castillo a la reja. Lo dice el propio readme de
+DLE, que es quien lo recupera.
+
+Por eso conviven `lair` y **`dle21`** (Dragon's Lair Enhancement 2.1), con la
+misma película: `vldp/dle21/dle21.txt` apunta a `vldp/lair`. Verificado en la
+cabina: con una moneda entra en partida y sale el puente.
+
+- `hypseus.cfg` añade `$(cat vldp/[name]/args)`: **opciones por juego**, porque
+  el mismo DIP significa cosas distintas en cada ROM. `dle21` lleva
+  `-bank 0 11011100` = 1 moneda/crédito (de fábrica pide 4); en `lair` ese bit
+  sería 3 monedas.
+- `-nosplash` quita el logo de Hypseus al lanzar.
+- Hypseus exige `readme21.txt` intacto junto a las ROMs, y los nombres de las
+  ROMs distinguen mayúsculas (`DLE21_U1.bin`, no `.BIN`).
+- **`-homedir`/`-framefile` de más de ~80 caracteres se truncan** en el
+  analizador de Hypseus, y `-datadir` le hace `chdir`: un `-homedir .` deja de
+  apuntar donde crees.
+- **Arranque** (`parches/hypseus-cabina.patch`; medido con el log de las
+  órdenes de la ROM al disco y capturas):
+
+  | placa lista (se abre la ranura) | portátil | cabina (i3, Xvfb) | antes |
+  |---|---|---|---|
+  | `lair` | 1,7 s | 4,6 s | ~5,5 s |
+  | `dle21` | 1,8 s | 4,7 s | ~24 s (37 s sin `-fastboot`) |
+
+  Tres piezas. (1) El fastboot de DLE2 esperaba a que el disco llegara solo al
+  fotograma 173 (~7 s de película a oscuras) para saltar al título (355): ahora
+  salta en cuanto reproduce (`a_frame > 0`). (2) **Turbo**: con `-fastboot` la
+  CPU corre sin freno (`cpu::set_turbo`) hasta la primera escena que pide la ROM
+  (la primera búsqueda que no es el 355): los ~16 s de «título pegado» eran
+  relojes de la ROM contados en ciclos. (3) **El vsync anulaba el turbo**: cada
+  fotograma presentado esperaba al monitor y la emulación no pasaba de tiempo
+  real (comprobado: turbo activo y tiempos idénticos). El vsync se apaga sólo
+  durante el turbo y se repone al acabar (`video::restore_vsync`). (4) En turbo
+  se dibuja como mucho un fotograma cada 16 ms reales (`game::blit`): dibujarlos
+  todos se comía el i3 (en la cabina, `dle21` pasó de 12 s a 4,7 s). Tope de
+  seguridad: el turbo se apaga solo a los 60 s emulados.
+  **Saltar al título en el fotograma 0 NO sirve**: la moneda echada mientras se
+  pierde. Medido que una moneda echada tras el aviso de «listo» + START arranca
+  la partida en los dos juegos. El plugin «Arranque» de AM+ no aplica (sus
+  ajustes los lee `creditos.lua`, sólo en MAME).
+- **LEDs del panel**: `moneyBank.py` cuenta `hypseus` como partida
+  (`pgrep -x 'mame|hypseus'`), y AM+ lanza por `creditos/lanzar_hypseus.sh`,
+  que escribe `botones_juego` (de `vldp/<juego>/botones`, o `1`) y hace `exec`.
+  **Relé del monedero (pin 2)**: igual que con MAME, obedece a
+  `monedero_switch`. El lanzador lo pone a 0 y Hypseus parcheado escribe 1 en
+  el fichero de `HYPSEUS_LISTO` cuando la placa está lista (la ROM pide su
+  primera escena). Así no se pierden monedas durante el arranque.
+- **Free play**: el lanzador lee `tarifa_juego/<juego>` o `tarifa_global` (las
+  del panel). En free play añade `vldp/<juego>/args_freeplay` (Hypseus se queda
+  con el último `-bank`) y no pide el aviso: la ranura no se abre. DIP medidos
+  (START sin moneda arranca partida): `dle21` `-bank 0 11001100` («2 credits at
+  all times/free play», A4=OFF), `lair` `-bank 0 11001101` (0x10, «2 Credits/Free
+  play»). Las tarifas en pesos NO se aplican a Hypseus: `lair` sólo admite 2 o 3
+  monedas por crédito (hoy 2), `dle21` de 1 a 4 (hoy 1).
+- **El «BOOM» al arrancar** era el pitido del chip de la PLACA, que la ROM
+  emite a 0 dBFS (17 dB sobre el audio de la película) al empezar el attract;
+  también suena así en el arranque original completo (5, 21 y 37 s), así que es
+  de la ROM y el turbo sólo lo adelantó a ~1,7 s. Medido grabando la salida con
+  `SDL_AUDIODRIVER=disk`: silenciando el disco (`-volume_vldp 0`) sigue,
+  silenciando la placa desaparece. El parche silencia SÓLO los chips que no son
+  `CHIP_VLDP` durante el turbo y 600 ms después (`sound.cpp`, `callback`): pico
+  de 0 a -15 dBFS en `lair` y `dle21`, en portátil y cabina. Otros pitidos de la
+  ROM en partida siguen a volumen máximo; si molestan, `-volume_nonvldp`.
+- **Audio**: el canal IZQUIERDO del disco no lleva nada útil (-32 dB y
+  correlación 0,07 con el derecho): todo va en el derecho. `lair.ogg` se rehízo
+  desde el AVI con `pan=stereo|c0=FR|c1=FR` (mismo largo exacto); el original
+  quedó en `lair.ogg.estereo_original` en la cabina.
+- **Panel web con Hypseus**: `panel_cmd` sólo lo lee `creditos.lua`, así que con
+  Dragon's Lair los créditos del panel se quedaban en el buzón (y un `salir`
+  acumulado habría cerrado el siguiente juego de MAME al abrirlo). Ahora, si
+  corre `hypseus`, `creditos`/`juego_salir`/`pulsar` de `panel/acciones.py`
+  mandan teclas por XTEST (`5` moneda, ESC salir, flechas, `1`/`2`, Ctrl
+  espada), y la moneda se apunta como `panel` en `monedas.log`. El lanzador
+  escribe `juego_actual` y borra `panel_cmd`. Probado en el portátil: crédito +
+  START del panel arrancan la partida y «salir» cierra el juego.
+- **AM+ sólo lee `emulators/*.cfg` al arrancar**: un cambio en `hypseus.cfg`
+  (p. ej. `-fastboot`) no vale hasta reiniciar el frontend.
+- **Controles**: `config/cabina/hypinput.ini` → `~/hypseus-singe/hypinput.ini`,
+  calcados de `~/.mame/cfg/default.cfg`. Medido en MAME: `JOYCODE_1` (P1) es la
+  mitad del panel de **12 botones** y `JOYCODE_2` (P2, moneda, START2) la de
+  **10**; pero SDL enumera PRIMERO la de 10, y MAME lo corrige con su `ctrlr`.
+  Hypseus usa el índice SDL a pelo (con `mando 0` jugaba J2), así que P1 es el
+  **mando 1**: palanca `±101/±102`, espada `101`, START1 `109`, salir `107`;
+  moneda `007`, START2 `008` (mando*100 + botón+1). Si SDL invirtiera el orden,
+  se invertiría también en MAME.
+- **Ventana** (mismo `parches/hypseus-cabina.patch`, compilado en la cabina,
+  respaldo `hypseus.antes_ventana`): en `-fullscreen` nace oculta y sin bordes
+  y se muestra tras un frame negro, como Adventure. Bajo Xvfb a pantalla
+  completa la imagen del laserdisc sale casi negra en la captura (también con el
+  binario viejo): esto sólo se verifica en el CRT.
+
 ## Conmutar el vídeo solo: CRT si lo hay, panel si no (`pantalla-auto.sh`)
 
 Pedido por Eloy el 2026-09-10: un servicio que detecte si hay un CRT en el VGA y
