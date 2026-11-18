@@ -360,7 +360,12 @@ def puntuaciones(ruta_xml, datos, fuente=None):
     filas, sueltos = descifrar_con_xml(ruta_xml, datos, fuente)
     ruta_xml, raiz = resolver(ruta_xml)   # los <format> viven en el XML final
     if _al_reves(raiz):
+        # Los puestos se quedan en su orden: el mejor es el 1, no el ultimo
+        # (qbert publicaba su record como puesto 23).
+        puestos = [f.get("__puesto") for f in filas]
         filas = filas[::-1]
+        for f, p in zip(filas, puestos):
+            f["__puesto"] = p
     fmts = _formatos(raiz)
     cols = _columnas(raiz)
 
@@ -410,7 +415,7 @@ def puntuaciones(ruta_xml, datos, fuente=None):
             nom = next((v for k, v in f.items()
                         if ("NAME" in k.upper() or "INITIAL" in k.upper())
                         and isinstance(v, str)), None)
-        fila = {"puesto": f.get("__puesto", i), "puntos": punt}
+        fila = {"puesto": f.get("__puesto") or i, "puntos": punt}
         if nom is not None:
             fila["nombre"] = nom
         salida.append(fila)

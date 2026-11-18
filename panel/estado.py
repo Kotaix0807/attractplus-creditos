@@ -404,6 +404,32 @@ SIN_PUNTAJE_MOTIVO = {
 PENDIENTE_PARTIDA = {}
 
 
+# Donde dejan sus tablas los juegos: el plugin hiscore (.hi) y la NVRAM propia.
+# shortcut: rutas de ~/.mame fijas (en la cabina ~/.mame es el homepath); si un dia
+# el homepath sale de ahi, preguntarselo a MAME como hace puntajes.py.
+DIRS_TABLAS = [os.path.expanduser("~/.mame/hiscore"),
+               os.path.expanduser("~/.mame/nvram")]
+
+
+def _puntajes_al_dia():
+    """puntajes.py solo lo lanzaba el boton 'actualizar': un record recien hecho
+    no salia en el panel (Q*bert, 2026-11-18).  Se regenera si alguna tabla es
+    mas nueva que el JSON.  Tarda ~10 s en la cabina, y solo tras jugar."""
+    try:
+        hecho = os.path.getmtime(F_PUNTAJES)
+    except OSError:
+        hecho = 0
+    for d in DIRS_TABLAS:
+        for ruta in glob.glob(os.path.join(d, "**"), recursive=True):
+            try:
+                if os.path.getmtime(ruta) > hecho and os.path.isfile(ruta):
+                    ejecutar(["python3", os.path.join(RAIZ_REPO, "creditos",
+                                                      "puntajes.py")], timeout=600)
+                    return
+            except OSError:
+                pass
+
+
 def puntajes():
     """Todos los juegos con su estado de verificacion, para la vista de revision:
       - 'confirmado'  la receta se comparo con el marcador en pantalla
@@ -415,6 +441,7 @@ def puntajes():
     fila, incluidas las de fabrica). Cada juego lleva TODOS sus puestos (con
     'defecto' marcando las filas de fabrica) y 'jugados' (si hay alguna fila que
     no sea de fabrica), para que la vista muestre la tabla completa de cada uno."""
+    _puntajes_al_dia()
     try:
         with open(F_PUNTAJES, encoding="utf-8") as f:
             crudo = json.load(f)
