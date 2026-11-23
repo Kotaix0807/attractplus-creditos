@@ -271,7 +271,7 @@ ver la sección 1.6 para el motivo de que sea global.
 `insertar(e)`, `ya_arranco(e)`, el bloque `GRABAR`/`paso_grabacion()`, y el
 bloque `TECLA`/`paso_tecla()`/`tecla_para()`. Ver secciones 1.7 y 1.8.
 
-**Paso 10 — definir `por_frame()` (líneas ~794-1068).** La función que hace
+**Paso 10 — definir los pasos (`paso.*`) y `por_frame()`.** La función que hace
 todo el trabajo periódico. Ver la sección 1.9, la más larga de todas.
 
 **Paso 11 — montar el vigilante del botón de moneda y el cerrojo
@@ -514,6 +514,29 @@ sumaría al nuevo.
 
 Esta es la función que MAME llama una vez por fotograma emulado (vía
 `emu.add_machine_frame_notifier`). Se ejecuta siempre en el mismo orden:
+
+> **Desde el 2026-11-23 `por_frame()` sólo llama a pasos con nombre**, uno por
+> bloque, en la tabla `paso` (los cuerpos son los de siempre, sin cambios de
+> comportamiento: comprobado en la cabina, mismo registro en 8 escenarios y en
+> `aviso_mame.sh`). El orden, que importa:
+>
+> 1. `paso_grabacion()` / `paso_tecla()` (si hay modo de grabación)
+> 2. `paso.panel(e)` — órdenes del panel; si devuelve `true` (salir) el frame acaba ahí.
+>    Luego `procesar_pulsos_panel()`
+> 3. `paso.vida_freeplay(e)` — free play por vida (Gauntlet)
+> 4. `paso.arranque(e)` — arranque tapado y barrido adelantado
+> 5. `paso.comprobar_moneda(e)` — la moneda cobrada ¿llegó? si no, se devuelve
+> 6. `insertar(e)` si hay inserción en marcha (`empezar_insercion(e)` la arranca)
+> 7. `paso.moneda_del_jugador(e)` — el gancho de la moneda física
+> 8. `e.cerrojo.frame()` — después de contar la moneda
+> 9. `paso.tope_otra_ranura(e)`, `paso.gracia_barrido(e)`, `paso.creditos_por_moneda(e)`
+> 10. `paso.switch_monedero(e)`, `paso.creditos_dentro(e)` — ficheros para el Arduino
+> 11. `paso.cuenta(e, s1, s2)` — lo que el juego se lleva (exacto o estimado);
+>     dentro, `paso.freeplay_escritura(e)` y `paso.freeplay_ram(e)`
+> 12. reloj del mensaje, y `paso.aviso(e, s1, s2)` — el cuadro de salida
+>
+> La lista numerada de abajo describe los bloques originales y no cubre el
+> panel ni el free play.
 
 1. **Modos de grabación.** Si `GRABAR` existe, `paso_grabacion()`. Si
    `TECLA` existe, `paso_tecla()`. Estos dos no dependen de nada de lo que

@@ -1,29 +1,40 @@
--- creditos.lua - el lado MAME del monedero de la cabina.
+-- creditos.lua - lo que corre DENTRO de MAME en cada partida de la cabina.
 --
--- Hace tres cosas:
---   1. al arrancar el juego, mete los creditos que el frontend haya pedido
---   2. durante la partida lleva la cuenta del monedero: descuenta lo que el
---      juego se lleva de verdad (las pulsaciones de START), no lo que se mete
---   3. si el jugador va a salir dejando creditos dentro de la maquina, frena la
---      salida y le avisa con un cuadro en pantalla (ver aviso.lua)
+-- La cabina va con MONEDAS DE VERDAD: la moneda entra sola en el emulador, como
+-- en una placa real. Este script la acompana:
+--   1. tapa el arranque: pantalla en negro y emulador acelerado mientras la
+--      placa hace su test, con la ranura cerrada (ajustes por juego en
+--      arranque.dat)
+--   2. deja la tarifa que toca (1 moneda/1 credito o free play, del panel) y
+--      quita los creditos que la NVRAM traiga de la sesion anterior
+--   3. cuenta las monedas y los creditos (exacto en los juegos de creditos.dat)
+--      y se lo dice al Arduino: rele del monedero, display y LEDs
+--   4. si el jugador va a salir dejando creditos dentro, frena la salida y le
+--      avisa con un cuadro (aviso.lua)
+--   5. atiende las ordenes del panel web (creditos, salir, joystick virtual)
+-- El monedero compartido con el frontend (GA_MONEDERO=1) sigue aqui, apagado.
 --
--- La segunda es la que evita perder creditos: el monedero vive en un fichero
--- (ver monedero.lua) que leen y escriben tanto el plugin del frontend como
--- este script, asi que al salir de la partida el saldo que queda es el bueno.
+-- Lo lanza el emulador de Attract-Mode Plus (config/cabina/groovymame.cfg):
+--   mame pacman -autoboot_script creditos.lua -autoboot_delay 0
+-- El retardo es 0 a proposito: con retardo, las monedas metidas en esos
+-- segundos entraban gratis y sin contar (ver CLAUDE.md, «El arranque tapado»).
 --
--- Uso desde el frontend (Attract-Mode Plus + plugin Creditos.nut):
---   mame pacman -autoboot_script creditos.lua -autoboot_delay 6
---
--- Uso a mano:
---   GA_CREDITOS=3 mame pacman -autoboot_script creditos.lua -autoboot_delay 6
---   echo 3 > ~/.attract/creditos.txt   # equivalente, por el fichero
---
--- IMPORTANTE, comprobado midiendo con Pac-Man:
---   * -autoboot_delay 6 o mas. Con 3 el juego aun estaba inicializando y se
---     perdian monedas silenciosamente (entraban 1 de 3, o ninguna).
---   * Un pulso de 4-8 frames basta. No hace falta mas.
---   * MONEDAS NO SON CREDITOS. Pac-Man venia con el DIP en 1 moneda = 2
---     creditos, asi que 3 monedas daban CREDIT 6. De eso se encarga GA_TARIFA.
+-- Mapa del fichero (busca el texto entre comillas):
+--   "Variables de entorno"        las GA_* (la mayoria tambien en arranque.dat)
+--   "El panel web"                ficheros de ~/.attract que lee y escribe
+--   "1. La cuenta"                monedero compartido (apagado por defecto)
+--   "2. La entrada de moneda"     el campo COIN1 de esta maquina
+--   "3. La tarifa"                DIP de tarifa y FREE PLAY, con sus tablas
+--                                 por juego (VIDA_FREEPLAY, ESCRIBIR_FREEPLAY,
+--                                 FREEPLAY_NADA, FREEPLAY_TAP, FREEPLAY_COINAGE)
+--   "4. Estado"                   GA_ESTADO: todo el estado, en un sitio
+--   "insercion automatica"        la maquina que pulsa la moneda (insertar)
+--   "Joystick virtual del panel"  y los LEDs del juego (BOTONES_USADOS)
+--   "El bucle de cada frame"      por_frame() y sus pasos (tabla 'paso')
+--   "la cuenta del monedero"      a partir de aqui, el montaje: se ejecuta una
+--                                 vez al arrancar y prepara lo que usan los pasos
+--   "--- arranque tapado ---"     fin_del_arranque()
+--   "lo que se pinta encima"      rotulos y cuadro sobre el juego
 --
 -- Variables de entorno (todas opcionales):
 --   GA_MONEDERO  1 para el monedero compartido con el frontend. Apagado por
@@ -83,9 +94,8 @@
 --   auto  no toca el DIP; lee la tarifa que haya y ajusta las monedas.
 --   off   una moneda por credito, sin mirar los DIP.
 --
--- Nota: -autoboot_delay ya espera N segundos antes de ejecutar este script.
--- Usalo para dar tiempo al test de RAM/ROM de la placa. GA_ESPERA es un ajuste
--- fino adicional por si algun juego concreto necesita mas margen.
+-- Nota: GA_ESPERA retrasa el primer pulso de moneda que inserta el propio
+-- script (solo en el modo monedero, o el free play por moneda).
 
 local function num(nombre, defecto)
 	-- 'nombre' puede venir nil: hay ajustes que solo existen en arranque.dat y
@@ -1090,9 +1100,39 @@ GA_ESTADO = {
 	leer_salir  = nil,   -- se pueden sustituir para probar sin teclado
 	leer_start1 = nil,
 	leer_start2 = nil,
+
+	-- Lo que se rellena mas abajo, segun el juego y el modo. Se declara aqui
+	-- para tener TODO el estado a la vista (un campo a nil no ocupa nada).
+	limpiar   = nil,   -- barrido: quita los creditos que la maquina trae puestos
+	gracia    = nil,   -- frames en que se sigue barriendo tras el arranque (Defender)
+	gracia_veces0 = nil, gracia_barridas = nil,
+	cred_space = nil,  -- espacio de memoria del contador (no siempre :maincpu)
+	cpm_prev  = nil,   -- creditos por moneda medidos en esta placa
+	cpm_visto = nil,
+	creditos_juego_ultimo = nil,   -- ultimo numero escrito para el display
+	aviso_led_ultimo = nil,        -- ultima pista de LED escrita para el aviso
+	leer_start_fisico = nil, leer_dirs = nil,      -- lecturas para el aviso
+	bloquear_start = nil, soltar_start = nil,     -- START cerrado mientras avisa
+	pulsos_panel = nil, -- pulsos del joystick virtual del panel, por soltar
+	-- free play (ver la seccion de free play):
+	freeplay_ram = nil, freeplay_n = nil,          -- reponer el credito por moneda
+	freeplay_intento = nil, freeplay_cooldown = nil,
+	freeplay_prueba = nil, freeplay_fallos = nil,
+	fp_escribir = nil, -- free play por escritura directa (btime, ddragon, ssriders)
+	fp_taps   = nil,   -- free play por tap de lectura (dkong3)
+	vida_peg  = nil, vida_space = nil,             -- free play por vida (Gauntlet)
+	tope2     = nil,   -- tope de la otra ranura en START-moneda (ssriders P2)
+	moneda_gratis = nil, -- los START operan la moneda: no apuntar ingresos
+	pintor    = nil,   -- lo que se dibuja encima del juego cada frame
 }
 
 -- --- insercion automatica al arrancar ---
+-- Pone en marcha la maquina de insertar() con lo que haya en e.restantes. El
+-- reloj vuelve a 0: si no, la primera pulsacion duraria 0 frames.
+local function empezar_insercion(e)
+	e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0
+end
+
 local function insertar(e)
 	e.reloj = e.reloj + 1
 
@@ -1484,84 +1524,85 @@ if TECLA then
 	end)
 end
 
-local function por_frame()
-	local e = GA_ESTADO
+-- ---------------------------------------------------------------
+-- El bucle de cada frame, partido en pasos. por_frame() de abajo los
+-- llama EN ORDEN, y el orden importa (cada paso lo explica): por ejemplo,
+-- el cerrojo se ajusta despues de contar la moneda, y la gracia del
+-- barrido va despues del gancho de la moneda.
+-- ---------------------------------------------------------------
+local paso = {}
 
-	if GRABAR then paso_grabacion() end
-	if TECLA then paso_tecla() end
-
-	-- Ordenes del panel web (ver docs/panel.md). 'salir' cierra la maquina igual
-	-- que el aviso; 'insertar N' reutiliza la maquina de insertar() -- fija
-	-- restantes y arranca el pulso -- para meter N creditos en la partida en
-	-- curso. Se hace con set_value (un OR con la secuencia fisica), asi que NO lo
-	-- ve el detector de monedas de la linea de abajo: son creditos gratis, no se
-	-- cobran al monedero. Por eso se apuntan aparte, como evento 'panel'.
-	if PANEL_CMD then
-		local ordenes = leer_panel_cmd()
-		if ordenes then
-			for _, orden in ipairs(ordenes) do
-				if orden == 'salir' then
-					log('panel: salir del juego')
-					manager.machine:exit()
-					return
-				else
-					local ctrl = orden:match('^pulsar%s+(%S+)$')
-					local n = tonumber(orden:match('^insertar%s+(%d+)$') or '')
-					if ctrl then
-						if e.arranque then
-							log('panel: "pulsar %s" ignorado, la placa aun arranca', ctrl)
-						else
-							pulsar_control(ctrl)
-						end
-					elseif n and n > 0 and e.campo then
-						e.gracia = nil   -- creditos pedidos por el panel: no son NVRAM, no se barren
-						if e.arranque then
-							log('panel: "insertar %d" ignorado, la placa aun arranca', n)
-						elseif emu.romname() == 'mwalk' and e.leer_ram and e.escribir_ram then
-							-- Moonwalker (Sega System 18) IGNORA set_value en su COIN1: la
-							-- moneda simulada no acredita (medido: el bit del puerto no se
-							-- mueve y no cambia ni un byte de RAM, mientras START1 si).
-							-- La fisica entra por la secuencia real, irreproducible desde
-							-- Lua. Aqui el credito se ESCRIBE en su contador verificado
-							-- (ff2000, creditos.dat): probado que pega y que START lo
-							-- consume. Caso unico y a mano a proposito.
-							local ok, v = pcall(e.leer_ram)
-							local base = (ok and type(v) == 'number') and v or 0
-							local nuevo = math.min(base + n, TOPE)
-							pcall(e.escribir_ram, nuevo)
-							registrar_moneda('panel', n)
-							-- Que el aviso de salida tambien cuente estos: el jugador
-							-- no debe irse dejando creditos, los metiera con moneda o
-							-- con el +1 del panel (decision de Eloy 2026-10-31).
-							if e.aviso then e.aviso.entra(n) end
-							log('panel: %d credito(s) escritos en ff2000 (mwalk, coin no simulable): %d -> %d', n, base, nuevo)
-						else
-							e.restantes = (e.restantes or 0) + n
-							if e.fase == 'fin' then
-								e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
-								e.reloj = 0
-							end
-							registrar_moneda('panel', n)
-							if e.aviso then e.aviso.entra(n) end   -- cuenta para el aviso de salida
-							log('panel: inyectar %d credito(s) en la partida', n)
-						end
+-- Ordenes del panel web (ver docs/panel.md). 'salir' cierra la maquina igual
+-- que el aviso; 'insertar N' reutiliza la maquina de insertar() -- fija
+-- restantes y arranca el pulso -- para meter N creditos en la partida en
+-- curso. Se hace con set_value (un OR con la secuencia fisica), asi que NO lo
+-- ve el detector de monedas de la linea de abajo: son creditos gratis, no se
+-- cobran al monedero. Por eso se apuntan aparte, como evento 'panel'.
+function paso.panel(e)
+	local ordenes = leer_panel_cmd()
+	if ordenes then
+		for _, orden in ipairs(ordenes) do
+			if orden == 'salir' then
+				log('panel: salir del juego')
+				manager.machine:exit()
+				return true   -- la maquina se cierra: no sigue el frame
+			else
+				local ctrl = orden:match('^pulsar%s+(%S+)$')
+				local n = tonumber(orden:match('^insertar%s+(%d+)$') or '')
+				if ctrl then
+					if e.arranque then
+						log('panel: "pulsar %s" ignorado, la placa aun arranca', ctrl)
 					else
-						log('panel: orden ignorada: %s', orden)
+						pulsar_control(ctrl)
 					end
+				elseif n and n > 0 and e.campo then
+					e.gracia = nil   -- creditos pedidos por el panel: no son NVRAM, no se barren
+					if e.arranque then
+						log('panel: "insertar %d" ignorado, la placa aun arranca', n)
+					elseif emu.romname() == 'mwalk' and e.leer_ram and e.escribir_ram then
+						-- Moonwalker (Sega System 18) IGNORA set_value en su COIN1: la
+						-- moneda simulada no acredita (medido: el bit del puerto no se
+						-- mueve y no cambia ni un byte de RAM, mientras START1 si).
+						-- La fisica entra por la secuencia real, irreproducible desde
+						-- Lua. Aqui el credito se ESCRIBE en su contador verificado
+						-- (ff2000, creditos.dat): probado que pega y que START lo
+						-- consume. Caso unico y a mano a proposito.
+						local ok, v = pcall(e.leer_ram)
+						local base = (ok and type(v) == 'number') and v or 0
+						local nuevo = math.min(base + n, TOPE)
+						pcall(e.escribir_ram, nuevo)
+						registrar_moneda('panel', n)
+						-- Que el aviso de salida tambien cuente estos: el jugador
+						-- no debe irse dejando creditos, los metiera con moneda o
+						-- con el +1 del panel (decision de Eloy 2026-10-31).
+						if e.aviso then e.aviso.entra(n) end
+						log('panel: %d credito(s) escritos en ff2000 (mwalk, coin no simulable): %d -> %d', n, base, nuevo)
+					else
+						e.restantes = (e.restantes or 0) + n
+						if e.fase == 'fin' then
+							empezar_insercion(e)
+						end
+						registrar_moneda('panel', n)
+						if e.aviso then e.aviso.entra(n) end   -- cuenta para el aviso de salida
+						log('panel: inyectar %d credito(s) en la partida', n)
+					end
+				else
+					log('panel: orden ignorada: %s', orden)
 				end
 			end
 		end
-		procesar_pulsos_panel()   -- cada frame: suelta los pulsos que vencieron
 	end
+end
 
-	-- Free play por VIDA (Gauntlet): no hay credito, se mantiene la vida de los
-	-- jugadores activos pegada a VIDA_OBJETIVO para que no mueran. Solo pasado el
-	-- arranque; solo cuando la vida esta entre 1 y objetivo-1 (no activa slots
-	-- muertos ni pisa la comida que sube por encima). u16 big-endian.
-	-- SOLO tras una moneda del jugador (e.metidos>0): durante la ATRACCION el
-	-- demo usa estos mismos slots de vida y drena; pegarlos a 999 dejaba al demo
-	-- inmortal, no terminaba, y la placa no dejaba empezar partida. Medido:
-	-- sin moneda, E4 iba 799->749 y D8/E0 aparecian en el demo. (2026-11-02)
+-- Free play por VIDA (Gauntlet): no hay credito, se mantiene la vida de los
+-- jugadores activos pegada a VIDA_OBJETIVO para que no mueran. Solo pasado el
+-- arranque; solo cuando la vida esta entre 1 y objetivo-1 (no activa slots
+-- muertos ni pisa la comida que sube por encima). u16 big-endian.
+-- SOLO tras una moneda del jugador (e.metidos>0): durante la ATRACCION el
+-- demo usa estos mismos slots de vida y drena; pegarlos a 999 dejaba al demo
+-- inmortal, no terminaba, y la placa no dejaba empezar partida. Medido:
+-- sin moneda, E4 iba 799->749 y D8/E0 aparecian en el demo. (2026-11-02)
+function paso.vida_freeplay(e)
 	if e.vida_peg and not e.arranque and e.metidos > 0 then
 		local sp = e.vida_space
 		for _, a in ipairs(e.vida_peg) do
@@ -1571,7 +1612,9 @@ local function por_frame()
 			end
 		end
 	end
+end
 
+function paso.arranque(e)
 	if e.arranque then
 		e.arranque_frames = e.arranque_frames + 1
 
@@ -1606,10 +1649,12 @@ local function por_frame()
 			fin_del_arranque()
 		end
 	end
+end
 
-	-- Comprobar que la moneda que se cobro llego de verdad al juego. Si la
-	-- placa la tiro (todavia no estaba lista, o el pulso se perdio), se
-	-- devuelve el credito: cobrar por nada es el peor error de todos.
+-- Comprobar que la moneda que se cobro llego de verdad al juego. Si la
+-- placa la tiro (todavia no estaba lista, o el pulso se perdio), se
+-- devuelve el credito: cobrar por nada es el peor error de todos.
+function paso.comprobar_moneda(e)
 	if e.pendiente then
 		local p = e.pendiente
 		local okv, v = pcall(e.leer_ram)
@@ -1663,13 +1708,11 @@ local function por_frame()
 			e.pendiente = nil
 		end
 	end
+end
 
-	if e.fase ~= 'fin' then
-		insertar(e)
-	end
-
-	-- La cuenta corre toda la partida, tambien cuando no se ha insertado nada:
-	-- el jugador puede meter monedas y jugar en cualquier momento.
+-- La cuenta corre toda la partida, tambien cuando no se ha insertado nada:
+-- el jugador puede meter monedas y jugar en cualquier momento.
+function paso.moneda_del_jugador(e)
 	if e.pulso_moneda and e.pulso_moneda.frame() then
 		-- El detector lee la secuencia original, asi que esto salta tambien
 		-- con el cerrojo echado: es la unica forma de poder explicarle al
@@ -1756,13 +1799,11 @@ local function por_frame()
 					or '')
 		end
 	end
+end
 
-	-- El cerrojo se ajusta DESPUES de contar la moneda, para que la ultima que
-	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
-	if e.cerrojo then e.cerrojo.frame() end
-
-	-- Tope de la otra ranura en START-moneda (ssriders P2): su START solo mete
-	-- moneda mientras su contador este a 0.
+-- Tope de la otra ranura en START-moneda (ssriders P2): su START solo mete
+-- moneda mientras su contador este a 0.
+function paso.tope_otra_ranura(e)
 	local t2 = e.tope2
 	if t2 then
 		local ok, v = pcall(t2.space.read_u8, t2.space, t2.dir)
@@ -1772,18 +1813,20 @@ local function por_frame()
 			t2.puesto = quiere
 		end
 	end
+end
 
-	-- La gracia del barrido. Defender (Williams) copia los creditos de su CMOS
-	-- a la RAM un pelin DESPUES de que demos el arranque por terminado (medido:
-	-- fin en el frame 720 con a037=0, y el 8 de la NVRAM aparece en el 721-750),
-	-- asi que el barrido de un solo disparo los veia a 0 y se quedaban puestos.
-	-- Mientras el jugador no haya metido NI UNA moneda, un credito que aparezca
-	-- en esta ventana solo puede venir de la NVRAM: se barre igual. La primera
-	-- moneda real desarma la gracia: lo del jugador es suyo, y un bonus
-	-- legitimo (Missile, 4 monedas) llega siempre con metidos > 0, o sea que
-	-- jamas se toca. Va DESPUES del gancho de la moneda a proposito: asi, si
-	-- una placa acreditara en el mismo frame de la pulsacion, metidos ya esta
-	-- contado y la gracia se desarma antes de poder barrer lo del jugador.
+-- La gracia del barrido. Defender (Williams) copia los creditos de su CMOS
+-- a la RAM un pelin DESPUES de que demos el arranque por terminado (medido:
+-- fin en el frame 720 con a037=0, y el 8 de la NVRAM aparece en el 721-750),
+-- asi que el barrido de un solo disparo los veia a 0 y se quedaban puestos.
+-- Mientras el jugador no haya metido NI UNA moneda, un credito que aparezca
+-- en esta ventana solo puede venir de la NVRAM: se barre igual. La primera
+-- moneda real desarma la gracia: lo del jugador es suyo, y un bonus
+-- legitimo (Missile, 4 monedas) llega siempre con metidos > 0, o sea que
+-- jamas se toca. Va DESPUES del gancho de la moneda a proposito: asi, si
+-- una placa acreditara en el mismo frame de la pulsacion, metidos ya esta
+-- contado y la gracia se desarma antes de poder barrer lo del jugador.
+function paso.gracia_barrido(e)
 	if (not e.arranque) and e.gracia then
 		-- Desarma con CUALQUIER credito legitimo sin gancho: moneda contada
 		-- (metidos), pulsos de insercion en cola (restantes: panel y monedero
@@ -1811,10 +1854,12 @@ local function por_frame()
 			end
 		end
 	end
+end
 
-	-- Cuantos creditos da una moneda DE VERDAD en esta placa (subida de 1..4 en
-	-- un solo frame; los saltos grandes son reinicios o free play). Lo usa
-	-- maquina_llena para no dejar entrar una moneda que no cabe entera.
+-- Cuantos creditos da una moneda DE VERDAD en esta placa (subida de 1..4 en
+-- un solo frame; los saltos grandes son reinicios o free play). Lo usa
+-- maquina_llena para no dejar entrar una moneda que no cabe entera.
+function paso.creditos_por_moneda(e)
 	if (not e.arranque) and (not FREEPLAY) and e.memoria and e.leer_ram then
 		local okc, vc = pcall(e.leer_ram)
 		if okc and (type(vc) == 'number') then
@@ -1827,13 +1872,15 @@ local function por_frame()
 			e.cpm_prev = vc
 		end
 	end
+end
 
-	-- Estado del monedero para el demonio del Arduino, por CICLO DE VIDA (pedido
-	-- por Eloy 2026-09-28): '0' mientras la placa arranca (y con MAME apagado /
-	-- en el menu, que es el ultimo valor que se dejo), '1' cuando el juego ya
-	-- esta en marcha. El '0' de salir de MAME lo pone el notificador de parada.
-	-- Se escribe SOLO cuando cambia y de forma ATOMICA. GA_MONEDERO_SWITCH=off
-	-- lo desactiva. (El Lua de MAME no tiene sockets: la via es un fichero.)
+-- Estado del monedero para el demonio del Arduino, por CICLO DE VIDA (pedido
+-- por Eloy 2026-09-28): '0' mientras la placa arranca (y con MAME apagado /
+-- en el menu, que es el ultimo valor que se dejo), '1' cuando el juego ya
+-- esta en marcha. El '0' de salir de MAME lo pone el notificador de parada.
+-- Se escribe SOLO cuando cambia y de forma ATOMICA. GA_MONEDERO_SWITCH=off
+-- lo desactiva. (El Lua de MAME no tiene sockets: la via es un fichero.)
+function paso.switch_monedero(e)
 	if SWITCH then
 		-- '0' mientras la placa arranca; '1' con el juego en marcha. El '0' de
 		-- "MAME apagado / menu" NO se puede poner desde aqui: al salir, MAME
@@ -1856,10 +1903,12 @@ local function por_frame()
 				or 'juego en marcha')
 		end
 	end
+end
 
-	-- Creditos dentro de la maquina, para el display del Arduino. Mientras la
-	-- placa arranca son 0 (la moneda esta cerrada y la RAM aun no es de fiar).
-	-- Sin aviso (GA_AVISO=0) solo queda la lectura exacta de la RAM.
+-- Creditos dentro de la maquina, para el display del Arduino. Mientras la
+-- placa arranca son 0 (la moneda esta cerrada y la RAM aun no es de fiar).
+-- Sin aviso (GA_AVISO=0) solo queda la lectura exacta de la RAM.
+function paso.creditos_dentro(e)
 	if CREDITOS_JUEGO then
 		local n = 0
 		if not e.arranque then
@@ -1875,10 +1924,106 @@ local function por_frame()
 			log('creditos dentro -> %d', n)
 		end
 	end
+end
 
-	local s1 = e.pulso_start1 and e.pulso_start1.frame() or false
-	local s2 = e.pulso_start2 and e.pulso_start2.frame() or false
+-- Free play por ESCRITURA (btime): el pulso de moneda no basta porque la
+-- placa no admite creditos con la partida en curso. Cuando el contador
+-- baja, se re-escribe a 'valor' y se dispara el byte que la placa vigila
+-- (si no, el credito escrito no surte efecto). Verificado por Eloy.
+function paso.freeplay_escritura(e)
+	if e.fp_escribir and not e.arranque then
+		local w = e.fp_escribir
+		-- pulso_inicial (ddragon): escribir el contador NO saca del modo
+		-- atraccion; la placa solo acepta creditos corriendo su rutina de moneda.
+		-- Con el contador a 0 (atraccion, al arrancar o tras un game over) se mete
+		-- UNA moneda por la ranura y no se escribe todavia; al subir el contador
+		-- (ya en el titulo) se mantiene por escritura, como el resto. Reutiliza la
+		-- maquina de insertar() (e.restantes/e.fase).
+		local listo = true
+		local ok, v = pcall(w.space.read_u8, w.space, w.contador)
+		if w.pulso_inicial and ok and type(v) == 'number' and v == 0 then
+			listo = false
+			if e.fase == 'fin' then
+				e.restantes = 1
+				empezar_insercion(e)
+			end
+		end
+		if listo and ok and type(v) == 'number' and v < (w.umbral or w.tope) then
+			pcall(w.space.write_u8, w.space, w.contador, w.valor)
+			if w.disparo then
+				pcall(w.space.write_u8, w.space, w.disparo, w.disparo_valor)
+			end
+		end
+		-- 2o contador independiente (ssriders: slots de moneda separados, P2
+		-- tiene su propio credito en w.contador2; sin esto P2 no puede entrar)
+		if listo and w.contador2 then
+			local ok2, v2 = pcall(w.space.read_u8, w.space, w.contador2)
+			if ok2 and type(v2) == 'number' and v2 < (w.umbral or w.tope) then
+				pcall(w.space.write_u8, w.space, w.contador2, w.valor)
+			end
+		end
+	end
+end
 
+-- Free play por RAM: si el jugador gasto el credito (START), se le
+-- repone. Asi siempre hay con que jugar sin meter monedas. Solo en
+-- direcciones comprobadas y una vez pasado el arranque.
+function paso.freeplay_ram(e)
+	if e.freeplay_ram and not e.arranque then
+		local objetivo = e.freeplay_n or 1
+		local okf, v = pcall(e.leer_ram)
+		-- Free play por MONEDA, no por escritura. Escribir el contador cada frame
+		-- peleaba con el codigo del juego (que gestiona ese byte durante la partida)
+		-- y corrompia el video: dkong3 pintaba una barra de basura sobre el juego.
+		-- Meter la moneda por la ranura pasa por el codigo del propio juego, asi el
+		-- credito queda consistente y no se corrompe nada (verificado en dkong3).
+		-- Solo si la maquina de insercion esta libre.
+		if okf and type(v) == 'number' and e.fase == 'fin' then
+			-- Resultado del intento ANTERIOR (ya termino la insercion): si la moneda
+			-- no subio el contador, la placa la ignora ahora (partida en curso), asi
+			-- que se espera FREEPLAY_REINTENTO antes de volver a probar en vez de
+			-- pulsar sin fin. Al volver al titulo la placa ya acepta y repone a N.
+			if e.freeplay_intento then
+				if v > e.freeplay_intento then
+					e.freeplay_cooldown = 0
+					if e.freeplay_prueba then
+						e.freeplay_prueba = nil
+						log('free play por moneda OK en %s', emu.romname())
+					end
+				else
+					e.freeplay_cooldown = FREEPLAY_REINTENTO
+					-- Red de seguridad (direcciones importadas): si meter monedas no sube
+					-- el contador, la direccion de lectura no sirve; se desiste.
+					if e.freeplay_prueba then
+						e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
+						if e.freeplay_fallos >= 10 then
+							e.freeplay_ram = false
+							log('free play: meter monedas no sube el contador en %s, lo dejo', emu.romname())
+						end
+					end
+				end
+				e.freeplay_intento = nil
+			end
+
+			if (e.freeplay_cooldown or 0) > 0 then
+				e.freeplay_cooldown = e.freeplay_cooldown - 1
+			-- Regla de Eloy (2026-11-16): se recarga cuando el contador queda
+			-- en 2 o menos (con la tarifa generosa, una moneda repone de sobra).
+			-- UNA pulsacion: antes era objetivo - v, que con v=2 daba 0 y no
+			-- pulsaba nada (por eso frogger/dkong3 se quedaban en 1-2). Con la
+			-- tarifa generosa (FREEPLAY_COINAGE) una moneda repone de sobra.
+			elseif e.freeplay_ram and v <= objetivo then
+				e.restantes = 1
+				empezar_insercion(e)
+				e.freeplay_intento = v   -- valor antes de pulsar, para medir el resultado
+			end
+		end
+	end
+end
+
+-- Lo que el juego se lleva: exacto si se conoce la direccion de los
+-- creditos (memoria), estimado por los START si no.
+function paso.cuenta(e, s1, s2)
 	if e.sincro then
 		-- Mientras se escribe el monedero en la RAM no se cuenta nada: los
 		-- cambios de esos frames son nuestros, no del jugador.
@@ -1888,7 +2033,7 @@ local function por_frame()
 				-- No se pudo escribir: se vuelve al metodo de siempre
 				log('vuelvo a insertar monedas')
 				e.restantes = MONEDAS
-				e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
+				empezar_insercion(e)
 			end
 			e.sincro = nil
 		end
@@ -1930,96 +2075,9 @@ local function por_frame()
 		-- es lo que el juego se ha llevado de verdad. Nada de estimar.
 		e.memoria.frame()
 
-		-- Free play por ESCRITURA (btime): el pulso de moneda no basta porque la
-		-- placa no admite creditos con la partida en curso. Cuando el contador
-		-- baja, se re-escribe a 'valor' y se dispara el byte que la placa vigila
-		-- (si no, el credito escrito no surte efecto). Verificado por Eloy.
-		if e.fp_escribir and not e.arranque then
-			local w = e.fp_escribir
-			-- pulso_inicial (ddragon): escribir el contador NO saca del modo
-			-- atraccion; la placa solo acepta creditos corriendo su rutina de moneda.
-			-- Con el contador a 0 (atraccion, al arrancar o tras un game over) se mete
-			-- UNA moneda por la ranura y no se escribe todavia; al subir el contador
-			-- (ya en el titulo) se mantiene por escritura, como el resto. Reutiliza la
-			-- maquina de insertar() (e.restantes/e.fase).
-			local listo = true
-			local ok, v = pcall(w.space.read_u8, w.space, w.contador)
-			if w.pulso_inicial and ok and type(v) == 'number' and v == 0 then
-				listo = false
-				if e.fase == 'fin' then
-					e.restantes = 1
-					e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
-				end
-			end
-			if listo and ok and type(v) == 'number' and v < (w.umbral or w.tope) then
-				pcall(w.space.write_u8, w.space, w.contador, w.valor)
-				if w.disparo then
-					pcall(w.space.write_u8, w.space, w.disparo, w.disparo_valor)
-				end
-			end
-			-- 2o contador independiente (ssriders: slots de moneda separados, P2
-			-- tiene su propio credito en w.contador2; sin esto P2 no puede entrar)
-			if listo and w.contador2 then
-				local ok2, v2 = pcall(w.space.read_u8, w.space, w.contador2)
-				if ok2 and type(v2) == 'number' and v2 < (w.umbral or w.tope) then
-					pcall(w.space.write_u8, w.space, w.contador2, w.valor)
-				end
-			end
-		end
+		paso.freeplay_escritura(e)
 
-		-- Free play por RAM: si el jugador gasto el credito (START), se le
-		-- repone. Asi siempre hay con que jugar sin meter monedas. Solo en
-		-- direcciones comprobadas y una vez pasado el arranque.
-		if e.freeplay_ram and not e.arranque then
-			local objetivo = e.freeplay_n or 1
-			local okf, v = pcall(e.leer_ram)
-			-- Free play por MONEDA, no por escritura. Escribir el contador cada frame
-			-- peleaba con el codigo del juego (que gestiona ese byte durante la partida)
-			-- y corrompia el video: dkong3 pintaba una barra de basura sobre el juego.
-			-- Meter la moneda por la ranura pasa por el codigo del propio juego, asi el
-			-- credito queda consistente y no se corrompe nada (verificado en dkong3).
-			-- Solo si la maquina de insercion esta libre.
-			if okf and type(v) == 'number' and e.fase == 'fin' then
-				-- Resultado del intento ANTERIOR (ya termino la insercion): si la moneda
-				-- no subio el contador, la placa la ignora ahora (partida en curso), asi
-				-- que se espera FREEPLAY_REINTENTO antes de volver a probar en vez de
-				-- pulsar sin fin. Al volver al titulo la placa ya acepta y repone a N.
-				if e.freeplay_intento then
-					if v > e.freeplay_intento then
-						e.freeplay_cooldown = 0
-						if e.freeplay_prueba then
-							e.freeplay_prueba = nil
-							log('free play por moneda OK en %s', emu.romname())
-						end
-					else
-						e.freeplay_cooldown = FREEPLAY_REINTENTO
-						-- Red de seguridad (direcciones importadas): si meter monedas no sube
-						-- el contador, la direccion de lectura no sirve; se desiste.
-						if e.freeplay_prueba then
-							e.freeplay_fallos = (e.freeplay_fallos or 0) + 1
-							if e.freeplay_fallos >= 10 then
-								e.freeplay_ram = false
-								log('free play: meter monedas no sube el contador en %s, lo dejo', emu.romname())
-							end
-						end
-					end
-					e.freeplay_intento = nil
-				end
-
-				if (e.freeplay_cooldown or 0) > 0 then
-					e.freeplay_cooldown = e.freeplay_cooldown - 1
-				-- Regla de Eloy (2026-11-16): se recarga cuando el contador queda
-				-- en 2 o menos (con la tarifa generosa, una moneda repone de sobra).
-				-- UNA pulsacion: antes era objetivo - v, que con v=2 daba 0 y no
-				-- pulsaba nada (por eso frogger/dkong3 se quedaban en 1-2). Con la
-				-- tarifa generosa (FREEPLAY_COINAGE) una moneda repone de sobra.
-				elseif e.freeplay_ram and v <= objetivo then
-					e.restantes = 1
-					e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
-					e.freeplay_intento = v   -- valor antes de pulsar, para medir el resultado
-				end
-			end
-		end
+		paso.freeplay_ram(e)
 
 		if e.memoria.consumido > e.consumido_visto then
 			local n = e.memoria.consumido - e.consumido_visto
@@ -2038,12 +2096,9 @@ local function por_frame()
 		registrar_moneda('consumido', n)   -- partida jugada (estimada por START)
 		if e.aviso then e.aviso.consume(n) end
 	end
+end
 
-	if e.mensaje_reloj > 0 then
-		e.mensaje_reloj = e.mensaje_reloj - 1
-		if e.mensaje_reloj == 0 then e.mensaje = nil end
-	end
-
+function paso.aviso(e, s1, s2)
 	if e.aviso then
 		-- "seguir jugando" es cualquier cosa que signifique que el jugador
 		-- esta a lo suyo: darle a start. Se lee el START FISICO (por la
@@ -2091,6 +2146,41 @@ local function por_frame()
 			end
 		end
 	end
+end
+
+local function por_frame()
+	local e = GA_ESTADO
+
+	if GRABAR then paso_grabacion() end
+	if TECLA then paso_tecla() end
+	if PANEL_CMD then
+		if paso.panel(e) then return end
+		procesar_pulsos_panel()   -- cada frame: suelta los pulsos que vencieron
+	end
+	paso.vida_freeplay(e)
+	paso.arranque(e)
+	paso.comprobar_moneda(e)
+	if e.fase ~= 'fin' then insertar(e) end
+	paso.moneda_del_jugador(e)
+	-- El cerrojo se ajusta DESPUES de contar la moneda, para que la ultima que
+	-- le queda al jugador entre y el bloqueo empiece en ese mismo frame.
+	if e.cerrojo then e.cerrojo.frame() end
+	paso.tope_otra_ranura(e)
+	paso.gracia_barrido(e)
+	paso.creditos_por_moneda(e)
+	paso.switch_monedero(e)
+	paso.creditos_dentro(e)
+
+	local s1 = e.pulso_start1 and e.pulso_start1.frame() or false
+	local s2 = e.pulso_start2 and e.pulso_start2.frame() or false
+	paso.cuenta(e, s1, s2)
+
+	if e.mensaje_reloj > 0 then
+		e.mensaje_reloj = e.mensaje_reloj - 1
+		if e.mensaje_reloj == 0 then e.mensaje = nil end
+	end
+
+	paso.aviso(e, s1, s2)
 end
 
 -- FREEPLAY_NADA en free play: los START de P1/P2 OPERAN LA MONEDA (pedido por
