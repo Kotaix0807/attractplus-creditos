@@ -1145,11 +1145,20 @@ for _, n in ipairs({
 -- Apunta que botones de accion de P1 EXISTEN en este juego (1..6), para que el
 -- demonio los encienda en el panel. Un juego de 1 boton (p.ej. Centipede, disparo)
 -- deja "1"; sin botones, fichero vacio. Una sola vez al arrancar. Sin el START.
+-- Botones que el juego USA de verdad, cuando no coincide con los que la placa
+-- declara (manda sobre lo declarado, para P1 y P2): mwalk declara 3 y strhoop 4
+-- (el Neo Geo siempre declara A-D) pero se juegan con 2; polepos/outrun llevan
+-- acelerar y frenar en los botones 1 y 2 (en MAME son pedales, no botones).
+local BOTONES_USADOS = { mwalk = 2, strhoop = 2, polepos = 3, outrun = 3 }
+
 local function escribir_botones_juego()
 	if not BOTONES_JUEGO then return end
 	local usados = {}
+	local n_fijo = BOTONES_USADOS[emu.romname and emu.romname() or '']
 	for i = 1, 6 do
-		if campo_de_token('P1_BUTTON' .. i) then usados[#usados + 1] = tostring(i) end
+		if (n_fijo and i <= n_fijo) or (not n_fijo and campo_de_token('P1_BUTTON' .. i)) then
+			usados[#usados + 1] = tostring(i)
+		end
 	end
 	-- P2: su mitad del panel, SOLO en juegos simultaneos (ver P2_SIMULTANEO) y solo
 	-- los botones que el juego define para P2. En 2p por turnos (dkong, kungfum,
@@ -1157,7 +1166,9 @@ local function escribir_botones_juego()
 	-- los canales de P2; un demonio viejo los ignora (no son enteros) y P1 sigue igual.
 	if P2_SIMULTANEO[emu.romname and emu.romname() or ''] then
 		for i = 1, 6 do
-			if campo_de_token('P2_BUTTON' .. i) then usados[#usados + 1] = 'p2:' .. i end
+			if (n_fijo and i <= n_fijo) or (not n_fijo and campo_de_token('P2_BUTTON' .. i)) then
+				usados[#usados + 1] = 'p2:' .. i
+			end
 		end
 	end
 	local f = io.open(BOTONES_JUEGO .. '.tmp', 'wb')
