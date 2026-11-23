@@ -210,7 +210,6 @@ def servicios():
         "panel": _is_active("panel.service", usuario=True),
         "monedero": _is_active("monedero.service", usuario=True),
         "pantalla-auto": _is_active("pantalla-auto.service"),
-        "cloudflared": _is_active("cloudflared.service"),
         "frontend": "activo" if proceso_vivo(
             "attractplus", "attractplus-x11", "attractplus-kms") else "inactivo",
         "x": "activo" if proceso_vivo("Xorg", "X") else "inactivo",
@@ -248,16 +247,14 @@ def arduino():
 
 
 def red():
-    # IP publica: se intenta leer sin salir a internet (no bloquear la peticion).
-    # Si hay cloudflared, el tunel es "activo"/"caido" segun el servicio.
-    tunel = "activo" if _is_active("cloudflared.service") == "activo" else "caido"
+    # IP de salida: se lee sin salir a internet (no bloquear la peticion).
     ip = None
     rc, out, _ = ejecutar(["ip", "-4", "route", "get", "1.1.1.1"], timeout=3)
     if rc == 0:
         for parte in out.split():
             if parte.count(".") == 3:
                 ip = parte
-    return {"ip_publica": ip, "tunel": tunel}
+    return {"ip_publica": ip}
 
 
 _versiones_cache = None

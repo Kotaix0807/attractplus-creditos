@@ -384,9 +384,8 @@ def _medir_compilacion():
 
 def main():
     puerto = entero("puerto", 8808)
-    # 127.0.0.1 por defecto (solo cloudflared local).  Si hay un Pi delante por
-    # cable LAN, se pone en panel.conf la IP de ESE enlace punto-a-punto
-    # (p.ej. escucha=10.55.0.2), nunca una LAN compartida sin confianza.
+    # En la cabina, panel.conf pone la IP del cable con el Pi (escucha=10.55.0.2):
+    # el Pi es la unica entrada.  Nunca una LAN compartida.
     escucha = CONF.get("escucha", "127.0.0.1").strip() or "127.0.0.1"
     # threaded=True para que los streams (SSE, video) no bloqueen al resto.
     app.run(host=escucha, port=puerto, threaded=True)

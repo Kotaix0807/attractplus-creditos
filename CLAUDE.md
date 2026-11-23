@@ -3193,32 +3193,48 @@ backend, Eloy hace la GUI** (la página web). El plano está en `docs/panel.md`,
 es además el **contrato de API** entre los dos.
 
 **Decisiones de Eloy (2026-10-13):**
-- Acceso remoto: **Cloudflare Tunnel** (URL HTTPS, cualquier navegador sin app,
-  auth con Cloudflare Access). La cabina va por 4G/CGNAT, así que un túnel saliente
-  es la única vía de todas formas. Dominio: **dsds.uk** (suyo, hoy sin usar) →
-  `arcade.dsds.uk`.
-- "Encender" en remoto se **omite** por ahora (software no puede encender una
-  máquina apagada; haría falta un enchufe inteligente + BIOS "restore on AC").
-  Se mantienen apagar y reiniciar.
+- Acceso remoto: al principio Cloudflare Tunnel; **el 2026-11-22 Eloy lo cambió
+  por SOLO Tailscale** y Cloudflare nunca llegó a montarse. Ver «Por dónde se
+  entra» más abajo.
+- "Encender": lo hace la Pi por Wake-on-LAN (`POST /api/accion/encender`).
 - "Créditos por juego" = **tarifa en pesos**, en pasos de **$100** (la moneda es
   de $100): $100/jugada = 1 moneda/crédito (lo actual), $200 = 2 monedas/crédito…
 - "Reiniciar monedero" = **reiniciar el demonio/relé** (`systemctl --user restart
   monedero.service`), no poner a cero el conteo.
 
+**Por dónde se entra (2026-11-22): solo por Tailscale, y por ninguna otra IP.**
+
+```
+teléfono (Tailscale) -> nginx (Pi :80, solo 100.64.0.0/10) -> portero (Pi 127.0.0.1:8080) -> cable -> panel (cabina 10.55.0.2:8808)
+```
+
+- **Cabina**: `escucha=10.55.0.2` en `~/.config/panel.conf`, la IP del cable con
+  la Pi. Estaba en `0.0.0.0`, y como la cabina también está en el wifi de casa
+  (`192.168.1.117`), cualquiera de esa red llegaba al panel.
+- **Pi**: el portero escucha en `127.0.0.1`, y nginx (`pi/nginx-panel.conf`)
+  hace `allow 100.64.0.0/10; allow fd7a:115c:a1e0::/48; deny all`. Se filtra en
+  nginx y no con un `bind` a la IP de Tailscale porque esa IP no existe hasta
+  que arranca `tailscaled`.
+- Se entra en `http://arcade-pi/`. El `http://` está bien: Tailscale ya cifra.
+- Verificado desde hp-envy (que está en las dos redes): wifi a la Pi → 403;
+  Pi:8080 y cabina:8808 por el wifi → no responden; por Tailscale → 200.
+- **Ojo:** nginx en el puerto 80 también reenviaba al portero, y estaba abierto a
+  todos. Era una segunda puerta que no aparecía en ningún documento.
+- Copias de antes del cambio: `panel.conf.antes_tailscale` (cabina),
+  `portero.service.antes_tailscale` y `/etc/nginx/default.antes_tailscale` (Pi).
+
 **Arquitectura** (toda en `panel/`, servicio de usuario `panel.service`, corre como
-`arcade`, escucha SOLO en `127.0.0.1`; lo saca al mundo `cloudflared`):
+`arcade`, escucha en `10.55.0.2`; la entrada la pone la Pi):
 - `panel/servidor.py` — Flask, API JSON + login/sesión + CSRF + SSE. **Probado**
   end-to-end con Flask en un venv: 401 sin login, CSRF obligatorio, estado real.
 - `panel/estado.py` — lee cpu/temp/ram/disco/uptime/juego-actual/servicios/arduino
   de `/proc`, `/sys`, `systemctl`, `git`. **Probado** contra el sistema real.
 - `panel/acciones.py` — reboot/poweroff (`sudo -n systemctl`), reiniciar FE y
-  monedero, mantenimiento, pantalla, volumen, gestión de juegos, tarifa, update.
+  monedero, volumen, tarifa, créditos y salir del juego (también con Hypseus).
 - `panel/monedas.py` — agrega `~/.attract/monedas.log` → ingresos = monedas × $100.
-- `panel/simulador.py` — backend DE MENTIRA, **stdlib puro (sin Flask)**, con las
-  mismas rutas `/api/...`: es para que Eloy construya la GUI con la cabina apagada.
-  **Probado**. La GUI pasa al backend real sin cambios.
-- `panel/static/index.html` — página de arranque mínima de ejemplo (la GUI final
-  la hace Eloy); `panel/frontend.sh` — supervisor del frontend.
+- `panel/frontend.sh` — supervisor del frontend.
+- La GUI es de Eloy y la sirve la Pi (`pi/web/`). El 2026-11-22 se quitaron las
+  rutas que ninguna página usaba, el simulador y `panel/static` (ver `docs/panel.md`).
 
 **Dos canales de orden, a propósito.** El Lua de MAME no tiene sockets, y solo
 `creditos.lua` puede tocar el ioport COIN1 o cerrar la máquina. Así que:
@@ -3251,7 +3267,7 @@ cada arranque. Eso es un cambio pendiente en `groovymame.cfg` cuando se use.
 
 **El instalador**: `tarea_panel` (patrón de `tarea_monedero`) instala Flask, copia
 `~/.config/panel.conf` (sin pisarlo), escribe y activa `panel.service`, y **avisa**
-de los pasos de Cloudflare (login/create/route/service) y de enganchar
+de que la entrada se monta en la Pi (`pi/README.md`) y de enganchar
 `panel/frontend.sh` — no reescribe la cadena de arranque de GroovyArcade por su
 cuenta, que es delicada y hay que probarla con la cabina delante. Marcada por
 defecto solo en GroovyArcade.
@@ -3260,10 +3276,8 @@ defecto solo en GroovyArcade.
 (ingresos), `juego_actual`, `mantenimiento` (centinela), `panel_auditoria.log`,
 `panel_secret` (clave de sesión), `puntajes.json` (ya existía, de `puntajes.py`).
 
-**Pendiente (necesita la cabina encendida, Eloy avisa):** desplegar (pull + tarea
-`panel`), dar de alta el túnel Cloudflare + Access con su cuenta, enganchar
-`frontend.sh`, y probar en vivo las acciones. La GUI la construye Eloy contra el
-simulador mientras tanto.
+**Pendiente:** enganchar `frontend.sh` y que Eloy pruebe un login completo
+(su clave no es la de por defecto).
 
 ## Próximos pasos
 

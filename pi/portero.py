@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Portero del panel, para el Raspberry Pi (la PUERTA, siempre encendida).
 
-Se pone entre Cloudflare y la cabina.  El backend de verdad (panel/servidor.py)
+Se pone entre nginx (abierto solo a Tailscale, ver pi/nginx-panel.conf) y la cabina.  El backend de verdad (panel/servidor.py)
 sigue corriendo EN LA CABINA, pegado a sus datos (latencia 0); el Pi solo:
 
   - reenvia cada peticion a la cabina por el cable LAN (incluido SSE y subidas);
@@ -9,9 +9,9 @@ sigue corriendo EN LA CABINA, pegado a sus datos (latencia 0); el Pi solo:
   - sirve POST /api/accion/encender -> Wake-on-LAN por el cable (la unica accion
     que tiene sentido con la cabina apagada, y que el backend no puede hacer).
 
-Solo stdlib: en el Pi no hace falta instalar Flask ni nada.  cloudflared apunta
-a ESTE portero (127.0.0.1:PUERTO), no directo a la cabina, para que el caso
-"apagada" y el "encender" funcionen.
+Solo stdlib: en el Pi no hace falta instalar Flask ni nada.  nginx apunta a ESTE
+portero (127.0.0.1:PUERTO), no directo a la cabina, para que el caso "apagada" y
+el "encender" funcionen.
 
 Config por entorno (o por pi/portero.service):
   CABINA      host:puerto de la cabina por el cable LAN   (def 10.55.0.2:8808)
@@ -31,8 +31,8 @@ CABINA = os.environ.get("CABINA", "10.55.0.2:8808")
 CABINA_MAC = os.environ.get("CABINA_MAC", "")
 BROADCAST = os.environ.get("BROADCAST", "10.55.0.255")
 PUERTO = int(os.environ.get("PUERTO", "8080"))
-# IP en que escucha el portero.  127.0.0.1 = solo cloudflared local (lo normal
-# con tunel).  Para acceso LOCAL por la red (sin tunel), ponlo a 0.0.0.0.
+# IP en que escucha el portero.  127.0.0.1 = solo nginx, que es quien filtra
+# por Tailscale.  NUNCA 0.0.0.0: se saltaria ese filtro.
 ESCUCHA = os.environ.get("ESCUCHA", "127.0.0.1")
 # La GUI la sirve el PROPIO Pi (siempre encendido), para que la pagina cargue
 # aunque la cabina este apagada y se pueda pulsar "Encender".  Solo las llamadas

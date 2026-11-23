@@ -105,7 +105,7 @@ def clave_correcta(clave):
 
 def usuario_correcto(usuario):
     """True si el usuario vale.  Si no hay 'usuario' configurado, no se exige
-    (cualquiera, incluso vacio, vale: la seguridad la da la clave + Cloudflare)."""
+    (cualquiera, incluso vacio, vale: la seguridad la da la clave + Tailscale)."""
     esperado = CONF.get("usuario", "").strip()
     return not esperado or (usuario or "").strip() == esperado
 

@@ -1,34 +1,30 @@
 # El panel web de control remoto
 
 El panel deja administrar la cabina **desde el navegador del teléfono o del PC,
-desde cualquier lado y sin abrir puertos**. Corre como un servicio en la propia
-cabina y sale al mundo por un túnel saliente de Cloudflare.
+desde cualquier lado y sin abrir puertos**. El backend corre en la propia cabina;
+la única entrada es el Raspberry Pi, y **solo por Tailscale** (decidido por Eloy
+el 2026-11-22; Cloudflare se descartó). Se entra con la app de Tailscale activa
+en `http://arcade-pi/`.
 
 Este documento es, sobre todo, **el contrato de API**: la lista exacta de
 mensajes que la página web (la GUI) le manda al backend. La GUI la escribe Eloy;
-el backend (esta carpeta y `panel/`) lo escribe Claude. Mientras no cambie este
-contrato, los dos lados avanzan por separado.
+el backend (`panel/`) lo escribe Claude. Mientras no cambie este contrato, los
+dos lados avanzan por separado.
 
 ```
-Teléfono/PC ──HTTPS──> Cloudflare (login) ──túnel──> cloudflared ──> panel (127.0.0.1:8808)
-                                                                         │
-                         GUI (HTML+CSS+JS)  ←── sirve ──┘               ├─ lee /proc, /sys, ~/.attract
-                         llama a /api/... con fetch()                    └─ ejecuta acciones (sudo, systemctl)
+teléfono (Tailscale) ──> nginx (Pi, :80, solo 100.64.0.0/10) ──> portero (Pi, 127.0.0.1:8080)
+                                                                     │  sirve la GUI (~/web)
+                                                                     │  cabina apagada: 503 + Wake-on-LAN
+                                                         cable LAN ──┘
+                                                                     v
+                                                  panel (cabina, 10.55.0.2:8808)
+                                                     lee /proc, /sys, ~/.attract y ejecuta en LOCAL
 ```
 
-**Con Raspberry Pi de puerta (ver `pi/README.md`).** El backend NO se mueve al Pi:
-se queda en la cabina, pegado a sus datos (latencia 0). El Pi es solo la puerta
-siempre encendida — reenvía a la cabina y, si está apagada, lo dice y la puede
-encender por Wake-on-LAN:
-
-```
-Cloudflare ──túnel──> cloudflared (Pi) ──> portero (Pi) ──cable LAN──> panel (cabina, escucha=IP-del-cable)
-                                             │                           lee/ejecuta en LOCAL (0 latencia)
-                                             └─ cabina apagada: 503 + POST /api/accion/encender = Wake-on-LAN
-```
-
-La GUI no cambia entre los dos montajes: habla con las mismas rutas. Lo único que
-el Pi añade al contrato es `GET /api/puerta` y `POST /api/accion/encender`.
+El backend NO se mueve al Pi: se queda en la cabina, pegado a sus datos. El Pi
+es la puerta siempre encendida. Detalle y cómo se cierra todo lo demás:
+`pi/README.md`. Lo único que el Pi añade al contrato es `GET /api/puerta` y
+`POST /api/accion/encender`.
 
 ---
 
@@ -86,14 +82,14 @@ Design"), MDN (para consultar).
 
 ## Autenticación
 
-Dos capas: **Cloudflare Access** delante (login por correo/Google antes de llegar
-a la cabina) y una **sesión con contraseña** en el propio panel.
+Dos capas: **Tailscale** delante (solo entran tus aparatos) y una **sesión con
+contraseña** en el propio panel.
 
 - `POST /api/login` — body `{"usuario": "...", "clave": "...", "recordar": true}`.
   Si acierta: pone cookie de sesión y devuelve `{"ok": true, "csrf": "<token>"}`.
   Si falla: `401`.
   - `usuario` es opcional: si en `panel.conf` no hay `usuario`, no se exige (basta
-    la clave; la primera barrera es Cloudflare Access). Si lo hay, tiene que coincidir.
+    la clave; la primera barrera es Tailscale). Si lo hay, tiene que coincidir.
   - `recordar` = "mantener sesión iniciada": `true` deja la sesión viva ~30 días
     aunque se cierre el navegador; `false`/ausente, la sesión caduca al cerrarlo.
 - `POST /api/logout` — cierra la sesión.
@@ -121,10 +117,10 @@ El panel entero de un vistazo.
     "rom": "pacman", "titulo": "Pac-Man", "corriendo": true,
     "segundos": 312, "creditos_dentro": 2
   },
-  "red": { "ip_publica": "190.x.x.x", "tunel": "activo" },
+  "red": { "ip_publica": "192.168.1.117" },
   "servicios": {
     "panel": "activo", "monedero": "activo", "pantalla-auto": "activo",
-    "cloudflared": "activo", "frontend": "activo", "x": "activo"
+    "frontend": "activo", "x": "activo"
   },
   "arduino": { "conectado": true, "puerto": "/dev/ttyUSB0",
                "rele": "on", "ultimo_error": null },
@@ -204,7 +200,7 @@ registradas en `~/.attract/panel_auditoria.log`.
 | `POST /api/leds/brillo` | `{"brillo": 128}` | 0-255; brillo global de los LEDs, escala cualquier animación/juego en marcha |
 | `GET /api/tarifa-global` | — | tarifa global para TODOS los juegos: `{"modo":"freeplay"\|"pesos"\|"defecto","pesos":N?}` |
 | `POST /api/tarifa-global` | `{"valor":"freeplay"\|200\|"defecto"}` | fija/quita la tarifa global (la aplica `creditos.lua` al lanzar: free play por DIP + créditos infinitos por RAM, o N monedas/crédito) |
-| `POST /api/accion/encender` | — | (solo con Pi) enciende la cabina por Wake-on-LAN. Lo sirve el portero del Pi, **sin** CSRF de la app (la cabina puede estar apagada; la barrera es Cloudflare Access). Si ya está encendida, `{"ok": true, "nota": "..."}` |
+| `POST /api/accion/encender` | — | (solo con Pi) enciende la cabina por Wake-on-LAN. Lo sirve el portero del Pi, **sin** CSRF de la app (la cabina puede estar apagada; la barrera es Tailscale). Si ya está encendida, `{"ok": true, "nota": "..."}` |
 
 Además, `POST /api/sonido/prueba` (`{"canal": "izquierda|derecha|ambos"}`) da un
 tono de prueba, `POST /api/arduino/reiniciar` reinicia la placa y `POST /api/pulsar`
@@ -221,7 +217,8 @@ pantalla en MJPEG/JPG (la sustituyó el H.264). Están en el historial de git.
 
 ## Notas de implementación (lado backend)
 
-- El panel escucha **solo en `127.0.0.1`**; quien lo expone es `cloudflared`.
+- El panel escucha **solo en `10.55.0.2`** (el cable con el Pi); quien lo expone es
+  el Pi, y solo a Tailscale. Nunca `0.0.0.0`: la cabina también está en el wifi de casa.
 - Las órdenes a MAME (créditos, salir) no se ejecutan directo: se dejan en
   `~/.attract/panel_cmd` y `creditos.lua` las aplica en su bucle por-frame, porque
   solo el Lua dentro de MAME puede tocar el ioport o cerrar la máquina.

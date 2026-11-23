@@ -5,7 +5,8 @@ sus datos (lee `/proc`, `/sys`, `~/.attract` y ejecuta `sudo`/`systemctl` en
 local: latencia 0). El Pi **no** es el backend; es la **puerta**: un aparato
 barato y siempre encendido que:
 
-1. saca el panel a internet con `cloudflared` (sin abrir puertos);
+1. es la **única entrada** al panel: nginx en el puerto 80, abierto **solo a
+   Tailscale** (la red de casa recibe un 403);
 2. **sirve la GUI él mismo** (desde `~/web`), así carga aunque la cabina esté
    apagada (para poder pulsar "Encender"); y reenvía solo las `/api/*` a la cabina;
 3. si la cabina está apagada, lo dice con un `503` claro y la puede **encender**
@@ -17,7 +18,7 @@ a viajar por red) y obliga a mantener dos programas en vez de uno. El backend se
 queda donde están los datos; el Pi solo hace de puerta.
 
 ```
-Cloudflare ──túnel──> cloudflared (Pi) ──> portero.py (Pi, :8080) ──cable LAN──> panel (cabina, :8808)
+teléfono (Tailscale) ──> nginx (Pi, :80, solo 100.64.0.0/10) ──> portero.py (Pi, 127.0.0.1:8080) ──cable LAN──> panel (cabina, 10.55.0.2:8808)
 ```
 
 ---
@@ -36,10 +37,9 @@ enlace privado entre los dos.
 saldría a internet a través del 4G de la cabina (hay que compartirle la conexión
 con `iptables`/NAT). Aviso: si la cabina está apagada, el Pi también se queda sin
 internet, así que **no** aporta el "siempre accesible" ni el "Encender" remoto —
-para eso serviría solo si alguien ya está en la misma red local. En ese caso, el
-Pi aporta poco frente a dejar `cloudflared` en la cabina directamente.
+para eso serviría solo si alguien ya está en la misma red local.
 
-Si dudas, empieza por A.
+Hoy es la A: el Pi sale por el wifi de casa (`192.168.1.120`).
 
 ---
 
@@ -58,8 +58,9 @@ escucha=10.55.0.2
 ```
 
 y reinicia el panel: `systemctl --user restart panel.service`. **No** pongas
-`0.0.0.0` ni una IP de una LAN compartida: el panel solo tiene la clave de la app
-por delante (Cloudflare Access protege la entrada pública, no este cable).
+`0.0.0.0` ni la IP del wifi: la cabina también está en el wifi de casa
+(`192.168.1.117`) y con eso cualquiera de esa red llegaría al panel sin pasar
+por Tailscale. Con el cable, solo el Pi la alcanza.
 
 ---
 
@@ -83,7 +84,7 @@ Variables del `portero.service`:
   packet salga por ese cable y no por el internet del Pi. Debe cuadrar con la red
   que elegiste (`10.55.0.0/24` → `10.55.0.255`).
 
-Comprueba sin cloudflared todavía:
+Comprueba el portero (en el propio Pi):
 
 ```bash
 python3 ~/attractplus/pi/portero.py --self-check      # valida el magic packet
@@ -92,31 +93,38 @@ curl -s localhost:8080/api/puerta                     # {"cabina_online": true/f
 
 ---
 
-## cloudflared en el Pi
+## Tailscale + nginx en el Pi
 
-Apunta el túnel **al portero** (`127.0.0.1:8080`), no directo a la cabina, o el
-caso "apagada" y el "Encender" no funcionarían.
+Decidido por Eloy el 2026-11-22: **solo Tailscale**, sin Cloudflare. Al panel
+se entra desde un aparato con la app de Tailscale y la sesión iniciada:
+`http://arcade-pi/` (MagicDNS) o `http://100.92.202.44/`. Tailscale cifra el
+tráfico (WireGuard), así que `http://` está bien. Cruza el CGNAT sin abrir
+puertos.
 
-**Cloudflare Access es obligatorio, no opcional.** El portero escucha solo en
-`127.0.0.1` (nadie de la LAN del Pi lo alcanza, solo `cloudflared`), y **no tiene
-clave propia**: `POST /api/accion/encender` y `GET /api/puerta` los sirve él
-directamente (la cabina puede estar apagada, así que no hay sesión que validar).
-Su única barrera es Access. Sin Access, cualquiera con la URL podría encender la
-cabina por Wake-on-LAN (impacto bajo: solo la prende) y ver si está encendida.
-Todo lo demás pasa a la cabina, que sí pide la clave de la app.
+La regla es que **no se pueda entrar desde ninguna otra IP**, y la cumplen dos
+piezas:
 
-```bash
-cloudflared tunnel login
-cloudflared tunnel create cabina
-cloudflared tunnel route dns cabina arcade.dsds.uk
-# ~/.cloudflared/config.yml :
-#   tunnel: cabina
-#   ingress:
-#     - hostname: arcade.dsds.uk
-#       service: http://127.0.0.1:8080
-#     - service: http_status:404
-sudo cloudflared service install           # y protege la ruta con Cloudflare Access
-```
+- **El portero escucha en `127.0.0.1`** (`ESCUCHA=127.0.0.1` en
+  `portero.service`, que es además su valor por defecto). Nadie de fuera llega
+  al 8080.
+- **nginx es la única puerta**, y solo deja pasar el rango de Tailscale
+  (`100.64.0.0/10` y `fd7a:115c:a1e0::/48`); el resto recibe un 403. La
+  configuración está en [`nginx-panel.conf`](nginx-panel.conf). Se filtra en
+  nginx y no atando el puerto a la IP de Tailscale, porque esa IP no existe
+  hasta que arranca `tailscaled` y un `bind` a ella fallaría en el arranque.
+
+Verificado el 2026-11-22 desde el portátil, que está en las dos redes:
+
+| | resultado |
+|---|---|
+| `http://192.168.1.120/` (wifi de casa) | 403 |
+| `http://192.168.1.120:8080/` | no responde |
+| `http://192.168.1.117:8808/` (la cabina por el wifi) | no responde |
+| `http://100.92.202.44/` (Tailscale) | 200 |
+
+**El portero no tiene clave propia**: `GET /api/puerta` y
+`POST /api/accion/encender` los sirve él (la cabina puede estar apagada). Su
+barrera es Tailscale. Todo lo demás pasa a la cabina, que pide la clave de la app.
 
 ---
 

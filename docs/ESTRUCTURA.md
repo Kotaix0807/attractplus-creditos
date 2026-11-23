@@ -65,7 +65,7 @@ Es el código fuente de Attract-Mode Plus. Lo nuestro es esto:
 | `config/plugins/Creditos.nut` | El monedero del frontend. **Desactivado** |
 | `config/plugins/Arranque.nut` | Menú en la cabina para ajustar la carga de cada juego |
 | `arduino/moneyBank.py` | Demonio único del Arduino: manda por el puerto serie el estado del relé del monedero (`M0`/`M1`, de `monedero_switch`) y el saldo (`C<n>`, de `creditos.txt`). Corre como `monedero.service` |
-| `panel/` | El **panel web de control remoto** (teléfono/PC por Cloudflare). Backend de Claude; la GUI la hace Eloy en `pi/web/` (la sirve la Pi). `servidor.py` (Flask, API JSON: sólo las rutas que usan las páginas), `estado.py`, `acciones.py`, `monedas.py`, `botones.py`, `frontend.sh` (supervisor del FE). Corre como `panel.service`. Contrato en `docs/panel.md` |
+| `panel/` | El **panel web de control remoto** (teléfono/PC por Tailscale, entrando por la Pi). Backend de Claude; la GUI la hace Eloy en `pi/web/` (la sirve la Pi). `servidor.py` (Flask, API JSON: sólo las rutas que usan las páginas), `estado.py`, `acciones.py`, `monedas.py`, `botones.py`, `frontend.sh` (supervisor del FE). Corre como `panel.service`. Contrato en `docs/panel.md` |
 | `instalar.sh` | Instalador guiado con whiptail: dependencias, compilación, configuración, artes |
 | `cabina.sh` | Arranca el frontend en el CRT y devuelve el escritorio al salir |
 | `pantalla.py` | Cambia la disposición de monitores (bajo Wayland, `xrandr` no manda) |

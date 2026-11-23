@@ -1425,7 +1425,7 @@ EOF
 }
 
 tarea_panel() {
-	paso "Panel web: servicio del panel + aviso de Cloudflare (ver docs/panel.md)"
+	paso "Panel web: servicio del panel (se entra por la Pi y Tailscale, ver pi/README.md)"
 
 	local serv="$AQUI/panel/servidor.py"
 	[ -f "$serv" ] || { rojo "  no encuentro $serv"; return 1; }
@@ -1484,7 +1484,7 @@ EOF
 	if command -v systemctl >/dev/null; then
 		systemctl --user daemon-reload 2>/dev/null
 		if systemctl --user enable --now panel.service 2>/dev/null; then
-			verde "  servicio panel activado (escucha en 127.0.0.1)"
+			verde "  servicio panel activado (escucha en la IP de panel.conf: el cable con la Pi)"
 		else
 			aviso "  no pude activarlo ahora; hazlo con: systemctl --user enable --now panel.service"
 		fi
@@ -1492,24 +1492,13 @@ EOF
 			sudo loginctl enable-linger "$USER" 2>/dev/null || true
 	fi
 
-	# 4) cloudflared: es lo que saca el panel al mundo sin abrir puertos. No se
-	#    instala solo (suele venir del repo de Cloudflare / AUR) ni se puede crear
-	#    el tunel sin la cuenta de Eloy. Se avisa con los pasos.
+	# 4) La entrada desde fuera NO esta en la cabina: la pone la Pi (nginx abierto
+	#    solo a Tailscale + portero). Se monta alli, ver pi/README.md.
 	chmod +x "$AQUI/panel/frontend.sh" 2>/dev/null
-	if command -v cloudflared >/dev/null; then
-		verde "  cloudflared presente"
-	else
-		aviso "  falta cloudflared (lo instala el repo de Cloudflare o AUR)"
-	fi
 	echo
-	echo "  PENDIENTE a mano (necesita tu cuenta Cloudflare y el dominio dsds.uk):"
-	echo "    cloudflared tunnel login"
-	echo "    cloudflared tunnel create cabina"
-	echo "    # enruta arcade.dsds.uk -> http://127.0.0.1:$(sed -n 's/^puerto=//p' "$HOME/.config/panel.conf" 2>/dev/null || echo 8808)"
-	echo "    cloudflared tunnel route dns cabina arcade.dsds.uk"
-	echo "    sudo cloudflared service install   # y protege la ruta con Cloudflare Access"
+	echo "  PENDIENTE en la Pi (pi/README.md): portero.service, nginx-panel.conf y Tailscale."
 	echo
-	echo "  PENDIENTE para 'reiniciar frontend' y 'modo mantenimiento':"
+	echo "  PENDIENTE para 'reiniciar frontend':"
 	echo "    lanzar el frontend a traves de panel/frontend.sh en vez de 'attractplus'"
 	echo "    (ver la cabecera de ese script). No toco la cadena de arranque solo."
 	return 0
@@ -1950,7 +1939,7 @@ if [ "$FIJADAS" = 0 ] && hay_dialogo; then
 		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
 		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
 		monedero "Arrancar el demonio del monedero (Arduino) con la cabina" $monedero_por_defecto \
-		panel    "Panel web de control remoto (servicio + Cloudflare)" $panel_por_defecto \
+		panel    "Panel web de control remoto (servicio; la entrada la pone la Pi)" $panel_por_defecto \
 		minijuegos "Minijuegos de luces del panel (huevo: P2 Start)" $minijuegos_por_defecto \
 		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
 		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \

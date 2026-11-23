@@ -10,6 +10,8 @@ Environment=CABINA=10.55.0.2:8808
 Environment=CABINA_MAC=
 Environment=BROADCAST=10.55.0.255
 Environment=PUERTO=8080
+# Solo nginx (que filtra por Tailscale). Nunca 0.0.0.0.
+Environment=ESCUCHA=127.0.0.1
 ExecStart=/usr/bin/python3 %h/attractplus/pi/portero.py
 Restart=always
 RestartSec=3
