@@ -18,28 +18,15 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
-
+. "$AQUI/../comun.sh"     # vecino, preparar_mame, rompath_de
+preparar_mame
 REPO="${REPO:-$( vecino extlibs/squirrel \
 	"$AQUI/../.." "$AQUI/../../attractplus" "$HOME/attractplus" )}"
 AM="${AM:-$REPO/attractplus}"
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../../groovymame_src" "$AQUI/../../groovymame_src" "$HOME/groovymame_src" )}"
-. "$AQUI/../comun.sh"
-ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
+ROMPATH="$( rompath_de "$MAME_BIN" )"
 JUEGO="${JUEGO:-pacman}"
 
-for f in "$AM" "$MAME_DIR/mame"; do
+for f in "$AM" "$MAME_BIN"; do
 	[ -x "$f" ] || { echo "no encuentro $f" >&2; exit 1; }
 done
 
@@ -56,7 +43,7 @@ cp "$AQUI/integracion/layout.nut" "$D/layouts/PruebaCreditos/layout.nut"
 
 # MAME se cierra solo y saca su propia captura
 cat > "$D/emulators/groovymame.cfg" <<CFG
-executable           $MAME_DIR/mame
+executable           $MAME_BIN
 args                 "[romfilename]" -rompath $ROMPATH -cfg_directory $T/mamecfg -video soft -sound none -nothrottle -noswitchres -window -resolution 640x480 -seconds_to_run 16 -autoboot_script $AQUI/integracion/mame_con_captura.lua -autoboot_delay 0
 workdir              $MAME_DIR
 rompath              $ROMPATH

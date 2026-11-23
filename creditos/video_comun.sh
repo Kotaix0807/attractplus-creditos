@@ -1,6 +1,6 @@
 # Lo que comparten videos.sh (grabacion automatica) y grabar.sh (grabar mi
-# propia partida): encontrar el emulador y convertir un AVI crudo de MAME al
-# mp4 que espera el frontend.
+# propia partida): convertir un AVI crudo de MAME al mp4 que espera el frontend
+# (el emulador lo encuentra comun.sh, que se carga aqui).
 #
 # Vive aparte porque las dos cosas tienen trampas que costaron una pasada cada
 # una -- la proporcion 4:3 del mueble, el ampliado en dos fases, borrar TODAS
@@ -17,57 +17,10 @@
 #   AUDIO_FFMPEG   argumentos de audio de ffmpeg ('-an' o un codec)
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
-
-# En una maquina de desarrollo el emulador esta en el arbol de fuentes
-# (groovymame_src/mame). En una cabina GroovyArcade NO hay tal arbol: el binario
-# esta instalado, y ademas puede haber dos (el de la distro y el nuestro). Se
-# prueban todos los sitios en vez de suponer uno, y MAME= manda sobre todos.
-#
-#   MAME=/ruta/al/mame ./videos.sh
-buscar_mame() {
-	local c fuentes
-	fuentes="$( vecino mame "$AQUI/../../groovymame_src" \
-		"$AQUI/../groovymame_src" "$HOME/groovymame_src" 2>/dev/null )"
-	for c in "${MAME:-}" \
-		"$HOME/.local/share/groovymame-cabina/mame" \
-		${fuentes:+"$fuentes/mame"} \
-		"$( command -v groovymame 2>/dev/null )" \
-		"$( command -v mame 2>/dev/null )"
-	do
-		[ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
-	done
-	return 1
-}
-
-MAME_BIN="$( buscar_mame )" || {
-	echo "no encuentro el emulador. Lo busco, por este orden, en:" >&2
-	echo "  \$MAME (la variable de entorno)" >&2
-	echo "  ~/.local/share/groovymame-cabina/mame" >&2
-	echo "  ../../groovymame_src/mame, ../groovymame_src/mame, ~/groovymame_src/mame" >&2
-	echo "  groovymame o mame en el PATH" >&2
-	echo >&2
-	echo "Lanzalo asi:  MAME=/ruta/al/mame $0 ..." >&2
-	exit 1
-}
-# Se entra en su directorio para lanzarlo: nuestra compilacion lleva al lado su
-# bgfx y sus plugins, igual que hace el frontend con 'workdir'.
-MAME_DIR="$( cd "$( dirname "$MAME_BIN" )" && pwd )"
-
-# Las rutas NO se suponen: se le preguntan al propio emulador, que es quien sabe
-# cual de sus mame.ini manda. En esta maquina el rompath es
-# /usr/share/games/mame/roms y en la cabina ~/shared/roms/mame.
+# El emulador y las roms se buscan en comun.sh, igual para todos los scripts:
+# MAME_BIN, MAME_DIR (se entra ahi para lanzarlo) y el rompath que diga MAME.
 . "$AQUI/comun.sh"
+preparar_mame
 ROMPATH="$( rompath_de "$MAME_BIN" )"
 
 command -v ffmpeg >/dev/null || { echo "hace falta ffmpeg" >&2; exit 1; }

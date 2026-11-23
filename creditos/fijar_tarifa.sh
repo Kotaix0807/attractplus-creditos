@@ -13,7 +13,7 @@
 #
 # Variables:
 #   VALOR_MONEDA  pesos por moneda (por defecto 100)
-#   MAME_DIR      donde esta el ejecutable (por defecto el groovymame_src de al lado)
+#   MAME_DIR      carpeta del ejecutable (si no, lo busca comun.sh: ver preparar_mame)
 #   ROMPATH       donde estan las roms     (por defecto la que declare MAME)
 #   MAME_EXTRA    opciones extra para MAME
 
@@ -34,31 +34,17 @@ fi
 monedas=$(( pesos / valor_moneda ))
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
 . "$AQUI/comun.sh"
-ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
+preparar_mame
+ROMPATH="$( rompath_de "$MAME_BIN" )"
 MAME_EXTRA="${MAME_EXTRA:-}"
-
-if [ ! -x "$MAME_DIR/mame" ]; then
-	echo "no encuentro $MAME_DIR/mame" >&2
-	exit 1
-fi
 
 LANZA=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
 	LANZA=( xvfb-run -a )
 fi
 
-salida=$( cd "$MAME_DIR" && GA_FIJAR_MONEDAS="$monedas" "${LANZA[@]}" ./mame "$juego" \
+salida=$( cd "$MAME_DIR" && GA_FIJAR_MONEDAS="$monedas" "${LANZA[@]}" "$MAME_BIN" "$juego" \
 	-rompath "$ROMPATH" $MAME_EXTRA \
 	-video none -sound none -nothrottle -noswitchres -seconds_to_run 2 \
 	-autoboot_script "$AQUI/fijar_tarifa.lua" -autoboot_delay 1 2>&1 )

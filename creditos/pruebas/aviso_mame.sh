@@ -13,25 +13,10 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
-
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../../groovymame_src" "$AQUI/../../groovymame_src" "$HOME/groovymame_src" )}"
-. "$AQUI/../comun.sh"
-ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
+. "$AQUI/../comun.sh"     # preparar_mame, rompath_de
+preparar_mame
+ROMPATH="$( rompath_de "$MAME_BIN" )"
 JUEGO="${JUEGO:-pacman}"
-
-[ -x "$MAME_DIR/mame" ] || { echo "no encuentro $MAME_DIR/mame" >&2; exit 1; }
 
 T=$(mktemp -d /tmp/aviso-mame.XXXXXX)
 trap 'rm -rf "$T"' EXIT
@@ -60,7 +45,7 @@ correr() {  # $1 = nombre, resto = variables
 	# se prueba aparte, sin MAME, en prueba_aviso.lua). Aqui se mide la
 	# integracion con MAME: frenar, comerse la tecla, leer la RAM.
 	( cd "$MAME_DIR" && env GA_MONEDERO=1 GA_AVISO_COMBO=0 GA_ARCHIVO="$T/$n.txt" "$@" GA_VERBOSO=1 GA_SNAP="$T/$n.png" GA_SNAP_FRAMES=$FRAME_CORTE \
-		xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+		xvfb-run -a "$MAME_BIN" "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 		-snapshot_directory "$T" -video soft -sound none -nothrottle -noswitchres \
 		-window -resolution 640x480 -seconds_to_run 16 \
 		-autoboot_script "$AQUI/integracion/mame_con_captura.lua" -autoboot_delay 0 \
@@ -227,7 +212,7 @@ echo "# 9. modo monedas de verdad: solo arranque tapado y aviso al salir"
 # solas en el emulador y este script solo tapa el arranque y avisa al salir.
 ( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_PRUEBA_MONEDA=460,500 GA_PRUEBA_SALIR=610 \
 	GA_SNAP="$T/reales.png" GA_SNAP_FRAMES=$FRAME_CORTE \
-	xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	xvfb-run -a "$MAME_BIN" "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 	-snapshot_directory "$T" -video soft -sound none -nothrottle -noswitchres \
 	-window -resolution 640x480 -seconds_to_run 16 \
 	-autoboot_script "$AQUI/integracion/mame_con_captura.lua" -autoboot_delay 0 \
@@ -243,7 +228,7 @@ comprobar "la partida no se corta" "$(sigue reales)" "MAME salio"
 echo "# 9b. sin monedero, la moneda durante la carga tampoco cuenta"
 # El caso de Q*bert: pulsar el boton de creditos mientras carga daba 52.
 ( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_PRUEBA_MONEDA=5,40,80,120 \
-	xvfb-run -a ./mame "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	xvfb-run -a "$MAME_BIN" "$JUEGO" -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 	-video none -sound none -nothrottle -noswitchres -seconds_to_run 16 \
 	-autoboot_script "$AQUI/integracion/mame_con_captura.lua" -autoboot_delay 0 \
 	> "$T/carga.log" 2>&1 )
@@ -262,7 +247,7 @@ echo "# 10. un juego que reinicia la placa deja el emulador como estaba"
 # (freno ya quitado, moneda ya bloqueada) y lo restauraba al terminar: el
 # emulador se quedaba sin freno y el boton de moneda muerto.
 ( cd "$MAME_DIR" && env GA_VERBOSO=1 \
-	xvfb-run -a ./mame elevator -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	xvfb-run -a "$MAME_BIN" elevator -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 	-video none -sound none -noswitchres -seconds_to_run 40 \
 	-autoboot_script "$AQUI/integracion/estado_final.lua" -autoboot_delay 0 \
 	> "$T/reinicio.log" 2>&1 )
@@ -291,7 +276,7 @@ defecto velocidad=0 arranque=5
 tapper nvram=0
 AJU
 ( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_AJUSTES="$T/ajustes_nv.dat" \
-	xvfb-run -a ./mame tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	xvfb-run -a "$MAME_BIN" tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 	-nvram_directory "$T/nv" -video none -sound none -nothrottle -noswitchres \
 	-seconds_to_run 14 -autoboot_script "$AQUI/../creditos.lua" -autoboot_delay 0 \
 	> "$T/nvram.log" 2>&1 )
@@ -304,7 +289,7 @@ cat > "$T/ajustes_nv2.dat" <<'AJU'
 defecto velocidad=0 arranque=5
 AJU
 ( cd "$MAME_DIR" && env GA_VERBOSO=1 GA_AJUSTES="$T/ajustes_nv2.dat" \
-	xvfb-run -a ./mame tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
+	xvfb-run -a "$MAME_BIN" tapper -rompath "$ROMPATH" -cfg_directory "$T/mamecfg" \
 	-nvram_directory "$T/nv" -video none -sound none -nothrottle -noswitchres \
 	-seconds_to_run 14 -autoboot_script "$AQUI/../creditos.lua" -autoboot_delay 0 \
 	> "$T/nvram2.log" 2>&1 )

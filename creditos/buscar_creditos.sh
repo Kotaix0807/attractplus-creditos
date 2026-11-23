@@ -1,7 +1,11 @@
 #!/bin/bash
-# Recorre los juegos buscando donde guarda cada uno sus creditos, y escribe la
-# tabla en creditos.dat. Es una pasada de calibracion: se hace una vez por
-# juego, como poner_1c1c.sh.
+# Recorre los juegos buscando donde guarda cada uno sus creditos, y escribe lo
+# encontrado en creditos.dat.nuevo. Es una pasada de calibracion: se hace una vez
+# por juego, como poner_1c1c.sh.
+#
+# NO escribe en creditos.dat: ese fichero lleva ~5000 direcciones importadas y las
+# marcas bcd/(cheat) que esta pasada no conoce, y antes se perdian todas. Lo nuevo
+# hay que fundirlo a mano, juego a juego. SALIDA= cambia el destino.
 #
 #   ./buscar_creditos.sh                 # todas las roms de ROMPATH
 #   ./buscar_creditos.sh pacman dkong    # solo esos
@@ -11,26 +15,13 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
 
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
 . "$AQUI/comun.sh"
-ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
-SALIDA="${SALIDA:-$AQUI/creditos.dat}"
+preparar_mame
+ROMPATH="$( rompath_de "$MAME_BIN" )"
+SALIDA="${SALIDA:-$AQUI/creditos.dat.nuevo}"
 MAME_EXTRA="${MAME_EXTRA:-}"
 
-[ -x "$MAME_DIR/mame" ] || { echo "no encuentro $MAME_DIR/mame" >&2; exit 1; }
 
 juegos=( "$@" )
 if [ ${#juegos[@]} -eq 0 ]; then
@@ -50,7 +41,7 @@ echo "# ${#juegos[@]} juegos; esto tarda ~15 s por juego"
 encontrados=0; fallidos=0
 
 for j in "${juegos[@]}"; do
-	salida=$( cd "$MAME_DIR" && "${LANZA[@]}" ./mame "$j" \
+	salida=$( cd "$MAME_DIR" && "${LANZA[@]}" "$MAME_BIN" "$j" \
 		-rompath "$ROMPATH" "${OPC_CFG[@]}" $MAME_EXTRA \
 		-video none -sound none -nothrottle -noswitchres -seconds_to_run 60 \
 		-autoboot_script "$AQUI/buscar_creditos.lua" -autoboot_delay 6 2>&1 )
@@ -84,3 +75,4 @@ done
 } > "$SALIDA"
 
 echo "# encontrados=$encontrados fallidos=$fallidos -> $SALIDA"
+echo "# (creditos.dat no se ha tocado: funde a mano las lineas que quieras)"

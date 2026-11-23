@@ -187,7 +187,7 @@ carga a los demás con `dofile`.
 | | Qué es | Quién lo edita |
 |---|---|---|
 | `arranque.dat` | Velocidad y segundos de carga **por juego** | tú, a mano o desde la cabina |
-| `creditos.dat` | Dónde guarda cada juego sus créditos en la RAM | `buscar_creditos.sh`, una vez |
+| `creditos.dat` | Dónde guarda cada juego sus créditos en la RAM | `buscar_creditos.sh` (escribe `creditos.dat.nuevo`; se funde a mano) |
 
 **Son cosas distintas y no dependen una de otra.** `creditos.dat` sólo hace
 falta para el barrido de créditos y para `auto=1`.

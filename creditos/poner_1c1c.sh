@@ -9,7 +9,7 @@
 # los creditos del frontend son exactos ya en el primer arranque.
 #
 # Variables:
-#   MAME_DIR   donde esta el ejecutable   (por defecto, el groovymame_src de al lado)
+#   MAME_DIR   carpeta del ejecutable (si no, lo busca comun.sh: ver preparar_mame)
 #   ROMPATH    donde estan las roms       (por defecto, la que declare MAME)
 #   CFG_DIR    cfg de MAME a modificar    (el que MAME use por defecto)
 #   MAME_EXTRA opciones extra para MAME
@@ -17,28 +17,11 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
 
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
 . "$AQUI/comun.sh"
-ROMPATH="$( rompath_de "$MAME_DIR/mame" )"
+preparar_mame
+ROMPATH="$( rompath_de "$MAME_BIN" )"
 MAME_EXTRA="${MAME_EXTRA:-}"
-
-if [ ! -x "$MAME_DIR/mame" ]; then
-	echo "no encuentro $MAME_DIR/mame" >&2
-	exit 1
-fi
 
 juegos=( "$@" )
 if [ ${#juegos[@]} -eq 0 ]; then
@@ -64,7 +47,7 @@ echo "# ${#juegos[@]} juegos, cfg en ${CFG_DIR:-el de MAME por defecto}"
 cambiados=0; ya=0; otros=0; fallos=0
 
 for j in "${juegos[@]}"; do
-	salida=$( cd "$MAME_DIR" && "${LANZA[@]}" ./mame "$j" \
+	salida=$( cd "$MAME_DIR" && "${LANZA[@]}" "$MAME_BIN" "$j" \
 		-rompath "$ROMPATH" "${OPC_CFG[@]}" $MAME_EXTRA \
 		-video none -sound none -nothrottle -noswitchres -seconds_to_run 2 \
 		-autoboot_script "$AQUI/poner_1c1c.lua" -autoboot_delay 1 2>&1 )

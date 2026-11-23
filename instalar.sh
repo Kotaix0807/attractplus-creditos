@@ -754,7 +754,9 @@ tarea_config() {
 		if [ -e "$2" ]; then echo "  = $(basename "$2") ya existe, no lo toco"
 		else cp "$1" "$2" && echo "  + $(basename "$2")"; fi
 	}
-	respaldar() { [ -e "$1" ] && cp "$1" "$1.antes_instalar"; return 0; }
+	# Solo la PRIMERA vez: en la segunda ejecucion se pisaria el original con
+	# nuestra version anterior.
+	respaldar() { [ -e "$1" ] && [ ! -e "$1.antes_instalar" ] && cp "$1" "$1.antes_instalar"; return 0; }
 
 	# Todos, no solo los nuestros: los de serie de AM+ (KonamiCode, MultiMon...)
 	# viven en el repo, y si el frontend no se instala en el sistema no hay otro
@@ -978,7 +980,7 @@ scanlines desaparecen.
 Pasar a X para poder usar el shader? (medido: 100% de velocidad en todos los
 juegos probados, con scanlines)" si
 	then
-		cp "$GA_CONF" "$GA_CONF.antes_instalar" 2>/dev/null
+		[ -e "$GA_CONF.antes_instalar" ] || cp "$GA_CONF" "$GA_CONF.antes_instalar" 2>/dev/null
 		sed -i "s/^video.backend=.*/video.backend=X/" "$GA_CONF"
 		echo "  ga.conf: video.backend = X"
 	fi
@@ -987,7 +989,7 @@ juegos probados, con scanlines)" si
 		paso "Ajustando la salida (backend KMS)"
 		local ini_kms; ini_kms="$( mame_ini )"
 		mkdir -p "$(dirname "$ini_kms")"
-		[ -f "$ini_kms" ] && cp "$ini_kms" "$ini_kms.antes_instalar"
+		[ -f "$ini_kms" ] && [ ! -e "$ini_kms.antes_instalar" ] && cp "$ini_kms" "$ini_kms.antes_instalar"
 		poner_kms() {
 			if [ -f "$ini_kms" ] && grep -qE "^$1[[:space:]]" "$ini_kms"; then
 				sed -i -E "s|^($1[[:space:]]+).*|\1$2|" "$ini_kms"
@@ -1072,7 +1074,7 @@ NVIDIA vieja bajo nouveau, crt-real dejaba Kung-Fu Master al 70%." no
 	echo "  shader: $cadena"
 
 	mkdir -p "$(dirname "$ini")"
-	[ -f "$ini" ] && cp "$ini" "$ini.antes_instalar"
+	[ -f "$ini" ] && [ ! -e "$ini.antes_instalar" ] && cp "$ini" "$ini.antes_instalar"
 	poner_ini() {   # clave valor
 		if [ -f "$ini" ] && grep -qE "^$1[[:space:]]" "$ini"; then
 			sed -i -E "s|^($1[[:space:]]+).*|\1$2|" "$ini"
@@ -1281,6 +1283,14 @@ tarea_audio() {
 	#
 	# Se fija la default a la placa ONBOARD por NOMBRE (no por indice, que un
 	# mando puede robar), con dmix para que suenen a la vez frontend y emulador.
+	# Desde el 2026-10-28 la cabina va por PipeWire (sin ~/.asoundrc y con
+	# 'sound sdl'): arreglo los tirones de Donkey Kong. Si PipeWire esta
+	# gestionando el audio, esta tarea (dmix + portaudio) lo DESHARIA: no toco nada.
+	if pactl info 2>/dev/null | grep -qi pipewire || wpctl status >/dev/null 2>&1; then
+		verde "  el audio lo gestiona PipeWire: no toco ~/.asoundrc ni mame.ini"
+		return 0
+	fi
+
 	local plantilla="$AQUI/config/cabina/asoundrc"
 	[ -f "$plantilla" ] || { rojo "  no encuentro $plantilla"; return 1; }
 
@@ -1897,8 +1907,9 @@ teclado_por_defecto=OFF
 	&& teclado_por_defecto=ON
 [ "$ES_GROOVYARCADE" = 1 ] && binario_por_defecto=ON
 # El enrutado de audio (que no lo robe un mando USB) es un arreglo de cabina.
+# Apagado por defecto tambien en GroovyArcade: la cabina va por PipeWire y la
+# tarea (dmix) es para un ALSA a pelo. Si se marca con PipeWire, no hace nada.
 audio_por_defecto=OFF
-[ "$ES_GROOVYARCADE" = 1 ] && audio_por_defecto=ON
 
 # El demonio del monedero (Arduino): en la cabina de serie, fuera no.
 monedero_por_defecto=OFF
@@ -1959,6 +1970,12 @@ echo
 echo "Tareas: $TAREAS"
 
 hace() { [[ " $TAREAS " == *" $1 "* ]]; }
+
+# El emulador y las roms elegidos arriba tienen que llegar a los scripts que
+# lanzan las tareas (videos.sh, aspecto.sh...): los buscan en el entorno
+# (creditos/comun.sh mira MAME y ROMPATH antes que nada).
+[ -n "${MAME:-}" ] && export MAME
+[ -n "${ROMS:-}" ] && export ROMPATH="$ROMS"
 
 # Borderless: si se pidio, que el compilado de GroovyMAME aplique el parche
 # opcional (compilar-en-arch.sh lo mira). El ajuste de config (AM+ fillscreen +

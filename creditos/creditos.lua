@@ -595,10 +595,10 @@ end
 -- 3. La tarifa que la placa tiene en ESTE arranque
 -- ---------------------------------------------------------------
 
--- Deja el DIP en 1 moneda/1 credito para los PROXIMOS arranques. Comprobado
--- midiendo con Pac-Man: la placa lee la tarifa al arrancar, asi que cambiarla
--- ahora no afecta a esta partida, pero MAME la guarda en su .cfg y desde el
--- siguiente arranque los creditos del frontend son exactos.
+-- Deja el DIP en 1 moneda/1 credito. La placa lee la tarifa al arrancar (medido
+-- con Pac-Man), asi que cambiarlo aqui no bastaria para esta partida: por eso,
+-- si algun DIP cambia, mas abajo se reinicia la maquina (hard_reset) y la placa
+-- arranca ya con la tarifa nueva.
 local function fijar_1c1c(dip, gratis)
 	local valor = T.valor_1c1c(dip)
 	if not valor then
@@ -620,8 +620,8 @@ local function fijar_1c1c(dip, gratis)
 	end
 
 	dip.campo.user_value = valor
-	log('DIP dejado en 1 moneda/1 credito (valor %s). Esta partida usa todavia '
-		.. 'la tarifa vieja; desde el siguiente arranque sera exacta',
+	log('DIP dejado en 1 moneda/1 credito (valor %s); el reinicio de abajo hace '
+		.. 'que la placa lo lea ya en este arranque',
 		tostring(valor))
 end
 
@@ -961,6 +961,42 @@ end
 
 local dips_antes = foto_dips()
 local MONEDAS_POR, CREDITOS_POR, GRATIS = tarifa_vigente()
+
+-- --- Free play por MONEDA con tarifa GENEROSA (dkong3) ---
+-- Algunos juegos no admiten ni escritura ni tap del contador (dkong3 reusa su 0x6bf1
+-- como variable grafica en el invernadero y el VIDEO lo lee directo -> barra de
+-- basura). Ahi el credito lo tiene que gestionar el propio juego (free play por
+-- moneda, que sale limpio). Pero el pulso de moneda solo reponia 1 tras una partida
+-- 2P. Solucion: poner la tarifa del juego en MUCHOS creditos por moneda, asi UNA
+-- moneda (un pulso, un sonido) da para varias partidas 2P y casi nunca hay que
+-- reponer. Va aqui, entre las dos fotos de los DIP, para que el hard_reset de
+-- abajo lo aplique en el mismo arranque (antes iba despues y llegaba tarde).
+local FREEPLAY_COINAGE = {
+	dkong3  = '1 Coin/6 Credits',
+	-- frogger: su tarifa Konami da "B 1/6" (COIN2 = 1 moneda/6 creditos); COIN1 (A)
+	-- solo llega a 1/1. Con esta opcion + pulsar COIN2 (FREEPLAY_MONEDA), 1 moneda da
+	-- 6 creditos -> sobra para 2P tras una partida (antes el pulso de COIN1 dejaba 1).
+	frogger = 'A 1/1 B 1/6 C 1/1',
+}
+do
+	local quiere = FREEPLAY_COINAGE[emu.romname and emu.romname() or '']
+	if quiere and FREEPLAY then
+		for _, port in pairs(manager.machine.ioport.ports) do
+			for nombre, campo in pairs(port.fields) do
+				if campo.type_class == 'dipswitch' and campo.settings then
+					for valor, texto in pairs(campo.settings) do
+						if texto == quiere and campo.user_value ~= valor then
+							campo.user_value = valor
+							log('free play: tarifa de %s a "%s" (creditos de sobra por moneda)',
+								emu.romname(), quiere)
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 
 -- La placa lee la tarifa en el ARRANQUE EN FRIO, antes de que este script pueda
 -- cambiar nada: sin esto cada cambio de tarifa se notaba un arranque tarde
@@ -1684,8 +1720,11 @@ local function por_frame()
 				end
 			end
 
-			-- Se apunta para comprobar que el juego la recoge de verdad
-			if (COMPROBAR > 0) and e.leer_ram and e.memoria and e.memoria.asentado then
+			-- Se apunta para comprobar que el juego la recoge de verdad. Nunca con
+			-- una direccion todavia a prueba: si es falsa el byte no se mueve, y la
+			-- moneda se daria por perdida y hasta se aprenderia un tope inventado.
+			if (COMPROBAR > 0) and e.leer_ram and e.memoria and e.memoria.asentado
+					and not e.a_prueba then
 				local okp, v = pcall(e.leer_ram)
 
 				if okp and (type(v) == 'number') then
@@ -2074,8 +2113,14 @@ if FREEPLAY and FREEPLAY_NADA[emu.romname and emu.romname() or ''] and CAMPO the
 			if t and t ~= '' then
 				local base = entrada:seq_to_tokens(campo:input_seq('standard'))
 				local con = entrada:seq_from_tokens(base .. ' OR ' .. t)
+				local sin = entrada:seq_from_tokens(base)
 				campo:set_default_input_seq('standard', con)
-				return con, entrada:seq_from_tokens(base)
+				-- Si la placa se reinicia y el script vuelve a correr, la secuencia
+				-- tiene que volver a la original; si no, se anexaria dos veces.
+				GA_ESTADO.deshaceres[#GA_ESTADO.deshaceres + 1] = function()
+					pcall(function() campo:set_default_input_seq('standard', sin) end)
+				end
+				return con, sin
 			end
 		end
 		for _, tk in ipairs({ 'START1', 'START2' }) do
@@ -2616,42 +2661,6 @@ do
 		end
 		if #GA_ESTADO.fp_taps > 0 then
 			GA_ESTADO.freeplay_ram = false     -- el tap reemplaza al pulso de moneda/RAM
-		end
-	end
-end
-
--- --- Free play por MONEDA con tarifa GENEROSA (dkong3) ---
--- Algunos juegos no admiten ni escritura ni tap del contador (dkong3 reusa su 0x6bf1
--- como variable grafica en el invernadero y el VIDEO lo lee directo -> barra de
--- basura). Ahi el credito lo tiene que gestionar el propio juego (free play por
--- moneda, que sale limpio). Pero el pulso de moneda solo reponia 1 tras una partida
--- 2P. Solucion: poner la tarifa del juego en MUCHOS creditos por moneda, asi UNA
--- moneda (un pulso, un sonido) da para varias partidas 2P y casi nunca hay que
--- reponer. El DIP lo lee la placa al ARRANCAR; MAME lo guarda en su .cfg, asi que
--- surte efecto desde el siguiente arranque (en la cabina se dejo ya puesto a mano
--- para que el primero tambien valga).
-local FREEPLAY_COINAGE = {
-	dkong3  = '1 Coin/6 Credits',
-	-- frogger: su tarifa Konami da "B 1/6" (COIN2 = 1 moneda/6 creditos); COIN1 (A)
-	-- solo llega a 1/1. Con esta opcion + pulsar COIN2 (FREEPLAY_MONEDA), 1 moneda da
-	-- 6 creditos -> sobra para 2P tras una partida (antes el pulso de COIN1 dejaba 1).
-	frogger = 'A 1/1 B 1/6 C 1/1',
-}
-do
-	local quiere = FREEPLAY_COINAGE[emu.romname and emu.romname() or '']
-	if quiere and FREEPLAY then
-		for _, port in pairs(manager.machine.ioport.ports) do
-			for nombre, campo in pairs(port.fields) do
-				if campo.type_class == 'dipswitch' and campo.settings then
-					for valor, texto in pairs(campo.settings) do
-						if texto == quiere and campo.user_value ~= valor then
-							campo.user_value = valor
-							log('free play: tarifa de %s a "%s" (creditos de sobra por moneda)',
-								emu.romname(), quiere)
-						end
-					end
-				end
-			end
 		end
 	end
 end

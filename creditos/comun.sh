@@ -1,8 +1,8 @@
 # Trozos que comparten los scripts de creditos/. No se ejecuta suelto: se
 # carga con `. "$AQUI/comun.sh"` (o ../comun.sh desde pruebas/).
 #
-# Lo unico que hay aqui de momento es la ruta de las roms, y esta aqui porque
-# suponerla es un fallo de portabilidad: /usr/share/games/mame/roms solo
+# Dos cosas: donde esta el emulador y donde estan las roms. Las dos estan aqui
+# porque suponerlas es un fallo de portabilidad. Las roms: /usr/share/games/mame/roms solo
 # existe en Debian y derivados. En Arch no, y en GroovyArcade es
 # ~/shared/roms/mame. La forma buena es preguntarsela al emulador, que es
 # quien sabe cual de sus mame.ini manda. Es la misma tecnica que usa
@@ -55,4 +55,60 @@ listar_roms() {
 	find "${dirs[@]}" -maxdepth 1 -type f \
 		\( -name '*.zip' -o -name '*.7z' \) -printf '%f\n' 2>/dev/null |
 		sed 's/\.[^.]*$//' | sort -u
+}
+
+# --- Donde esta el emulador -------------------------------------------------
+#
+# En una maquina de desarrollo el emulador esta en el arbol de fuentes
+# (groovymame_src/mame), que puede estar al lado del repo o en $HOME. En la
+# cabina GroovyArcade NO hay tal arbol: el binario esta instalado (el nuestro en
+# ~/.local/share/groovymame-cabina, el de la distro en el PATH). Antes cada
+# script tenia su propia lista y la mitad solo miraba groovymame_src, asi que en
+# la cabina fallaban con "no encuentro /mame" (fijar_tarifa.sh, 2026-11-22).
+#
+# Orden: MAME_DIR= o MAME= del entorno > nuestra compilacion de la cabina >
+# arbol de fuentes > groovymame o mame del PATH.
+
+_COMUN_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# $1 = fichero que debe haber dentro, $2.. = directorios candidatos -> el primero
+vecino() {
+	local marca="$1"; shift
+	local c
+	for c in "$@"; do
+		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
+	done
+	return 1
+}
+
+# -> la ruta del binario de MAME, o falla
+buscar_mame() {
+	local c fuentes
+	fuentes="$( vecino mame "$_COMUN_DIR/../../groovymame_src" \
+		"$_COMUN_DIR/../groovymame_src" "$HOME/groovymame_src" 2>/dev/null )"
+	for c in "${MAME_DIR:+$MAME_DIR/mame}" "${MAME:-}" \
+		"$HOME/.local/share/groovymame-cabina/mame" \
+		${fuentes:+"$fuentes/mame"} \
+		"$( command -v groovymame 2>/dev/null )" \
+		"$( command -v mame 2>/dev/null )"
+	do
+		[ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
+	done
+	return 1
+}
+
+# Deja MAME_BIN (el binario) y MAME_DIR (su carpeta), o sale con la ayuda.
+# Se lanza siempre desde MAME_DIR: nuestra compilacion lleva al lado su bgfx y
+# sus plugins, igual que hace el frontend con 'workdir'.
+preparar_mame() {
+	MAME_BIN="$( buscar_mame )" || {
+		echo "no encuentro el emulador. Lo busco, por este orden, en:" >&2
+		echo "  \$MAME_DIR/mame o \$MAME (variables de entorno)" >&2
+		echo "  ~/.local/share/groovymame-cabina/mame" >&2
+		echo "  groovymame_src/mame (al lado del repo o en \$HOME)" >&2
+		echo "  groovymame o mame en el PATH" >&2
+		echo "Lanzalo asi:  MAME=/ruta/al/mame $0 ..." >&2
+		exit 1
+	}
+	MAME_DIR="$( cd "$( dirname "$MAME_BIN" )" && pwd )"
 }

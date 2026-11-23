@@ -57,7 +57,7 @@ function M.entrada(ruta, juego)
 					-- parece 16. Medido en la cabina metiendo 30 monedas en
 					-- pacman, dkong, frogger y los Williams. Se marca con la
 					-- palabra 'bcd' al final de la linea.
-					bcd = linea:find('%f[%w]bcd%f[%W]') ~= nil,
+					bcd = sin_com:find('%f[%w]bcd%f[%W]') ~= nil,   -- sin el comentario: un '# no es bcd' no cuenta
 					-- Algunos Namco (mappy) NO guardan el contador como un
 					-- numero binario ni en BCD, sino partido en DOS bytes: uno
 					-- con el digito de las decenas y otro con el de las unidades

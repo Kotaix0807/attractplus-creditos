@@ -24,20 +24,8 @@
 set -u
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Donde esta cada cosa. Los repos pueden estar de DOS formas: creditos dentro
-# de attractplus (una sola clonacion, que es lo normal) o los dos al lado, como
-# estaban antes. Se buscan en los dos sitios en vez de suponer uno.
-vecino() {   # $1=marca que tiene dentro  $2..=candidatos
-	local marca="$1"; shift
-	local c
-	for c in "$@"; do
-		[ -e "$c/$marca" ] && { ( cd "$c" && pwd ); return 0; }
-	done
-	return 1
-}
-
-MAME_DIR="${MAME_DIR:-$( vecino mame \
-	"$AQUI/../../groovymame_src" "$AQUI/../groovymame_src" "$HOME/groovymame_src" )}"
+. "$AQUI/comun.sh"     # preparar_mame
+preparar_mame
 EMU="${EMU:-groovymame}"
 # OJO con el nombre: SNAP a secas ya existe en el entorno cuando algo se lanza
 # desde un snap (VS Code la pone a /snap/code/NNN), y "${SNAP:-...}" se la come
@@ -68,7 +56,7 @@ fi
 # veinte. Sale "juego rotacion" por linea.
 declare -A ROT
 while read -r j r; do ROT[$j]=$r; done < <(
-	cd "$MAME_DIR" && ./mame -listxml 2>/dev/null | python3 -c '
+	cd "$MAME_DIR" && "$MAME_BIN" -listxml 2>/dev/null | python3 -c '
 import sys, re
 juego = None
 for linea in sys.stdin:
