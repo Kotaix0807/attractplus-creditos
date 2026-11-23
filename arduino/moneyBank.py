@@ -143,10 +143,15 @@ def mameRunning():
     if time.monotonic() - _partida["visto"] < 1.0:
         return _partida["hay"]
     _partida["visto"] = time.monotonic()
-    _partida["hay"] = _buscarPartida()
+    _partida["hay"] = procesoVivo(("mame", "hypseus"))
+    _partida["minijuego"] = procesoVivo(("minijuegos",))
     return _partida["hay"]
 
-def _buscarPartida():
+def minijuegoVivo():
+    # Se actualiza junto con mameRunning (una vez por segundo).
+    return _partida.get("minijuego", False)
+
+def procesoVivo(nombres):
     # "Hay partida": MAME o Hypseus (laserdisc). En Hypseus no corre creditos.lua:
     # botones_juego lo escribe su lanzador (creditos/lanzar_hypseus.sh) y
     # monedero_switch=1 el propio Hypseus parcheado cuando la placa esta lista.
@@ -159,7 +164,7 @@ def _buscarPartida():
             continue
         try:
             with open(f"/proc/{pid}/comm") as f:
-                if f.read().strip() in ("mame", "hypseus"):
+                if f.read().strip() in nombres:
                     return True
         except OSError:
             pass   # el proceso termino mientras se miraba
@@ -358,6 +363,7 @@ while True:
                 linea = linea.strip()
                 if linea == "[":
                     minijuego = True
+                    _partida["minijuego"] = True   # hasta el proximo vistazo a /proc
                     lastLed = None   # al salir habra que re-mandar A/B
                 elif linea == "]":
                     minijuego = False
@@ -368,6 +374,14 @@ while True:
                     enviarCrudo(linea)   # P<ch>,<v> / X crudos del frontend
 
     running = mameRunning()
+
+    # Si el minijuego murio sin mandar ']' (pkill al relanzar el frontend, un
+    # cuelgue...), el panel se quedaba suyo para siempre: sin atraccion y sin las
+    # luces de los juegos hasta la siguiente sesion de minijuegos.
+    if minijuego and not minijuegoVivo():
+        minijuego = False
+        lastLed = None
+        log("el minijuego termino sin soltar el panel: vuelvo a atraccion")
 
     switch = getMoneyBankState(running)
     if switch is not None and switch != lastSwitch:

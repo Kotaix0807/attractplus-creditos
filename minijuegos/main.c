@@ -20,7 +20,7 @@
 //   9. menu
 //  10. main
 //
-// Para cambiar los controles: toca SOLO la seccion 4 (leerEntrada / teclaCelda).
+// Para cambiar los controles: toca SOLO las secciones 3 y 4 (TECLA_DE_CELDA / leerEntrada).
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -48,10 +48,10 @@
 // Sale de la grilla de Arcade.ino: arriba {1,8,6,3,10,12}, abajo {2,7,5,4,9,11}.
 static const int CANAL[NUM_CELDAS] = { 1, 8, 6, 3, 10, 12,  2, 7, 5, 4, 9, 11 };
 
-// Eje analogico: hay que cruzar UMBRAL para contar un movimiento, y volver por
-// debajo de ZONA_MUERTA para poder contar el siguiente (asi un empujon = un paso).
-#define UMBRAL       16000
-#define ZONA_MUERTA  8000
+// Eje analogico: hay que cruzar STICK_EMPUJADO para contar un movimiento, y volver por
+// debajo de STICK_CENTRO para poder contar el siguiente (asi un empujon = un paso).
+#define STICK_EMPUJADO 16000   // pasar de aqui = stick empujado
+#define STICK_CENTRO    8000   // bajar de aqui = stick de vuelta al centro
 
 static const SDL_Color BLANCO = { 235, 235, 235, 255 };
 static const SDL_Color AMBAR  = { 255, 210,  40, 255 };
@@ -130,7 +130,7 @@ static Mix_Chunk *cambiarPitch(Mix_Chunk *orig, float factor) {
         return NULL;
 
     Sint16 *src = (Sint16 *)orig->abuf;
-    Sint16 *dst = (Sint16 *)malloc((size_t)framesNuevo * bytesPorFrame);
+    Sint16 *dst = (Sint16 *)SDL_malloc((size_t)framesNuevo * bytesPorFrame);   // SDL_malloc: lo libera Mix_FreeChunk con SDL_free
     if (!dst)
         return NULL;
 
@@ -146,9 +146,9 @@ static Mix_Chunk *cambiarPitch(Mix_Chunk *orig, float factor) {
         }
     }
 
-    Mix_Chunk *nuevo = (Mix_Chunk *)malloc(sizeof(Mix_Chunk));
+    Mix_Chunk *nuevo = (Mix_Chunk *)SDL_malloc(sizeof(Mix_Chunk));
     if (!nuevo) {
-        free(dst);
+        SDL_free(dst);
         return NULL;
     }
     nuevo->allocated = 1;                             // Mix_FreeChunk liberara abuf
@@ -202,22 +202,29 @@ static void fifoAbrir(void) {
         fprintf(stderr, "sin FIFO (%s): se juega sin luces\n", strerror(errno));
 }
 
-static void fifoLinea(const char *fmt, ...) {
+// Manda una linea al demonio. Devuelve 1 si se escribio entera, 0 si no (FIFO
+// lleno o demonio caido: se sigue jugando sin luces).
+static int fifoLinea(const char *fmt, ...) {
     if (fifoFd < 0)
-        return;
+        return 0;
 
     char buf[32];
-    va_list ap; 
+    va_list ap;
     va_start(ap, fmt);
 
     int n = vsnprintf(buf, sizeof buf - 1, fmt, ap);
     va_end(ap);
     if (n < 0)
-        return;
+        return 0;
+
+    // vsnprintf devuelve lo que HABRIA escrito: si no cabe, se recorta para que
+    // el '\n' siga dentro de buf (antes escribia fuera con una linea larga).
+    if (n > (int)sizeof buf - 2)
+        n = (int)sizeof buf - 2;
 
     buf[n++] = '\n';
 
-    (void)!write(fifoFd, buf, n);   // si el demonio se cayo, seguimos sin luces
+    return write(fifoFd, buf, n) == n;
 }
 
 // Enciende un canal (0..255). Solo manda al Arduino si el valor cambio.
@@ -232,8 +239,10 @@ static void led(int canal, int val) {
         val = 255;
     if (ledEstado[canal] == val)
         return;
-    ledEstado[canal] = val;
-    fifoLinea("P%d,%d", canal, val);
+
+    // Solo se apunta como mandado si llego: si el write fallo (FIFO lleno), con
+    // -1 se reintenta la proxima vez en vez de quedar desfasado.
+    ledEstado[canal] = fifoLinea("P%d,%d", canal, val) ? val : -1;
 }
 
 static void ledApagarTodo(void) {
@@ -251,30 +260,48 @@ static void pintarUnaCelda(int encendida, int brillo) {
 
 // ====================== 3. MANDO + MAPA DE BOTONES ==========================
 
-static SDL_Joystick  *joys[16];
-static SDL_JoystickID joyId[16];
-static int numJoys = 0;
+// Hay TRES formas de nombrar un boton, segun quien pregunte:
+//   celda        el juego:  0..11 en la grilla 2x6 (0..5 arriba, 6..11 abajo)
+//   BotonFisico  SDL:       el boton N del mando M (lo que llega en los eventos)
+//   canal        el LED de esa celda en el PCA (tabla CANAL, solo para luces)
+// Esta seccion traduce BotonFisico -> celda. El mapa lo rellena calibrar().
 
-// Para cada celda y para "salir": que (joystick, boton) fisico la activa.
-struct Bind { int joy; int btn; };
-static struct Bind bindCelda[NUM_CELDAS];
-static struct Bind bindSalir;
+static SDL_Joystick  *mandos[16];    // los mandos abiertos, por indice 0, 1, 2...
+static SDL_JoystickID idMando[16];   // el id que SDL pone en los eventos de cada uno
+static int numMandos = 0;
 
-static int joyIndex(SDL_JoystickID id) {
-    for (int i = 0; i < numJoys; i++)
-        if (joyId[i] == id)
+typedef struct {
+    int mando;
+    int boton;
+} BotonFisico;   // "el boton N del mando M"
+
+static BotonFisico botonDeCelda[NUM_CELDAS];   // botonDeCelda[3] = que boton fisico es la celda 3
+static BotonFisico botonSalir;
+
+// Modo demo: el teclado hace de panel. Fila de arriba = 1..6, fila de abajo = q..y.
+// (ESC/0 = salir y las flechas = mover se tratan en leerEntrada.)
+static const SDL_Scancode TECLA_DE_CELDA[NUM_CELDAS] = {
+    SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4, SDL_SCANCODE_5, SDL_SCANCODE_6,
+    SDL_SCANCODE_Q, SDL_SCANCODE_W, SDL_SCANCODE_E, SDL_SCANCODE_R, SDL_SCANCODE_T, SDL_SCANCODE_Y
+};
+
+// Los eventos traen el id de SDL; el mapa guarda el indice. Esto convierte uno en otro.
+static int indiceDeMando(SDL_JoystickID id) {
+    for (int i = 0; i < numMandos; i++)
+        if (idMando[i] == id)
             return i;
 
     return -1;
 }
 
 // Un boton del mando -> celda 0..11, CELDA_SALIR, o -1 si no esta mapeado.
-static int celdaDeBoton(int ji, int btn) {
-    if (bindSalir.joy == ji && bindSalir.btn == btn)
+static int celdaDeBoton(int mando, int boton) {
+    if (botonSalir.mando == mando && botonSalir.boton == boton)
         return CELDA_SALIR;
-    for (int c = 0; c < NUM_CELDAS; c++)
-        if (bindCelda[c].joy == ji && bindCelda[c].btn == btn)
-            return c;
+    
+    for (int celda = 0; celda < NUM_CELDAS; celda++)
+        if (botonDeCelda[celda].mando == mando && botonDeCelda[celda].boton == boton)
+            return celda;
 
     return -1;
 }
@@ -283,42 +310,70 @@ static int celdaDeBoton(int ji, int btn) {
 // las teclas de celda). Sirve para la regla "mas de un boton a la vez = falla".
 static int botonesPulsados(void) {
     int n = 0;
-    for (int i = 0; i < numJoys; i++) {
-        if (!joys[i])
+    for (int i = 0; i < numMandos; i++) {
+        if (!mandos[i])
             continue;
-        int nb = SDL_JoystickNumButtons(joys[i]);
+        int nb = SDL_JoystickNumButtons(mandos[i]);
         for (int b = 0; b < nb; b++)
-            if (SDL_JoystickGetButton(joys[i], b))
+            if (SDL_JoystickGetButton(mandos[i], b))
                 n++;
     }
     if (demo) {   // teclas de celda pulsadas, para poder probar la regla sin mando
-        static const SDL_Scancode CEL[NUM_CELDAS] = {
-            SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4, SDL_SCANCODE_5, SDL_SCANCODE_6,
-            SDL_SCANCODE_Q, SDL_SCANCODE_W, SDL_SCANCODE_E, SDL_SCANCODE_R, SDL_SCANCODE_T, SDL_SCANCODE_Y };
-        const Uint8 *ks = SDL_GetKeyboardState(NULL);
+        const Uint8 *teclado = SDL_GetKeyboardState(NULL);
         for (int c = 0; c < NUM_CELDAS; c++)
-            if (ks[CEL[c]])
+            if (teclado[TECLA_DE_CELDA[c]])
                 n++;
     }
     return n;
 }
 
-// Teclado del modo demo: fila de arriba = 1..6, fila de abajo = q w e r t y.
-// (ESC/0 = salir y las flechas = mover se tratan en leerEntrada.)
-static int teclaCelda(SDL_Keycode k) {
-    switch (k) {
-        case SDLK_1: return 0;
-        case SDLK_2: return 1;
-        case SDLK_3: return 2;
-        case SDLK_4: return 3;
-        case SDLK_5: return 4;
-        case SDLK_6: return 5;
-        case SDLK_q: return 6;
-        case SDLK_w: return 7;
-        case SDLK_e: return 8;
-        case SDLK_r: return 9;
-        case SDLK_t: return 10;
-        case SDLK_y: return 11;
+// Una tecla -> su celda (0..11), o -1 si no es tecla de celda.
+static int celdaDeTecla(SDL_Scancode tecla) {
+    for (int c = 0; c < NUM_CELDAS; c++)
+        if (TECLA_DE_CELDA[c] == tecla)
+            return c;
+    return -1;
+}
+
+// El mapa se guarda por INDICE de mando (el que da SDL al abrirlo), pero ese
+// indice cambia segun que este enchufado: con el mando de PS4 el panel es 1 y 2,
+// sin el es 0 y 1 (medido en la cabina, ver CLAUDE.md). Por eso tambien se guarda
+// el GUID de cada mando, y al cargar cada indice viejo se traduce al mando actual
+// con el mismo GUID. Los dos Xinmotek tienen el MISMO GUID: entre ellos se respeta
+// el orden (el 1o con ese GUID sigue siendo el 1o), que es lo unico que se sabe.
+
+static void guidDeMando(int i, char *guid, int largo) {
+    guid[0] = '\0';
+    if (i >= 0 && i < numMandos && mandos[i])
+        SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(mandos[i]), guid, largo);
+}
+
+// Cuantos mandos ANTES de 'indice' tienen ese mismo GUID (0 = es el primero).
+static int ordenEntreIguales(char guids[][40], int indice) {
+    int n = 0;
+    for (int j = 0; j < indice; j++)
+        if (strcmp(guids[j], guids[indice]) == 0)
+            n++;
+    return n;
+}
+
+// Indice viejo -> indice actual, o -1 si ese mando ya no esta.
+static int traducirMando(char guardados[][40], int numGuardados, int viejo) {
+    if (viejo < 0 || viejo >= numGuardados || !guardados[viejo][0])
+        return viejo;   // fichero antiguo sin GUID: se usa el indice tal cual
+
+    char actuales[16][40];
+    for (int i = 0; i < numMandos; i++)
+        guidDeMando(i, actuales[i], sizeof actuales[i]);
+
+    int buscado = ordenEntreIguales(guardados, viejo);
+    int visto = 0;
+    for (int i = 0; i < numMandos; i++) {
+        if (strcmp(actuales[i], guardados[viejo]) != 0)
+            continue;
+        if (visto == buscado)
+            return i;
+        visto++;
     }
     return -1;
 }
@@ -331,30 +386,53 @@ static int cargarMapa(void) {
         return 0;
 
     for (int c = 0; c < NUM_CELDAS; c++)
-        bindCelda[c].joy = -1;
+        botonDeCelda[c].mando = -1;
 
-    bindSalir.joy = -1;
-    char clave[32]; 
-    int ji, btn, leidos = 0;
+    botonSalir.mando = -1;
 
-    while (fscanf(f, "%31s %d %d", clave, &ji, &btn) == 3) {
-        if (strcmp(clave, "salir") == 0)
-        {
-            bindSalir.joy = ji;
-            bindSalir.btn = btn;
-            leidos++;
-        }
-        else {
-            int c = atoi(clave);
-            if (c >= 0 && c < NUM_CELDAS)
-            {
-                bindCelda[c].joy = ji;
-                bindCelda[c].btn = btn;
-                leidos++;
+    char guardados[16][40] = { { 0 } };   // GUID de cada indice al calibrar
+    int numGuardados = 0;
+    char linea[128], clave[32], guid[40];
+    int mando, boton, leidos = 0;
+
+    while (fgets(linea, sizeof linea, f)) {
+        if (sscanf(linea, "guid %d %39s", &mando, guid) == 2) {
+            if (mando >= 0 && mando < 16) {
+                snprintf(guardados[mando], sizeof guardados[mando], "%s", guid);
+                if (mando + 1 > numGuardados)
+                    numGuardados = mando + 1;
             }
+            continue;
+        }
+        if (sscanf(linea, "%31s %d %d", clave, &mando, &boton) != 3)
+            continue;
+
+        BotonFisico *b = NULL;
+        if (strcmp(clave, "salir") == 0)
+            b = &botonSalir;
+        else if (atoi(clave) >= 0 && atoi(clave) < NUM_CELDAS)
+            b = &botonDeCelda[atoi(clave)];
+
+        if (b) {
+            b->mando = mando;   // todavia el indice VIEJO; se traduce abajo
+            b->boton = boton;
+            leidos++;
         }
     }
     fclose(f);
+
+    // Las lineas guid pueden venir antes o despues: se traduce al final.
+    for (int c = 0; c < NUM_CELDAS; c++)
+        botonDeCelda[c].mando = traducirMando(guardados, numGuardados, botonDeCelda[c].mando);
+    botonSalir.mando = traducirMando(guardados, numGuardados, botonSalir.mando);
+
+    // Si algun mando del mapa ya no esta, el mapa no vale: hay que recalibrar.
+    for (int c = 0; c < NUM_CELDAS; c++)
+        if (botonDeCelda[c].mando < 0)
+            return 0;
+    if (botonSalir.mando < 0)
+        return 0;
+
     return leidos == NUM_CELDAS + 1;   // completo = 12 celdas + salir
 }
 
@@ -366,10 +444,17 @@ static void guardarMapa(void) {
     if (!f)
         return;
 
-    for (int c = 0; c < NUM_CELDAS; c++)
-        fprintf(f, "%d %d %d\n", c, bindCelda[c].joy, bindCelda[c].btn);
+    for (int i = 0; i < numMandos; i++) {
+        char guid[40];
+        guidDeMando(i, guid, sizeof guid);
+        if (guid[0])
+            fprintf(f, "guid %d %s\n", i, guid);
+    }
 
-    fprintf(f, "salir %d %d\n", bindSalir.joy, bindSalir.btn);
+    for (int c = 0; c < NUM_CELDAS; c++)
+        fprintf(f, "%d %d %d\n", c, botonDeCelda[c].mando, botonDeCelda[c].boton);
+
+    fprintf(f, "salir %d %d\n", botonSalir.mando, botonSalir.boton);
     fclose(f);
 }
 
@@ -395,32 +480,37 @@ typedef struct {
 
 // Diagnostico (modo demo): el ultimo evento de entrada, en texto, para ver que
 // manda cada control fisico. Se dibuja arriba a la izquierda con dibujarDebug().
-static char ultimoEvt[96] = "";
+static char ultimoEvento[96] = "";
 
-static void registrarEvento(const SDL_Event *e) {
+static void anotarUltimoEvento(const SDL_Event *e) {
     switch (e->type) {
         case SDL_JOYBUTTONDOWN:
-            snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  BOTON %d",
-                     joyIndex(e->jbutton.which), e->jbutton.button); break;
-        case SDL_JOYAXISMOTION:
-            if (e->jaxis.value > UMBRAL || e->jaxis.value < -UMBRAL)
-                snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  EJE %d = %d",
-            joyIndex(e->jaxis.which), e->jaxis.axis, e->jaxis.value);
+            snprintf(ultimoEvento, sizeof ultimoEvento, "JOY %d  BOTON %d",
+            indiceDeMando(e->jbutton.which), e->jbutton.button);
             break;
+
+        case SDL_JOYAXISMOTION:
+            if (e->jaxis.value > STICK_EMPUJADO || e->jaxis.value < -STICK_EMPUJADO)
+                snprintf(ultimoEvento, sizeof ultimoEvento, "JOY %d  EJE %d = %d",
+            indiceDeMando(e->jaxis.which), e->jaxis.axis, e->jaxis.value);
+            break;
+
         case SDL_JOYHATMOTION:
             if (e->jhat.value)
-                snprintf(ultimoEvt, sizeof ultimoEvt, "JOY %d  HAT = %d",
-            joyIndex(e->jhat.which), e->jhat.value);
+                snprintf(ultimoEvento, sizeof ultimoEvento, "JOY %d  HAT = %d",
+            indiceDeMando(e->jhat.which), e->jhat.value);
             break;
+
         case SDL_KEYDOWN:
-            snprintf(ultimoEvt, sizeof ultimoEvt, "TECLA %s", SDL_GetKeyName(e->key.keysym.sym));
+            snprintf(ultimoEvento, sizeof ultimoEvento, "TECLA %s", SDL_GetKeyName(e->key.keysym.sym));
             break;
     }
 }
 
-// Estado de los ejes (compartido por todos los sticks) para dar un paso por empujon.
-static int ejeXact = 0, ejeYact = 0;
-static void reiniciarEjes(void) { ejeXact = ejeYact = 0; }
+// El stick esta empujado AHORA? (compartido por todos los mandos). Sirve para
+// que un empujon cuente como un solo paso, ver pasoDelEje().
+static int stickXEmpujado = 0, stickYEmpujado = 0;
+static void soltarStick(void) { stickXEmpujado = stickYEmpujado = 0; }
 
 // Rectangulo en pantalla de la celda c del panel de demo. La usan el dibujo y el
 // hit-test del raton, asi que el clic cuadra siempre con lo que se ve.
@@ -442,59 +532,35 @@ static int celdaEnPixel(int mx, int my) {
     return -1;
 }
 
-// Convierte el movimiento analogico de un stick (ejes 0 y 1) o su cruceta en dx/dy.
+// Un eje del stick -> un paso (-1, 0 o +1). Solo da el paso en el momento de
+// empujar; mientras se mantiene empujado devuelve 0, y vuelve a poder dar otro
+// paso cuando el stick regresa al centro. 'empujado' recuerda en que punto esta.
+static int pasoDelEje(int valor, int *empujado) {
+    if (!*empujado && valor >  STICK_EMPUJADO) { *empujado = 1; return  1; }
+    if (!*empujado && valor < -STICK_EMPUJADO) { *empujado = 1; return -1; }
+    if (valor > -STICK_CENTRO && valor < STICK_CENTRO) *empujado = 0;   // volvio al centro
+    return 0;
+}
+
+// Stick (eje 0 = horizontal, eje 1 = vertical) o cruceta -> dx/dy.
 static void leerDireccion(const SDL_Event *e, int *dx, int *dy) {
     if (e->type == SDL_JOYAXISMOTION) {
-        int v = e->jaxis.value;
-        if (e->jaxis.axis == 0) {
-            if(!ejeXact && v >  UMBRAL)
-            {
-                *dx =  1;
-                ejeXact = 1;
-            }
-            else if (!ejeXact && v < -UMBRAL)
-            {
-                *dx = -1;
-                ejeXact = 1;
-            }
-            else if ( ejeXact && v > -ZONA_MUERTA && v < ZONA_MUERTA)
-                ejeXact = 0;
-
-        } 
-        else if (e->jaxis.axis == 1) {
-            if (!ejeYact && v >  UMBRAL)
-            {
-                *dy =  1;
-                ejeYact = 1;
-            }
-            else if (!ejeYact && v < -UMBRAL)
-            {
-                *dy = -1;
-                ejeYact = 1;
-            }
-            else if ( ejeYact && v > -ZONA_MUERTA && v < ZONA_MUERTA) 
-                ejeYact = 0;
-        }
-    } else if (e->type == SDL_JOYHATMOTION) {
-
-        Uint8 h = e->jhat.value;
-        if (h & SDL_HAT_LEFT)
-            *dx = -1;
-
-        if (h & SDL_HAT_RIGHT)
-            *dx =  1;
-
-        if (h & SDL_HAT_UP)
-            *dy = -1;
-
-        if (h & SDL_HAT_DOWN)
-            *dy =  1;
+        if (e->jaxis.axis == 0) *dx = pasoDelEje(e->jaxis.value, &stickXEmpujado);
+        if (e->jaxis.axis == 1) *dy = pasoDelEje(e->jaxis.value, &stickYEmpujado);
+    }
+    if (e->type == SDL_JOYHATMOTION) {
+        Uint8 cruceta = e->jhat.value;
+        if (cruceta & SDL_HAT_LEFT)  *dx = -1;
+        if (cruceta & SDL_HAT_RIGHT) *dx =  1;
+        if (cruceta & SDL_HAT_UP)    *dy = -1;
+        if (cruceta & SDL_HAT_DOWN)  *dy =  1;
     }
 }
 
+// Traduce UN evento SDL (mando, teclado, raton o ventana) a una Entrada.
 static Entrada leerEntrada(const SDL_Event *e) {
-    Entrada in = { -1, 0, 0, 0, 0, 0, 0 };
-    registrarEvento(e);
+    Entrada in = { .celda = -1 };   // el resto de campos queda a 0 = "no paso nada"
+    anotarUltimoEvento(e);
 
     if (e->type == SDL_QUIT)
     {
@@ -503,7 +569,7 @@ static Entrada leerEntrada(const SDL_Event *e) {
     }
 
     if (e->type == SDL_JOYBUTTONDOWN) {
-        int c = celdaDeBoton(joyIndex(e->jbutton.which), e->jbutton.button);
+        int c = celdaDeBoton(indiceDeMando(e->jbutton.which), e->jbutton.button);
         
         if (c == CELDA_SALIR)
             in.salir = 1;
@@ -523,7 +589,7 @@ static Entrada leerEntrada(const SDL_Event *e) {
             case SDLK_UP:    in.dy = -1; break;
             case SDLK_DOWN:  in.dy =  1; break;
             default: {
-                int c = teclaCelda(e->key.keysym.sym);
+                int c = celdaDeTecla(e->key.keysym.scancode);
                 if (c >= 0)
                     in.celda = c;
             }
@@ -632,9 +698,9 @@ static void dibujarPanelDemo(void) {
 
 // Diagnostico (modo demo): el ultimo evento de entrada, arriba a la izquierda.
 static void dibujarDebug(void) {
-    if (!demo || ultimoEvt[0] == '\0')
+    if (!demo || ultimoEvento[0] == '\0')
         return;
-    texto(ultimoEvt, 10, 8, fuente, AMBAR, 0);
+    texto(ultimoEvento, 10, 8, fuente, AMBAR, 0);
 }
 
 // Pantalla comun de los dos juegos: titulo, puntos, record y segundos restantes.
@@ -669,9 +735,9 @@ static const char *NOMBRE_CELDA[NUM_CELDAS] = {
 
 // Ese (joystick, boton) ya se asigno a una celda anterior? (evita mapear el mismo
 // boton a dos cosas, que dejaria botones "muertos" o actuando de salir.)
-static int botonYaUsado(int ji, int btn, int hasta) {
+static int botonYaUsado(int mando, int boton, int hasta) {
     for (int c = 0; c < hasta && c < NUM_CELDAS; c++)
-        if (bindCelda[c].joy == ji && bindCelda[c].btn == btn)
+        if (botonDeCelda[c].mando == mando && botonDeCelda[c].boton == boton)
             return 1;
     return 0;
 }
@@ -681,12 +747,12 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
     int repetido = 0;
     for (int c = 0; c < NUM_CELDAS; c++)
     {
-        bindCelda[c].joy = -1;
-        bindCelda[c].btn = -1;
+        botonDeCelda[c].mando = -1;
+        botonDeCelda[c].boton = -1;
     }
 
-    bindSalir.joy = -1;
-    bindSalir.btn = -1;
+    botonSalir.mando = -1;
+    botonSalir.boton = -1;
 
     while (objetivo <= NUM_CELDAS) {
         // Pista en el panel: enciende solo el LED que toca pulsar (salir = extra).
@@ -698,21 +764,27 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
         while (!hecho) {
             if (!SDL_WaitEvent(&e))
                 continue;
-            if (e.type == SDL_QUIT)
+            // Al cancelar se vuelve al mapa guardado: arriba se vacio el de
+            // memoria, y sin esto la sesion se quedaba sin ningun boton.
+            if (e.type == SDL_QUIT) {
+                cargarMapa();
                 return 0;
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
+            }
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+                cargarMapa();
                 return 0;
+            }
             if (e.type == SDL_JOYBUTTONDOWN) {
-                int ji = joyIndex(e.jbutton.which), btn = e.jbutton.button;
-                if (ji < 0)
+                int mando = indiceDeMando(e.jbutton.which), boton = e.jbutton.button;
+                if (mando < 0)
                     continue;
                 int hasta = (objetivo < NUM_CELDAS) ? objetivo : NUM_CELDAS;
-                if (botonYaUsado(ji, btn, hasta)) {
+                if (botonYaUsado(mando, boton, hasta)) {
                     repetido = 1;                 // ese boton ya esta cogido: pide otro
                 } else {
-                    struct Bind *b = (objetivo < NUM_CELDAS) ? &bindCelda[objetivo] : &bindSalir;
-                    b->joy = ji;
-                    b->btn = btn;
+                    BotonFisico *b = (objetivo < NUM_CELDAS) ? &botonDeCelda[objetivo] : &botonSalir;
+                    b->mando = mando;
+                    b->boton = boton;
                     objetivo++;
                     hecho = 1;
                     repetido = 0;
@@ -733,8 +805,8 @@ static int calibrar(void) {   // 1 = calibro completo, 0 = cancelado (ESC)
 
             texto("ESC para cancelar", anchoV / 2, altoV * 3 / 4, fuente, BLANCO, 1);
 
-            if (ultimoEvt[0])   // que manda el ultimo control pulsado (diagnostico)
-                texto(ultimoEvt, 10, 8, fuente, AMBAR, 0);
+            if (ultimoEvento[0])   // que manda el ultimo control pulsado (diagnostico)
+                texto(ultimoEvento, 10, 8, fuente, AMBAR, 0);
             
             SDL_RenderPresent(ren);
         }
@@ -785,7 +857,7 @@ static int jugarMeta(void) {
     int cursor = 0, puntos = 0;
     int meta = metaLejosDe(cursor);
     Uint32 ini = SDL_GetTicks();
-    reiniciarEjes();
+    soltarStick();
     ledApagarTodo();
 
     Mix_PlayMusic(musPathGame, -1);
@@ -1058,7 +1130,7 @@ static void pantallaFin(int puntos, int record) {
 static int menu(void) {
     const char *nombres[2] = { "ALCANZA LA META", "DALE AL TOPO" };
     int sel = 0;
-    reiniciarEjes();
+    soltarStick();
     if (musMenu)
         Mix_PlayMusic(musMenu, -1);   // UNA vez (antes -1 repetia el jingle sin parar)
     ledApagarTodo();
@@ -1070,7 +1142,7 @@ static int menu(void) {
             Entrada in = leerEntrada(&e);
             if (in.cerrar || in.salir)
                 return A_SALIR;
-            if (in.recalibrar && numJoys > 0)
+            if (in.recalibrar && numMandos > 0)
             {
                 calibrar();
                 break;
@@ -1115,33 +1187,33 @@ static void cargarSonido(Mix_Chunk **sfx, const char *nombre) {
 
 static void initJoysticks()
 {
-    numJoys = SDL_NumJoysticks();
+    numMandos = SDL_NumJoysticks();
 
-    if (numJoys > 16)
-        numJoys = 16;
+    if (numMandos > 16)
+        numMandos = 16;
 
-    for (int i = 0; i < numJoys; i++) {
-        joys[i] = SDL_JoystickOpen(i);
-        joyId[i] = joys[i] ? SDL_JoystickInstanceID(joys[i]) : -1;
+    for (int i = 0; i < numMandos; i++) {
+        mandos[i] = SDL_JoystickOpen(i);
+        idMando[i] = mandos[i] ? SDL_JoystickInstanceID(mandos[i]) : -1;
     }
 
-    registro("=== arranque: demo=%d joysticks=%d ===", demo, numJoys);
-    for (int i = 0; i < numJoys; i++)
+    registro("=== arranque: demo=%d joysticks=%d ===", demo, numMandos);
+    for (int i = 0; i < numMandos; i++)
         registro("  joy %d: '%s'  botones=%d ejes=%d hats=%d", i,
-                 SDL_JoystickName(joys[i]) ? SDL_JoystickName(joys[i]) : "?",
-                 SDL_JoystickNumButtons(joys[i]), SDL_JoystickNumAxes(joys[i]),
-                 SDL_JoystickNumHats(joys[i]));
+                 SDL_JoystickName(mandos[i]) ? SDL_JoystickName(mandos[i]) : "?",
+                 SDL_JoystickNumButtons(mandos[i]), SDL_JoystickNumAxes(mandos[i]),
+                 SDL_JoystickNumHats(mandos[i]));
 
     // Mapa de botones "sin asignar" de entrada: asi, sin calibrar, NINGUN boton
     // del mando hace nada (antes el 0-por-defecto hacia que el boton 0 = salir).
     for (int c = 0; c < NUM_CELDAS; c++)
     {
-        bindCelda[c].joy = -1;
-        bindCelda[c].btn = -1;
+        botonDeCelda[c].mando = -1;
+        botonDeCelda[c].boton = -1;
     }
 
-    bindSalir.joy = -1;
-    bindSalir.btn = -1;
+    botonSalir.mando = -1;
+    botonSalir.boton = -1;
 }
 
 static int initFont()
@@ -1266,7 +1338,7 @@ int main(void) {
 
     // Si hay un mando sin mapear, se calibra (tambien en demo, para poder jugar con
     // el). ESC durante la calibracion lo salta y se juega solo con el teclado.
-    if (!cargarMapa() && numJoys > 0)
+    if (!cargarMapa() && numMandos > 0)
         calibrar();
 
     while(1) {
@@ -1278,8 +1350,8 @@ int main(void) {
             break;
     }
 
+    ledApagarTodo();            // ANTES de soltar: despues el demonio ya no reenvia la X
     fifoLinea("]");             // soltar el panel -> el demonio vuelve a atraccion
-    ledApagarTodo();
     if (fifoFd >= 0)
         close(fifoFd);
     liberarPitch(&okAgudo, &okCanal);       // libera las copias de tono (sin fugas)
