@@ -1640,7 +1640,9 @@ local function por_frame()
 		-- jugador por que el boton no hace nada.
 		if e.cerrojo and not e.cerrojo.moneda() then
 			if e.cerrojo.motivo() == 'arrancando' then
-				e.mensaje = 'ESPERA, LA MAQUINA ESTA ARRANCANDO'
+				-- Sin cartel (pedido por Eloy 2026-11-22): arrancando, el rele
+				-- tiene el monedero apagado y la moneda se devuelve sola.
+				e.mensaje = nil
 				log('moneda rechazada: la placa todavia esta arrancando y la tiraria')
 			elseif e.cerrojo.motivo() == 'lleno' then
 				-- Sin cartel (pedido por Eloy 2026-11-22): con la maquina llena el
