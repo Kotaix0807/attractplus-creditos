@@ -8,7 +8,7 @@
 #
 #   MINIJUEGO  el frontend SDL reclamo el panel por el FIFO -> se reenvian sus
 #              lineas P/X crudas; no se manda A ni B. Rele cerrado (no hay MAME).
-#   EN MAME    pgrep -x mame -> M1 y B<mascara> con los botones que usa el juego.
+#   EN MAME    corre mame o hypseus -> M1 y B<mascara> con los botones del juego.
 #   ATRACCION  ni lo uno ni lo otro -> M0 y A8 (show de animaciones).
 #   siempre    si cambio el brillo -> L<n>.
 #
@@ -21,7 +21,6 @@
 #
 # Tiene que ser un solo proceso: el puerto solo lo puede tener abierto uno, y
 # abrirlo reinicia la placa. Detalle a fondo: docs/minijuegos.md.
-import subprocess
 import os
 import time
 import datetime
@@ -45,6 +44,7 @@ LOG_NAME = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 UPDATE_TIME = 0.1
 ARDUINO_TIME = 3
 RETRY_TIME = 5
+PUERTO_TIME = 5        # cada cuanto se comprueba que el puerto sigue existiendo
 ANIM_ATRACCION = "8"   # show rotatorio de animaciones
 
 # Mapa provisional: boton de accion de P1 (1..6) -> canal de LED del panel.
@@ -65,6 +65,8 @@ lastAviso = None   # estado anterior del aviso de salida ('off'/'salir'/None)
 lastBrillo = None
 minijuego = False     # el PC reclamo el panel por el FIFO
 fifoBuf = ""
+puertoAbierto = None  # ruta del puerto abierto (para ver si desaparece)
+ultimaRevision = 0.0
 
 def find_port():
     forzado = os.environ.get("ARDUINO_PORT")                   # util para pruebas / montajes raros
@@ -82,8 +84,13 @@ def log(logString):
      if lastError == castedString:
             return
      lastError = castedString
-     with open(f"log{LOG_NAME}.txt", "a") as file:
-            file.write(datetime.datetime.now().strftime("%H:%M:%S\t") + castedString)
+     # Un fallo al escribir el log (disco lleno, permisos) NO puede tumbar el
+     # demonio: systemd lo relanzaria, reabriria el puerto y eso reinicia la placa.
+     try:
+            with open(f"log{LOG_NAME}.txt", "a") as file:
+                   file.write(datetime.datetime.now().strftime("%H:%M:%S\t") + castedString)
+     except OSError:
+            pass
 
 def logOk():
      global lastError
@@ -93,7 +100,7 @@ def logOk():
      lastError = None
 
 def initArduino():
-    global conection, lastSwitch, lastLed, lastBrillo, lastAviso
+    global conection, lastSwitch, lastLed, lastBrillo, lastAviso, puertoAbierto
 
     if conection is not None:
         return True
@@ -107,6 +114,7 @@ def initArduino():
         # write_timeout: una escritura a una placa colgada/desenchufada falla en
         # vez de bloquear el demonio para siempre.
         conection = serial.Serial(port, BAUD_RATE, write_timeout=2)
+        puertoAbierto = port
         # Abrir el puerto reinicia la placa: esperar a que arranque y volver a
         # mandarle todo, porque ha vuelto a su estado inicial.
         time.sleep(ARDUINO_TIME)
@@ -126,19 +134,48 @@ def getFileData(path):
     with open(str(path), "r") as file:
         return file.read()
 
+_partida = {"hay": False, "visto": 0.0}
+
 def mameRunning():
+    # Recorrer /proc entero cuesta CPU en el i3 (medido: ~8% a 10 veces por
+    # segundo). Basta con mirarlo una vez por segundo: el rele de verdad lo manda
+    # monedero_switch, que escribe creditos.lua; esto solo decide atraccion/juego.
+    if time.monotonic() - _partida["visto"] < 1.0:
+        return _partida["hay"]
+    _partida["visto"] = time.monotonic()
+    _partida["hay"] = _buscarPartida()
+    return _partida["hay"]
+
+def _buscarPartida():
     # "Hay partida": MAME o Hypseus (laserdisc). En Hypseus no corre creditos.lua:
     # botones_juego lo escribe su lanzador (creditos/lanzar_hypseus.sh) y
     # monedero_switch=1 el propio Hypseus parcheado cuando la placa esta lista.
-    return subprocess.run(["pgrep", "-x", "mame|hypseus"], stdout=subprocess.DEVNULL).returncode == 0
+    #
+    # Se mira /proc/<pid>/comm (el nombre exacto, como pgrep -x) en vez de lanzar
+    # pgrep: esto corre 10 veces por segundo y cada pgrep era un proceso nuevo,
+    # y en el i3 los forks dan tirones al juego.
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip() in ("mame", "hypseus"):
+                    return True
+        except OSError:
+            pass   # el proceso termino mientras se miraba
+    return False
 
 def getMoneyBankState(running):
     # Sin MAME no hay partida: monedero cerrado, diga lo que diga el fichero
     # (creditos.lua no puede escribir el 0 al salir, MAME no le da un ultimo frame).
     if not running:
+        # Solo se escribe si hace falta: antes se reescribia 10 veces por segundo.
         try:
-            with open(MONEYBANK_STATE_PATH, "w") as f:
-                f.write("0")
+            if getFileData(MONEYBANK_STATE_PATH).strip() != "0":
+                with open(MONEYBANK_STATE_PATH, "w") as f:
+                    f.write("0")
+        except FileNotFoundError:
+            pass   # sin fichero = monedero cerrado, que es lo que se quiere
         except OSError as e:
             log(e)
         return 0
@@ -238,6 +275,21 @@ while True:
     if initArduino() is False:
         time.sleep(RETRY_TIME)
         continue
+
+    # Si el puerto desaparece (cable flojo, la placa se re-enumera por USB), la
+    # placa ha vuelto a su estado de fabrica y no nos enteramos: solo se detecta al
+    # fallar un write, y en atraccion estable no se escribe nada. Se cierra para
+    # que initArduino la reabra y le re-mande todo.
+    if time.monotonic() - ultimaRevision > PUERTO_TIME:
+        ultimaRevision = time.monotonic()
+        if puertoAbierto and not os.path.exists(puertoAbierto):
+            try:
+                conection.close()
+            except Exception:
+                pass
+            conection = None
+            log("el puerto %s desaparecio: reabro" % puertoAbierto)
+            continue
 
     # Reinicio manual de la placa (el panel escribe ~/.attract/arduino_reset):
     # cerrar y reabrir el puerto la resetea por DTR, y initArduino re-manda todo.
