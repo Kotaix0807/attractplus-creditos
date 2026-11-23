@@ -18,7 +18,7 @@ a viajar por red) y obliga a mantener dos programas en vez de uno. El backend se
 queda donde están los datos; el Pi solo hace de puerta.
 
 ```
-teléfono (Tailscale) ──> nginx (Pi, :80, solo 100.64.0.0/10) ──> portero.py (Pi, 127.0.0.1:8080) ──cable LAN──> panel (cabina, 10.55.0.2:8808)
+teléfono (Tailscale) ──> nginx (Pi, :80 y :8080, solo 100.64.0.0/10) ──> portero.py (Pi, 127.0.0.1:8081) ──cable LAN──> panel (cabina, 10.55.0.2:8808)
 ```
 
 ---
@@ -88,7 +88,7 @@ Comprueba el portero (en el propio Pi):
 
 ```bash
 python3 ~/attractplus/pi/portero.py --self-check      # valida el magic packet
-curl -s localhost:8080/api/puerta                     # {"cabina_online": true/false, ...}
+curl -s localhost:8081/api/puerta                     # {"cabina_online": true/false, ...}
 ```
 
 ---
@@ -104,21 +104,24 @@ puertos.
 La regla es que **no se pueda entrar desde ninguna otra IP**, y la cumplen dos
 piezas:
 
-- **El portero escucha en `127.0.0.1`** (`ESCUCHA=127.0.0.1` en
-  `portero.service`, que es además su valor por defecto). Nadie de fuera llega
-  al 8080.
+- **El portero escucha en `127.0.0.1:8081`** (`ESCUCHA` y `PUERTO` en
+  `portero.service`). Nadie de fuera llega a él.
 - **nginx es la única puerta**, y solo deja pasar el rango de Tailscale
   (`100.64.0.0/10` y `fd7a:115c:a1e0::/48`); el resto recibe un 403. La
   configuración está en [`nginx-panel.conf`](nginx-panel.conf). Se filtra en
   nginx y no atando el puerto a la IP de Tailscale, porque esa IP no existe
   hasta que arranca `tailscaled` y un `bind` a ella fallaría en el arranque.
+  nginx atiende el **80 y el 8080**: el 8080 es la dirección que el teléfono ya
+  tenía guardada, y cerrarlo dejó a Eloy sin entrar («no se pudo conectar»).
 
 Verificado el 2026-11-22 desde el portátil, que está en las dos redes:
 
 | | resultado |
 |---|---|
 | `http://192.168.1.120/` (wifi de casa) | 403 |
-| `http://192.168.1.120:8080/` | no responde |
+| `http://192.168.1.120:8080/` | 403 |
+| `http://192.168.1.120:8081/` (el portero) | no responde |
+| `http://100.92.202.44:8080/` (Tailscale) | 200 |
 | `http://192.168.1.117:8808/` (la cabina por el wifi) | no responde |
 | `http://100.92.202.44/` (Tailscale) | 200 |
 
@@ -157,5 +160,5 @@ Basta con lanzarlo apuntando a una cabina que no responde: sirve `~/web` y para
 de cabina se quitó el 2026-11-22; las páginas se prueban contra la cabina real.)
 
 ```bash
-CABINA=127.0.0.1:9 PUERTO=8080 python3 pi/portero.py
+CABINA=127.0.0.1:9 PUERTO=8081 python3 pi/portero.py
 ```

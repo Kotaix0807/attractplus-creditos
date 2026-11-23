@@ -12,7 +12,7 @@ el backend (`panel/`) lo escribe Claude. Mientras no cambie este contrato, los
 dos lados avanzan por separado.
 
 ```
-teléfono (Tailscale) ──> nginx (Pi, :80, solo 100.64.0.0/10) ──> portero (Pi, 127.0.0.1:8080)
+teléfono (Tailscale) ──> nginx (Pi, :80 y :8080, solo 100.64.0.0/10) ──> portero (Pi, 127.0.0.1:8081)
                                                                      │  sirve la GUI (~/web)
                                                                      │  cabina apagada: 503 + Wake-on-LAN
                                                          cable LAN ──┘

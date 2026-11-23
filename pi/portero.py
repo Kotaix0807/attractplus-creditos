@@ -18,7 +18,7 @@ Config por entorno (o por pi/portero.service):
   CABINA_MAC  MAC de la cabina para Wake-on-LAN           (def '' -> sin WoL)
   BROADCAST   difusion del enlace LAN, para que el WoL salga por el cable
               correcto y no por el internet del Pi        (def 10.55.0.255)
-  PUERTO      puerto en que escucha el portero            (def 8080)
+  PUERTO      puerto en que escucha el portero            (def 8081; nginx atiende 80 y 8080)
 """
 
 import os
@@ -30,7 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 CABINA = os.environ.get("CABINA", "10.55.0.2:8808")
 CABINA_MAC = os.environ.get("CABINA_MAC", "")
 BROADCAST = os.environ.get("BROADCAST", "10.55.0.255")
-PUERTO = int(os.environ.get("PUERTO", "8080"))
+PUERTO = int(os.environ.get("PUERTO", "8081"))
 # IP en que escucha el portero.  127.0.0.1 = solo nginx, que es quien filtra
 # por Tailscale.  NUNCA 0.0.0.0: se saltaria ese filtro.
 ESCUCHA = os.environ.get("ESCUCHA", "127.0.0.1")

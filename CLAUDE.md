@@ -3205,7 +3205,7 @@ es además el **contrato de API** entre los dos.
 **Por dónde se entra (2026-11-22): solo por Tailscale, y por ninguna otra IP.**
 
 ```
-teléfono (Tailscale) -> nginx (Pi :80, solo 100.64.0.0/10) -> portero (Pi 127.0.0.1:8080) -> cable -> panel (cabina 10.55.0.2:8808)
+teléfono (Tailscale) -> nginx (Pi :80 y :8080, solo 100.64.0.0/10) -> portero (Pi 127.0.0.1:8081) -> cable -> panel (cabina 10.55.0.2:8808)
 ```
 
 - **Cabina**: `escucha=10.55.0.2` en `~/.config/panel.conf`, la IP del cable con
@@ -3217,7 +3217,9 @@ teléfono (Tailscale) -> nginx (Pi :80, solo 100.64.0.0/10) -> portero (Pi 127.0
   que arranca `tailscaled`.
 - Se entra en `http://arcade-pi/`. El `http://` está bien: Tailscale ya cifra.
 - Verificado desde hp-envy (que está en las dos redes): wifi a la Pi → 403;
-  Pi:8080 y cabina:8808 por el wifi → no responden; por Tailscale → 200.
+  cabina:8808 por el wifi → no responde; por Tailscale → 200. nginx atiende
+  también el 8080 (la dirección vieja del teléfono; el portero pasó al 8081):
+  quitarlo dejó a Eloy sin entrar, con «no se pudo conectar al servidor».
 - **Ojo:** nginx en el puerto 80 también reenviaba al portero, y estaba abierto a
   todos. Era una segunda puerta que no aparecía en ningún documento.
 - Copias de antes del cambio: `panel.conf.antes_tailscale` (cabina),
