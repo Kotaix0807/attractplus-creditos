@@ -18,12 +18,11 @@ la que corre.
 | `~/Dev/arcade/groovymame_src/` | El emulador, con un parche de 22 líneas | el parche, en `parches/` |
 | `~/snap/arduino/85/Arduino/Arcade/` | El firmware del contador físico | copia en `arduino/` |
 
-En `arduino/` va todo lo del Arduino: `cabina/cabina.ino` (el firmware: relé del
-monedero en el pin 9 y display de 7 segmentos de los créditos en los pines 2-8),
-`moneyBank.py` (el demonio único que lo alimenta, ver la tabla de abajo) y
-`sandbox.py` (el banco de pruebas del puerto serie, una versión temprana del
-`contador_arduino.py` que se fundió en `moneyBank.py`). `Arcade.ino`,
-`moneyBank/` y `credits/` son los sketches de antes de la fusión.
+En `arduino/` va todo lo del Arduino: `Arcade.ino` (el firmware: LEDs de los
+botones por el PCA9685 y relé de aceptar monedas en el pin 2) y `moneyBank.py`
+(el demonio único que lo alimenta por el puerto serie, ver la tabla de abajo).
+Los sketches viejos (`cabina.ino` con el display de 7 segmentos, `moneyBank/`)
+y el banco de pruebas `sandbox.py` se quitaron; están en el historial de git.
 
 Y un quinto que **no es código pero manda más que el código**:
 

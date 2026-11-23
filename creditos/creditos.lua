@@ -1537,7 +1537,7 @@ local function por_frame()
 							log('panel: %d credito(s) escritos en ff2000 (mwalk, coin no simulable): %d -> %d', n, base, nuevo)
 						else
 							e.restantes = (e.restantes or 0) + n
-							if e.fase == 'fin' or e.fase == 'inactivo' then
+							if e.fase == 'fin' then
 								e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 								e.reloj = 0
 							end
@@ -1664,7 +1664,7 @@ local function por_frame()
 		end
 	end
 
-	if (e.fase ~= 'fin') and (e.fase ~= 'inactivo') then
+	if e.fase ~= 'fin' then
 		insertar(e)
 	end
 
@@ -1946,7 +1946,7 @@ local function por_frame()
 			local ok, v = pcall(w.space.read_u8, w.space, w.contador)
 			if w.pulso_inicial and ok and type(v) == 'number' and v == 0 then
 				listo = false
-				if e.fase == 'fin' or e.fase == 'inactivo' then
+				if e.fase == 'fin' then
 					e.restantes = 1
 					e.fase, e.reloj = (ESPERA > 0) and 'espera' or 'pulso', 0   -- reloj a 0: si no, la pulsacion dura 0 frames
 				end
@@ -1979,7 +1979,7 @@ local function por_frame()
 			-- Meter la moneda por la ranura pasa por el codigo del propio juego, asi el
 			-- credito queda consistente y no se corrompe nada (verificado en dkong3).
 			-- Solo si la maquina de insercion esta libre.
-			if okf and type(v) == 'number' and (e.fase == 'fin' or e.fase == 'inactivo') then
+			if okf and type(v) == 'number' and e.fase == 'fin' then
 				-- Resultado del intento ANTERIOR (ya termino la insercion): si la moneda
 				-- no subio el contador, la placa la ignora ahora (partida en curso), asi
 				-- que se espera FREEPLAY_REINTENTO antes de volver a probar en vez de

@@ -555,7 +555,7 @@ Esta es la función que MAME llama una vez por fotograma emulado (vía
    falla, **no se devuelve nada**: el error seguro es quedarse cobrado de
    más, nunca regalar.
 
-4. **Inserción automática.** Si `e.fase` no es `'fin'` ni `'inactivo'`, se
+4. **Inserción automática.** Si `e.fase` no es `'fin'`, se
    llama a `insertar(e)` (la máquina de estados de la sección 1.5).
 
 5. **El botón de moneda del jugador.** Se comprueba

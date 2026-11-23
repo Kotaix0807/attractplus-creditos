@@ -22,8 +22,7 @@ documentación pura.
 8. [`contador_arduino.py` — el saldo hacia el Arduino](#8-daemonpy--el-saldo-hacia-el-arduino)
 9. [`pantalla.py` — dejar el CRT como única pantalla](#9-pantallapy--dejar-el-crt-como-única-pantalla)
 10. [`patron.py` — patrón de calibración del CRT](#10-patronpy--patrón-de-calibración-del-crt)
-11. [`arduino/sandbox.py` — el banco de pruebas del puerto serie](#11-arduinosandboxpy--el-banco-de-pruebas-del-puerto-serie)
-12. [Resumen de trampas y decisiones no obvias](#12-resumen-de-trampas-y-decisiones-no-obvias)
+11. [Resumen de trampas y decisiones no obvias](#11-resumen-de-trampas-y-decisiones-no-obvias)
 
 ---
 
@@ -59,9 +58,7 @@ arranque de cada juego.
 **B) La cabina física** (en la raíz del repo y en `arduino/`): `contador_arduino.py` lee
 `~/.attract/creditos.txt` (el mismo fichero que escribe el plugin del
 frontend y que lee `creditos.lua`, documentado en `CLAUDE.md`) y manda el
-saldo al Arduino por el puerto serie. `arduino/sandbox.py` es una versión
-anterior y más simple del mismo programa, que se conserva como banco de
-pruebas. `pantalla.py` y `patron.py` no tienen nada que ver con créditos: son
+saldo al Arduino por el puerto serie. `pantalla.py` y `patron.py` no tienen nada que ver con créditos: son
 utilidades para la pantalla CRT de la cabina (conmutar el monitor, pintar un
 patrón de calibración).
 
@@ -384,29 +381,6 @@ heurística que combina:
 Al final ordena todos los candidatos por nota descendente y **quita
 duplicados** que solo difieren en el formato pero producen exactamente los
 mismos valores decodificados (mismo `(entradas, bytes, valores)`).
-
-**`region_util(datos, margen=16)`** — para un fichero de NVRAM (kilobytes,
-casi todo ceros o `0xff`), acota la zona que tiene contenido de verdad:
-localiza el primer y el último byte que no sean `0x00` ni `0xff`, y devuelve
-ese rango con un margen. Barrer el fichero entero sería caro y encontraría
-basura por todas partes.
-
-**`detectar_en_ventana(datos, tope=2048)`** — la versión de `detectar()` para
-cuando la tabla **no** ocupa el bloque entero (el caso típico de la NVRAM: la
-tabla es un rincón de un fichero de muchos kilobytes, y no tiene sentido
-exigir que la longitud total se divida exactamente entre el número de
-entradas). Primero acota con `region_util()` y recorta a `tope` bytes si hace
-falta. Luego, para cada ancho de entrada `w` (4 a 32) y cada combinación de
-formato/longitud/desplazamiento, lee **de una sola pasada** todos los valores
-de esa rejilla a lo largo de todo el bloque (en vez de llamar a `detectar()`
-en cada posición posible, que el propio comentario dice que sería inviable —
-"minutos por fichero"). Luego busca **tramos contiguos** de esa secuencia que
-no suban (candidatos a tabla real), de longitud entre 4 y 12, exigiendo además
-que tengan al menos 3 valores distintos y que no sean "basura" (repetición de
-`0xffff`/`0xffffff`, o más de un cero — patrones típicos de memoria borrada).
-Calcula una nota parecida a la de `detectar()` y devuelve los 6 mejores
-candidatos únicos, cada uno con su desplazamiento absoluto (`desde`) dentro
-del fichero original.
 
 ### 2.7 El grueso: elegir la fuente, descifrar, marcar lo de fábrica
 
@@ -1451,8 +1425,7 @@ Ficheros/dispositivos:
   robusto: ese enlace simbólico identifica el Arduino por su chip USB-serie
   concreto y no cambia si se conecta a otro puerto físico o si hay más de un
   adaptador serie enchufado — a diferencia de `/dev/ttyUSB0`, que puede
-  renumerarse. Es una mejora respecto a la versión de `arduino/sandbox.py`
-  (ver sección 11), que sigue usando el nombre de dispositivo fijo.
+  renumerarse.
 - **Escribe** un fichero de log en el directorio de trabajo actual, con
   nombre `log<AAAA-MM-DD_HH:MM:SS>.txt` (la marca de tiempo se calcula **una
   vez** al importar el módulo, en la constante `LOG_NAME`, así que todo el
@@ -1787,147 +1760,7 @@ restaurar la disposición de monitores normal.
 
 ---
 
-## 11. `arduino/sandbox.py` — el banco de pruebas del puerto serie
-
-### 11.1 Propósito y cuándo se usa
-
-Es una versión **anterior y más simple** de `contador_arduino.py` (así lo dice
-`ESTRUCTURA.md` explícitamente: *"una versión temprana de `contador_arduino.py`"*). Se
-conserva en `arduino/`, junto al firmware `Arcade.ino`, como banco de pruebas
-del puerto serie — un sitio donde experimentar con la comunicación serie sin
-tocar el script que corre de verdad en la cabina.
-
-### 11.2 Uso
-
-Igual que `contador_arduino.py`: sin argumentos, se ejecuta directamente y corre para
-siempre. Lee `~/.attract/creditos.txt` (constante `FILE_PATH`) y escribe en
-`/dev/ttyUSB0` (constante `PORT`, **el nombre de dispositivo fijo**, sin la
-ruta estable `/dev/serial/by-id/` que usa `contador_arduino.py`) a 9600 baudios. Escribe
-un log de errores en `logError<marca_de_tiempo>.txt` en el directorio de
-trabajo (nombre de fichero calculado una vez al importar, en `timeNow`).
-
-### 11.3 Diferencias con `contador_arduino.py`, función a función
-
-La estructura es casi idéntica (mismas cuatro funciones:
-`initArduino`/`openFile`+`getUserCredits`/`sendToArduino`, mismo bucle
-principal), con variables en inglés y comentarios más escasos. Las
-diferencias que importan:
-
-- **No separa `log()`/`logOk()` en funciones reutilizables**: cada función
-  que puede fallar repite su propio bloque `with open(f"logError{timeNow}.txt",
-  "a") as file: ...` y su propia comparación con `lastError`, en vez de
-  llamar a una función común. Funciona igual, pero es código duplicado tres
-  veces.
-
-- **Ninguna función marca la recuperación** (no hay equivalente a `logOk()`):
-  si un error se resuelve solo, el log de `sandbox.py` no dice
-  `"recuperado"` en ningún sitio, a diferencia de `contador_arduino.py`.
-
-- **`initArduino()` no devuelve `True`/`False`**: siempre devuelve `None`
-  (implícito), tanto si conecta con éxito como si falla. El bucle principal
-  no comprueba el valor de retorno, comprueba directamente si `conection is
-  not None`.
-
-- **Trampa real en `initArduino()`**: el `return` que evita el resto del
-  bloque `except` está anidado **dentro** del `if lastError != str(e):`, no
-  directamente bajo el `except`:
-
-  ```python
-  except (serial.SerialException, serial.SerialTimeoutException) as e:
-      with open(f"logError{timeNow}.txt", "a") as file:
-          if lastError != str(e):
-              file.write(...)
-              lastError = str(e)
-          return
-  time.sleep(3)
-  return
-  ```
-
-  Si el **mismo** error se repite dos veces seguidas (`lastError == str(e)`),
-  el `return` interior **no se ejecuta** (porque está dentro del `if` que no
-  entra), así que el control sigue hasta `time.sleep(3)` y el `return` final
-  de la función — exactamente el mismo camino que sigue una conexión
-  **exitosa**. El efecto práctico no es catastrófico (la variable `conection`
-  ya se ha quedado en `None` porque la asignación `conection =
-  serial.Serial(...)` nunca llegó a completarse, así que el bucle principal
-  seguirá viendo `conection is None` y reintentando), pero sí introduce una
-  espera de 3 segundos **extra e injustificada** en cada reintento fallido
-  consecutivo, además del `time.sleep(5)` que ya pone el bucle principal en
-  la rama de "conexión fallida" — un patrón de reintento de facto de 8
-  segundos en vez de 5 cuando el mismo error persiste. Es una trampa sutil de
-  indentación, no un fallo de diseño: `contador_arduino.py` no la reproduce porque
-  reestructuró la función devolviendo `True`/`False` explícitamente en cada
-  camino.
-
-- **`sendToArduino(credits)` ignora su propio parámetro**: la firma recibe
-  `credits`, pero el cuerpo construye el mensaje a partir de la variable
-  **global** `userCredits` (`stringData = str(userCredits) + '\n'`), no del
-  parámetro recibido. En la práctica no causa ningún problema porque el único
-  sitio donde se llama es `sendToArduino(userCredits)` — es decir, siempre se
-  le pasa exactamente esa misma variable global como argumento, así que
-  ambas lecturas coinciden. Pero es un parámetro que no hace nada: si algún
-  día se llamara con otro valor (por ejemplo, para probar el envío de un
-  número concreto sin pasar por el fichero), se enviaría silenciosamente el
-  valor equivocado. `contador_arduino.py` corrige esto usando el parámetro
-  (`str(credits)`).
-
-- **El sentinela `lastCredit = -1`**: en vez de simplemente "no actualizar
-  `lastCredit`" cuando el envío falla (lo que hace `contador_arduino.py`), `sandbox.py`
-  fija `lastCredit = -1` explícitamente tras un fallo de envío, y además
-  **también** comprueba `lastCredit == -1` en la condición de "nada que
-  hacer" (`if userCredits is None or lastCredit == -1 or userCredits ==
-  lastCredit: continue`). Esto es contradictorio a primera vista: si
-  `lastCredit` vale `-1`, la condición se cumple y el bucle hace `continue`
-  **saltándose el reintento de envío** en la siguiente vuelta también,
-  aunque `userCredits` sea distinto de `-1`. En la práctica el bucle nunca
-  llega a ese estado de forma persistente porque **cada vuelta primero
-  reevalúa `getUserCredits()`**, y si el valor leído sigue siendo el mismo
-  que antes del fallo, tampoco habría nada que reenviar de todas formas;
-  sigue siendo una diferencia de diseño frente al enfoque más simple y
-  correcto de `contador_arduino.py` (no tocar `lastCredit` en absoluto si el envío
-  falla, dejando que la comparación `userCredits == lastCredit` decida por sí
-  sola si hay que reintentar).
-
-- **`getUserCredits()` no cubre `IndexError`**: la lista de excepciones
-  capturadas es `(FileNotFoundError, PermissionError, UnicodeDecodeError,
-  OSError, ValueError)`, sin `IndexError`. Si la línea `"saldo"` existiera
-  pero no tuviera un segundo campo separado por espacio (un fichero
-  corrupto o truncado a medio escribir), `parsedData[1]` lanzaría
-  `IndexError` **sin capturar**, y el script terminaría con una traza no
-  manejada. `contador_arduino.py` sí añade `IndexError` a la lista.
-
-### 11.4 El bucle principal
-
-```python
-initArduino()          # se conecta una vez, a nivel de módulo, antes del bucle
-
-while True:
-    if conection is not None:
-        time.sleep(0.1)
-        userCredits = getUserCredits()
-        if userCredits is None or lastCredit == -1 or userCredits == lastCredit:
-            continue
-        else:
-            print("User Credits: ", userCredits)
-            if sendToArduino(userCredits) is False:
-                lastCredit = -1
-                continue
-            lastCredit = userCredits
-    else:
-        print("Conection failed, retrying...\n")
-        time.sleep(5)
-        initArduino()
-```
-
-A diferencia de `contador_arduino.py`, aquí `initArduino()` se llama **una vez antes
-del bucle** (no dentro de cada vuelta), y dentro del bucle solo se reintenta
-si `conection` sigue siendo `None` en la rama `else`. El resultado práctico es
-equivalente al de `contador_arduino.py`, pero la estructura es menos uniforme: el
-primer intento de conexión vive fuera del bucle y los siguientes dentro.
-
----
-
-## 12. Resumen de trampas y decisiones no obvias
+## 11. Resumen de trampas y decisiones no obvias
 
 Para tenerlas todas juntas, sin repetir la explicación completa (que está en
 la sección de cada script):
@@ -1966,27 +1799,20 @@ la sección de cada script):
    antes se leería para siempre el fichero viejo ya desenlazado.
 10. **Abrir el puerto serie reinicia el Arduino**: por eso se abre una sola
     vez y se espera 3 segundos tras abrirlo antes de mandar nada.
-11. **`sandbox.py` tiene tres fallos menores de los que `contador_arduino.py` ya no
-    adolece**: un `return` mal anidado que añade una espera extra en errores
-    repetidos, un parámetro (`credits`) que se ignora a favor de una variable
-    global, y una lista de excepciones capturadas incompleta
-    (`IndexError`). Ninguno es grave en la práctica actual, pero son la
-    prueba de por qué `contador_arduino.py` se reescribió con las funciones separadas
-    en `log()`/`logOk()` y devolviendo `True`/`False` explícitos.
-12. **`BASE40` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Estaba definida y
+11. **`BASE40` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Estaba definida y
     no se usaba (el perfil `base-40` nunca se implementó); se quitó junto con su
     mención en el docstring. Un XML que use `base-40` sigue fallando limpiamente
     con `NoSeSabe`, como cualquier perfil no soportado.
-13. **`_elegir_estructura()` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Era
+12. **`_elegir_estructura()` en `hi2txt.py`** — *(eliminada el 2026-09-13)*. Era
     código muerto: no la llamaba nadie; la sustituyó el bucle de
     `descifrar_con_xml()` que prueba todas las estructuras candidatas de
     `_estructuras()` en vez de comprometerse con una elegida de antemano.
-14. **`importar_cheats.py` reescribe `creditos.dat` entero** en cada
+13. **`importar_cheats.py` reescribe `creditos.dat` entero** en cada
     ejecución que encuentre algo nuevo: es seguro porque funde con
     `leer_existentes()` antes de reescribir, pero conviene no lanzarlo sobre
     la colección completa sin querer y sin haber hecho copia de seguridad del
     fichero, tal como ya advierte `CLAUDE.md`.
-15. **La discrepancia sobre `escribir_ajuste.py` y la sangría de los
+14. **La discrepancia sobre `escribir_ajuste.py` y la sangría de los
     comentarios** (sección 7.3) — *(resuelta el 2026-09-13)*. El código no
     aplasta la sangría: copia los comentarios verbatim. La nota equivocada
     estaba en `CLAUDE.md` y se corrigió; el script no se tocó.
