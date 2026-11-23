@@ -1149,7 +1149,8 @@ for _, n in ipairs({
 -- declara (manda sobre lo declarado, para P1 y P2): mwalk declara 3 y strhoop 4
 -- (el Neo Geo siempre declara A-D) pero se juegan con 2; polepos/outrun llevan
 -- acelerar y frenar en los botones 1 y 2 (en MAME son pedales, no botones).
-local BOTONES_USADOS = { mwalk = 2, strhoop = 2, polepos = 3, outrun = 3 }
+-- asteroid declara 5 pero su .cfg pone 4 en la palanca: solo dispara con el 1.
+local BOTONES_USADOS = { mwalk = 2, strhoop = 2, polepos = 3, outrun = 3, asteroid = 1 }
 
 local function escribir_botones_juego()
 	if not BOTONES_JUEGO then return end
@@ -1642,11 +1643,10 @@ local function por_frame()
 				e.mensaje = 'ESPERA, LA MAQUINA ESTA ARRANCANDO'
 				log('moneda rechazada: la placa todavia esta arrancando y la tiraria')
 			elseif e.cerrojo.motivo() == 'lleno' then
-				-- Con start-moneda (polepos) no se pinta nada: pedido por Eloy.
-				e.mensaje = (not e.moneda_gratis)
-					and string.format('MAQUINA LLENA: %d CREDITOS. JUEGA ANTES DE METER MAS',
-						e.tope or 0)
-					or nil
+				-- Sin cartel (pedido por Eloy 2026-11-22): con la maquina llena el
+				-- rele apaga el monedero y la moneda se devuelve sola; avisar
+				-- ademas en pantalla sobra.
+				e.mensaje = nil
 				log('moneda rechazada: la maquina ya tiene sus %d creditos y la tiraria',
 					e.tope or 0)
 			else
