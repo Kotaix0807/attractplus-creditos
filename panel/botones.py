@@ -20,6 +20,7 @@ import time
 _FMT = "llHHi"
 _TAM = struct.calcsize(_FMT)
 EV_KEY = 0x01
+EV_ABS = 0x03
 
 
 def _nombre(ev):
@@ -54,7 +55,10 @@ def _abrir_todos():
         if _es_teclado(ev):
             continue
         try:
-            fds[os.open(ev, os.O_RDONLY | os.O_NONBLOCK)] = _nombre(ev)
+            # (basename, nombre): el basename (event8/event9) distingue dos mandos
+            # con el MISMO nombre -- los dos Xinmotek del mueble lo tienen igual, asi
+            # que sin esto P1 y P2 serian indistinguibles para 'Test botones'.
+            fds[os.open(ev, os.O_RDONLY | os.O_NONBLOCK)] = (os.path.basename(ev), _nombre(ev))
         except OSError:
             pass            # sin permiso o se desconecto: se salta
     return fds
@@ -72,6 +76,7 @@ def eventos_botones(limite_seg=300):
                         "'input', o solo hay teclado, que no se lee)"}
         return
     fin = time.monotonic() + limite_seg
+    ultimo_abs = {}   # (fd, code) -> 'm'/'p': recordar la direccion para soltarla en el 0
     try:
         while time.monotonic() < fin:
             listos, _, _ = select.select(list(fds), [], [], 15)
@@ -85,9 +90,25 @@ def eventos_botones(limite_seg=300):
                     continue
                 for i in range(0, len(datos) - _TAM + 1, _TAM):
                     _, _, tipo, codigo, valor = struct.unpack(_FMT, datos[i:i + _TAM])
+                    base, nombre = fds[fd]
                     if tipo == EV_KEY and valor in (0, 1):
-                        yield {"dispositivo": fds[fd], "codigo": codigo,
+                        yield {"id": base, "dispositivo": nombre, "codigo": codigo,
                                "pulsado": valor == 1}
+                    elif tipo == EV_ABS:
+                        # Joystick del mueble: ejes ABS_X/ABS_Y con valores -1/0/+1
+                        # (antes solo se leia EV_KEY y el stick se perdia entero). El 0
+                        # suelta; se recuerda el ultimo signo para soltar esa direccion.
+                        clave = (fd, codigo)
+                        if valor == 0:
+                            signo = ultimo_abs.pop(clave, None)
+                            if signo:
+                                yield {"id": base, "dispositivo": nombre,
+                                       "codigo": "a%d%s" % (codigo, signo), "pulsado": False}
+                        else:
+                            signo = "p" if valor > 0 else "m"
+                            ultimo_abs[clave] = signo
+                            yield {"id": base, "dispositivo": nombre,
+                                   "codigo": "a%d%s" % (codigo, signo), "pulsado": True}
         yield {"fin": "limite de %d s; recarga para seguir" % limite_seg}
     finally:
         for fd in fds:

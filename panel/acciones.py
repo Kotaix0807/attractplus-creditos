@@ -15,6 +15,8 @@ auditoria.  Nunca lanza excepcion hacia el servidor.
 import glob
 import os
 import shutil
+import queue
+import struct
 import subprocess
 import threading
 import time
@@ -1083,10 +1085,10 @@ def stream_pantalla_h264(fps=30, ancho=640, kbps=1500):
            "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
            "-g", g, "-keyint_min", g,
            "-b:v", br, "-maxrate", br, "-bufsize", "%dk" % (int(kbps) * 2),
-           # Fragmentos cortos (250 ms) -> el navegador recibe datos a menudo y el
-           # buffer se llena suave, en vez de a golpes de 1 s (eso daba tirones).
+           # Fragmentos de 50 ms (~3 cuadros): cada trozo sale casi al capturarse.
+           # Con 250 ms cada imagen esperaba hasta un cuarto de segundo en la cabina.
            "-movflags", "+empty_moov+default_base_moof+frag_keyframe",
-           "-frag_duration", "250000",
+           "-frag_duration", "50000", "-flush_packets", "1",
            "-f", "mp4", "pipe:1"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, env=env, bufsize=0)
@@ -1101,6 +1103,92 @@ def stream_pantalla_h264(fps=30, ancho=640, kbps=1500):
             proc.kill()
         except Exception:
             pass
+
+
+def stream_pantalla_crudo(fps=60, ancho=480, kbps=800):
+    """H.264 CRUDO (Annex-B) de la pantalla :0, para decodificarlo en el navegador
+    con WebCodecs y pintarlo al llegar (sin el colchon de <video>): el camino de
+    menor retardo. Un AUD por fotograma (aud=1) para que el cliente sepa donde
+    acaba cada uno. VBV corto (bufsize = 1/4 s): el cuadro clave no puede ser un
+    pico enorme que tarde cientos de ms en cruzar el 4G; sale algo mas borroso un
+    instante. Clave cada 2 s: solo hace falta para arrancar y para recuperarse si
+    el movil tira cuadros."""
+    env = dict(os.environ, DISPLAY=":0", XAUTHORITY=_xauth())
+    br = "%dk" % int(kbps)
+    g = str(int(fps) * 2)
+    cmd = ["ffmpeg", "-loglevel", "error",
+           "-fflags", "nobuffer", "-flags", "low_delay",
+           "-f", "x11grab", "-framerate", str(int(fps)), "-i", ":0",
+           "-vf", "scale=%d:-2" % int(ancho),
+           "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+           "-profile:v", "baseline", "-level", "3.1", "-pix_fmt", "yuv420p",
+           "-x264-params", "aud=1",
+           "-g", g, "-keyint_min", g,
+           "-b:v", br, "-maxrate", br, "-bufsize", "%dk" % max(1, int(kbps) // 4),
+           "-flush_packets", "1", "-f", "h264", "pipe:1"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, env=env, bufsize=0)
+    try:
+        yield from enmarcar_h264(lambda: proc.stdout.read(16384))
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def enmarcar_h264(leer, max_cola=6):
+    """Parte el H.264 Annex-B en fotogramas (cada uno empieza con su AUD) y los
+    manda como [1 B clave][8 B hora ms, float BE][4 B largo][datos].
+
+    Un hilo lee del encoder SIN PARAR y apunta la hora de cada fotograma al salir
+    de el. Si la conexion no da abasto y se juntan mas de 'max_cola' esperando, se
+    tiran hasta el siguiente cuadro clave (desde ahi se puede decodificar): asi la
+    cola nunca se queda atras ("salto de fotogramas" en origen). Lo que la red
+    retrase despues lo mide el navegador con la hora y reconecta si hace falta."""
+    cola = queue.Queue()
+
+    def lector():
+        aud = b"\x00\x00\x00\x01\x09"
+        pend = b""
+        try:
+            while True:
+                trozo = leer()
+                if not trozo:
+                    return
+                pend += trozo
+                partes = pend.split(aud)
+                pend = aud + partes[-1] if len(partes) > 1 else pend
+                for au in partes[:-1]:
+                    if au:                # lo de antes del primer AUD se ignora
+                        au = aud + au
+                        cola.put((_es_clave(au), time.time() * 1000, au))
+        finally:
+            cola.put(None)
+
+    threading.Thread(target=lector, daemon=True).start()
+    tirando = False
+    while True:
+        item = cola.get()
+        if item is None:
+            return
+        clave, hora, au = item
+        if cola.qsize() > max_cola:
+            tirando = True
+        if tirando and not clave:
+            continue
+        tirando = False
+        yield struct.pack(">Bdi", clave, hora, len(au)) + au
+
+
+def _es_clave(au):
+    """True si el fotograma trae un NAL IDR (tipo 5)."""
+    i = au.find(b"\x00\x00\x01")
+    while i >= 0 and i + 3 < len(au):
+        if au[i + 3] & 0x1f == 5:
+            return True
+        i = au.find(b"\x00\x00\x01", i + 3)
+    return False
 
 
 # --- Capturador en segundo plano: mantiene el ultimo fotograma listo ---------

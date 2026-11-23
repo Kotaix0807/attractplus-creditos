@@ -176,7 +176,7 @@ class Portero(BaseHTTPRequestHandler):
         es_sse = "text/event-stream" in ct
         # Video en vivo (MJPEG o MP4/H.264 fragmentado): trozos pequenos y flush para
         # poco retardo (un read grande acumularia varios cuadros antes de soltarlos).
-        es_video = "multipart/x-mixed-replace" in ct or "video/mp4" in ct
+        es_video = "multipart/x-mixed-replace" in ct or ct.startswith("video/")
         try:
             if es_sse:
                 for linea in resp:          # readline: cede cada linea al instante
@@ -184,8 +184,12 @@ class Portero(BaseHTTPRequestHandler):
                     self.wfile.flush()
             else:
                 tam = 8192 if es_video else 65536
+                # read() espera a juntar 'tam' bytes: con la pantalla quieta el H.264
+                # da pocos bytes por cuadro y eso retenia el video segundos. read1()
+                # suelta lo que ya haya llegado.
+                leer = resp.read1 if es_video else resp.read
                 while True:
-                    trozo = resp.read(tam)
+                    trozo = leer(tam)
                     if not trozo:
                         break
                     self.wfile.write(trozo)

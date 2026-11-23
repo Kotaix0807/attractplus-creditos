@@ -545,6 +545,17 @@ def api_pantalla_mp4():
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
+@app.get("/api/pantalla.h264")
+@requiere_login
+def api_pantalla_h264():
+    """H.264 crudo fotograma a fotograma, para WebCodecs (el de menor retardo)."""
+    gen = acciones.stream_pantalla_crudo(fps=_arg_rango("fps", 60, 5, 60),
+                                         ancho=_arg_rango("ancho", 480, 320, 1280),
+                                         kbps=_arg_rango("kbps", 800, 300, 8000))
+    return Response(gen, mimetype="video/h264",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/pantalla.mjpeg")
 @requiere_login
 def api_pantalla_mjpeg():

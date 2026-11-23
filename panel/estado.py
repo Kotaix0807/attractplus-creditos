@@ -474,7 +474,8 @@ def puntajes():
                     "nombre": p.get("nombre"), "defecto": bool(p.get("defecto"))}
                    for p in todos]
         jugados = any(not p["defecto"] for p in puestos)
-        juegos[rom] = {"titulo": info.get("titulo", rom), "estado": est,
+        # puntajes.json no trae titulo: sin esto la vista lista nombres de rom
+        juegos[rom] = {"titulo": info.get("titulo") or _titulo_rom(rom), "estado": est,
                        "puestos": puestos, "jugados": jugados}
         if motivo:
             juegos[rom]["motivo"] = motivo

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compilación GroovyMAME</title>
+<style>
+  :root{ --bg:#15171c; --card:#1d2026; --tx:#e6e6e6; --muted:#9aa3af;
+         --ok:#16a34a; --fail:#c0392b; --bar:#2563eb; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
+       font-family:system-ui,Segoe UI,Roboto,sans-serif;
+       display:flex;align-items:center;justify-content:center;padding:18px}
+  .card{background:var(--card);border:1px solid #2b2f37;border-radius:16px;
+        padding:26px;width:min(560px,96vw);box-shadow:0 8px 30px rgba(0,0,0,.3)}
+  h1{font-size:17px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .pct{font-size:56px;font-weight:800;line-height:1;margin:6px 0 14px}
+  .barra{height:16px;background:#0f1115;border-radius:9px;overflow:hidden;border:1px solid #2b2f37}
+  .fill{height:100%;width:0;background:var(--bar);transition:width .6s ease}
+  .datos{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font-size:13px;color:var(--muted)}
+  .datos b{color:var(--tx)}
+  .linea{margin-top:16px;font-family:ui-monospace,Menlo,Consolas,monospace;
+         font-size:12px;color:var(--muted);background:#0f1115;border-radius:8px;
+         padding:10px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .badge{display:inline-block;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;
+         background:#2b2f37;color:var(--tx)}
+  .badge.ok{background:var(--ok)} .badge.fail{background:var(--fail)}
+  .badge.run{background:#1f3a5f}
+  .pie{margin-top:18px;font-size:11px;color:#5f6773}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Compilación de GroovyMAME</h1>
+    <p class="sub">cabina · parche free play (mappy/digdug)</p>
+    <span class="badge run" id="estado">conectando…</span>
+    <div class="pct" id="pct">—</div>
+    <div class="barra"><div class="fill" id="fill"></div></div>
+    <div class="datos">
+      <div>objetos: <b id="nobj">—</b> / <span id="total">—</span></div>
+      <div>actualizado: <b id="hora">—</b></div>
+    </div>
+    <div class="linea" id="linea">—</div>
+    <div class="pie">% aproximado (objetos .o compilados sobre el total de unidades). Se refresca solo.</div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+let parar = false;
+
+async function tick(){
+  if(parar) return;
+  try{
+    const r = await fetch("/api/compilacion", {cache:"no-store"});
+    const d = await r.json();
+    const b = $("estado");
+    if(d.estado === "ok"){
+      b.className = "badge ok"; b.textContent = "✅ TERMINADA";
+      $("pct").textContent = "100%"; $("fill").style.width = "100%";
+      $("linea").textContent = d.ultima || "lista";
+      parar = true;
+    } else if(d.estado === "fallo"){
+      b.className = "badge fail"; b.textContent = "❌ FALLÓ";
+      $("linea").textContent = d.ultima || "revisa el log";
+      parar = true;
+    } else if(d.estado === "compilando"){
+      b.className = "badge run"; b.textContent = "⚙️ compilando…";
+      $("pct").textContent = d.pct + "%";
+      $("fill").style.width = Math.min(100, d.pct) + "%";
+      $("nobj").textContent = d.nobj; $("total").textContent = d.total;
+      $("linea").textContent = d.ultima || "";
+    } else {
+      b.className = "badge"; b.textContent = "sin datos de compilación";
+      $("linea").textContent = d.ultima || "¿no hay build en curso?";
+    }
+    $("hora").textContent = new Date((d.ts||0)*1000).toLocaleTimeString();
+  }catch(e){
+    $("estado").className = "badge fail";
+    $("estado").textContent = "sin conexión con la cabina";
+  }
+}
+tick();
+setInterval(tick, 8000);
+</script>
+</body>
+</html>

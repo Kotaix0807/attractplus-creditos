@@ -9,16 +9,22 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: #000; color: #cfcfcf;
          font-family: system-ui, -apple-system, sans-serif;
-         min-height: 100vh; display: flex; flex-direction: column;
+         min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
          align-items: center; justify-content: center; }
-  #video { max-width: 100%; max-height: 100vh; image-rendering: pixelated; background: #000; }
+  #video, #lienzo { width: 100%; max-height: 100vh; max-height: 100dvh; object-fit: contain;
+           image-rendering: pixelated; background: #000; }
   #msg { padding: 1.5rem; text-align: center; line-height: 1.6; max-width: 34rem; display: none; }
   #msg a { color: #6cf; }
   #barra { position: fixed; top: 0; left: 0; right: 0; z-index: 2;
-           display: flex; gap: .6rem; align-items: center;
+           display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center;
+           padding-top: max(.4rem, env(safe-area-inset-top));
            padding: .4rem .7rem; background: rgba(0,0,0,.55);
            font-size: .85rem; opacity: .15; transition: opacity .2s; }
   #barra:hover, #barra:focus-within { opacity: 1; }
+  /* en tactil no hay hover: la barra siempre visible */
+  @media (hover: none) { #barra { opacity: .85; } }
+  #diag { color: #888; font-size: .75rem; }
+  @media (max-width: 600px) { #diag, #barra strong { display: none; } }
   #barra .sp { margin-left: auto; }
   button, select { background: #222; color: #ccc; border: 1px solid #444;
            border-radius: 5px; padding: .3rem .7rem; cursor: pointer; }
@@ -27,8 +33,10 @@
 </head>
 <body>
   <div id="barra">
+    <a href="/" style="color:#6cf;text-decoration:none">&larr; panel</a>
     <strong>Cabina</strong>
     <span id="estado">conectando…</span>
+    <span id="diag"></span>
     <select id="cal" title="calidad / ancho de banda">
       <option value="ancho=480&kbps=800" selected>Fluido</option>
       <option value="ancho=640&kbps=1500">Equilibrio</option>
@@ -36,8 +44,10 @@
     </select>
     <label class="sp"><input type="checkbox" id="fit" checked> ajustar</label>
     <button id="pausa">pausa</button>
+    <button id="completa">⛶</button>
   </div>
   <video id="video" muted playsinline></video>
+  <canvas id="lienzo" style="display:none"></canvas>
   <div id="msg"></div>
 <script>
 (function () {
@@ -45,17 +55,30 @@
   // CLAVE de la fluidez: NO reproducir pegado al borde en vivo. Primero se acumula
   // un COLCHON (COJIN s) de buffer y recien ahi se reproduce, quedando ese colchon
   // por detras del borde. Asi un hipo de red no vacia el buffer (que daba tirones).
-  var MIME = 'video/mp4; codecs="avc1.42E01F"';   // baseline 3.1 (lo que emite x264)
-  var COJIN = 2.0;                                 // segundos de colchon antes de play
+  var MIME = 'video/mp4; codecs="avc1.42E01F"';
+  // iPhone (Safari iOS >= 17.1) no tiene MediaSource, solo ManagedMediaSource
+  var MS = window.ManagedMediaSource || window.MediaSource;   // baseline 3.1 (lo que emite x264)
+  // Colchon ADAPTATIVO: empieza chico (poco retardo) y solo crece si la red deja
+  // el buffer vacio (evento 'waiting'); con red buena se queda cerca del directo.
+  var COJIN_MIN = 0.2, COJIN_MAX = 2.0, COJIN = COJIN_MIN, ultVacio = 0;
   var video = document.getElementById('video'),
       msg = document.getElementById('msg'),
       estado = document.getElementById('estado'),
       cal = document.getElementById('cal'),
       pausa = document.getElementById('pausa'),
       fit = document.getElementById('fit'),
+      diagEl = document.getElementById('diag'),
+      completa = document.getElementById('completa'),
       activo = true, ms = null, sb = null, cola = [], reader = null,
       abort = null, reproduciendo = false,
       ultCal = 0, ultFrames = 0, diag = '';   // diagnostico: fps decodificados + perdidos
+
+  // Camino RAPIDO (WebCodecs): la cabina manda H.264 crudo fotograma a fotograma y
+  // cada uno se decodifica y pinta en un <canvas> en cuanto llega, sin el colchon
+  // que siempre mete <video>. Si el navegador no lo trae, se usa el MSE de abajo.
+  // '#mse' en la URL fuerza el camino viejo (para comparar).
+  var lienzo = document.getElementById('lienzo'), ctx = lienzo.getContext('2d'),
+      dec = null, USAR_WC = 'VideoDecoder' in window && location.hash !== '#mse';
 
   function parar() {
     try { if (abort) abort.abort(); } catch (e) {}
@@ -64,7 +87,105 @@
     try { if (ms && ms.readyState === 'open') ms.endOfStream(); } catch (e) {}
     ms = null;
     try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) {}
+    try { if (dec && dec.state !== 'closed') dec.close(); } catch (e) {}
+    dec = null;
   }
+
+  // Une trozos de bytes en uno solo
+  function unir(partes) {
+    var n = 0, i, o = 0;
+    for (i = 0; i < partes.length; i++) n += partes[i].length;
+    var r = new Uint8Array(n);
+    for (i = 0; i < partes.length; i++) { r.set(partes[i], o); o += partes[i].length; }
+    return r;
+  }
+
+  // Retraso: la cabina marca cada fotograma con su hora. Su diferencia con la hora
+  // de llegada lleva un desfase fijo (los relojes no coinciden), asi que se mide
+  // contra la MEJOR diferencia vista en esta conexion: lo que sobra es cola en la
+  // red. Si pasa de ATRASO_MAX durante ATRASO_SEG, se reconecta: la conexion nueva
+  // empieza en la imagen de ahora y la cola vieja se tira (un salto al directo).
+  var ATRASO_MAX = 300, ATRASO_SEG = 500, ultSalto = 0, nSaltos = 0;
+
+  function arrancarWC() {
+    video.style.display = 'none'; lienzo.style.display = ''; msg.style.display = 'none';
+    if (!ultSalto) estado.textContent = 'cargando…';
+    var pend = new Uint8Array(0), listo = false, ts = 0, nDec = 0, nTir = 0,
+        tCal = performance.now(), pinto = false,
+        base = Infinity, atraso = 0, atrasadoDesde = 0;
+    var mio = dec = new VideoDecoder({   // 'mio': cada conexion sabe si sigue vigente
+      output: function (f) {
+        if (lienzo.width !== f.displayWidth || lienzo.height !== f.displayHeight) {
+          lienzo.width = f.displayWidth; lienzo.height = f.displayHeight;
+        }
+        ctx.drawImage(f, 0, 0); f.close(); nDec++; pinto = true;
+        var t = performance.now();
+        if (t - tCal > 1000) {
+          diagEl.textContent = 'retraso +' + Math.round(atraso) + ' ms · ' +
+            Math.round(nDec * 1000 / (t - tCal)) + 'fps' +
+            (nSaltos ? ' · ' + nSaltos + ' saltos' : '') +
+            (nTir ? ' · ' + nTir + ' tirados' : '');
+          nDec = 0; tCal = t;
+        }
+        estado.textContent = 'en vivo';
+      },
+      error: function () { if (activo && dec === mio) fallo(); }
+    });
+    mio.configure({ codec: 'avc1.42E01F', optimizeForLatency: true });
+
+    // Un fotograma [1 B clave][8 B hora ms][4 B largo][datos] -> al decodificador
+    function fotograma(clave, hora, datos) {
+      var d = Date.now() - hora;
+      if (d < base) base = d;
+      atraso = d - base;
+      var t = performance.now();
+      if (atraso > ATRASO_MAX) {
+        if (!atrasadoDesde) atrasadoDesde = t;
+        // salto al directo; como mucho uno cada 3 s para no encadenar reconexiones
+        if (t - atrasadoDesde > ATRASO_SEG && t - ultSalto > 3000) {
+          ultSalto = t; nSaltos++; estado.textContent = 'saltando al directo…';
+          return arrancar();
+        }
+      } else atrasadoDesde = 0;
+      // Si el movil no da abasto se tiran cuadros hasta el siguiente clave
+      // (tirar uno intermedio corromperia la imagen hasta entonces). Solo tras el
+      // primer cuadro pintado: al arrancar el decodificador acumula cola un momento.
+      if (pinto && listo && !clave && mio.decodeQueueSize > 10) { listo = false; nTir++; }
+      if (!listo && !clave) return;
+      listo = true;
+      mio.decode(new EncodedVideoChunk({ type: clave ? 'key' : 'delta',
+                                         timestamp: (ts += 16667), data: datos }));
+    }
+
+    function trocear(nuevo) {
+      var b = pend.length ? unir([pend, nuevo]) : nuevo, o = 0;
+      while (b.length - o >= 13) {
+        var v = new DataView(b.buffer, b.byteOffset + o, 13), largo = v.getInt32(9);
+        if (b.length - o - 13 < largo) break;            // fotograma a medias
+        fotograma(v.getUint8(0) === 1, v.getFloat64(1), b.slice(o + 13, o + 13 + largo));
+        if (dec !== mio) return;                         // hubo salto: esta conexion murio
+        o += 13 + largo;
+      }
+      pend = b.slice(o);
+    }
+
+    abort = new AbortController();
+    fetch('/api/pantalla.h264?' + cal.value + '&t=' + Date.now(),
+          { signal: abort.signal, cache: 'no-store' })
+      .then(function (r) {
+        if (r.status === 404) { USAR_WC = false; return arrancar(); }  // cabina sin la ruta nueva
+        if (!r.ok) throw new Error(r.status);
+        reader = r.body.getReader();
+        (function leer() {
+          reader.read().then(function (p) {
+            if (p.done || !activo || dec !== mio) return;
+            trocear(p.value); leer();
+          }).catch(function () { if (activo && dec === mio) fallo(); });
+        })();
+      })
+      .catch(function () { if (activo && dec === mio) fallo(); });
+  }
+
 
   function recortar() {              // tira lo ya visto: evita QuotaExceeded
     try {
@@ -100,9 +221,13 @@
       var b = video.buffered;
       if (!b.length) return;
       var retardo = b.end(b.length - 1) - video.currentTime;
-      if (retardo > 8) video.currentTime = b.end(b.length - 1) - COJIN;   // resync raro
-      else if (retardo > COJIN + 2) video.playbackRate = 1.05;            // recupera suave
-      else if (retardo <= COJIN + 0.5) video.playbackRate = 1.0;
+      if (retardo > COJIN + 1.0) video.currentTime = b.end(b.length - 1) - COJIN;  // salta al directo
+      else if (retardo > COJIN + 0.15) video.playbackRate = 1.25;                 // alcanza
+      else if (retardo <= COJIN + 0.05) video.playbackRate = 1.0;
+      // 20 s sin vaciarse el buffer: la red va bien, se vuelve a recortar el colchon
+      if (COJIN > COJIN_MIN && performance.now() - ultVacio > 20000) {
+        COJIN = Math.max(COJIN_MIN, COJIN - 0.05); ultVacio = performance.now() - 15000;
+      }
       // diagnostico: fps que el navegador DECODIFICA y cuadros que DESCARTA
       if (video.getVideoPlaybackQuality) {
         var q = video.getVideoPlaybackQuality(), t = performance.now();
@@ -112,14 +237,16 @@
           ultCal = t; ultFrames = q.totalVideoFrames;
         }
       }
-      estado.textContent = 'en vivo · buf ' + retardo.toFixed(1) + 's' +
+      estado.textContent = 'en vivo';
+      diagEl.textContent = 'buf ' + retardo.toFixed(1) + 's' +
                            (video.playbackRate !== 1 ? ' ·' + video.playbackRate + '×' : '') + diag;
     } catch (e) {}
   }
 
   function fallo(t) {
     parar();
-    video.style.display = 'none'; estado.textContent = 'sin señal';
+    video.style.display = 'none'; lienzo.style.display = 'none';
+    estado.textContent = 'sin señal'; diagEl.textContent = '';
     msg.style.display = ''; msg.innerHTML = (t || 'Se cortó la conexión.') + '<br>' +
       'Inicia sesión en el <a href="/">panel</a> y vuelve aquí,<br>' +
       'o puede que la cabina esté apagada.';
@@ -129,11 +256,14 @@
   function arrancar() {
     if (!activo) return;
     parar();
-    if (!('MediaSource' in window) || !MediaSource.isTypeSupported(MIME))
+    if (USAR_WC) return arrancarWC();
+    lienzo.style.display = 'none';
+    if (!MS || !MS.isTypeSupported(MIME))
       return fallo('Tu navegador no soporta reproducción H.264 por MSE.');
     estado.textContent = 'cargando…';
     video.style.display = ''; msg.style.display = 'none';
-    ms = new MediaSource();
+    ms = new MS();
+    video.disableRemotePlayback = true;   // ManagedMediaSource lo exige (sin AirPlay)
     video.src = URL.createObjectURL(ms);
     ms.addEventListener('sourceopen', function () {
       try {
@@ -159,6 +289,9 @@
   }
 
   video.addEventListener('timeupdate', vigilar);
+  video.addEventListener('waiting', function () {     // se vacio el buffer: mas colchon
+    if (reproduciendo) { COJIN = Math.min(COJIN_MAX, COJIN + 0.25); ultVacio = performance.now(); }
+  });
   cal.onchange = arrancar;           // cambia calidad y reabre el stream
   pausa.onclick = function () {
     activo = !activo;
@@ -167,9 +300,20 @@
     else { parar(); estado.textContent = 'en pausa'; }
   };
   fit.onchange = function () {
-    video.style.maxHeight = fit.checked ? '100vh' : 'none';
-    video.style.maxWidth = fit.checked ? '100%' : 'none';
+    [video, lienzo].forEach(function (el) {
+      el.style.maxHeight = fit.checked ? '100vh' : 'none';
+      el.style.maxWidth = fit.checked ? '100%' : 'none';
+    });
   };
+  // Pantalla completa: Android/PC por la API estandar; iPhone solo deja el video
+  var pc = document.documentElement;
+  if (pc.requestFullscreen || video.webkitEnterFullscreen) {
+    completa.onclick = function () {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (pc.requestFullscreen) pc.requestFullscreen().catch(function () {});
+      else video.webkitEnterFullscreen();
+    };
+  } else completa.style.display = 'none';
   arrancar();
 })();
 </script>

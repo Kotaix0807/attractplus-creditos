@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Panel virtual — prototipo</title>
+<style>
+  :root{ --panel:#d7d4cd; --rim:#2b2b2b; --btn:#e9e9ec;
+         --on:#16a34a; --send:#2563eb; --bg:#15171c; --tx:#e6e6e6; }
+  *{box-sizing:border-box;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;}
+  body{background:var(--bg);color:var(--tx);
+       font-family:system-ui,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;}
+
+  header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+         padding:7px 12px;background:#1d2026;border-bottom:1px solid #2b2f37;flex:0 0 auto;}
+  header h1{font-size:14px;margin:0;font-weight:600}
+  .pill{font-size:11px;color:#9aa3af}
+  button.ui{font:inherit;font-size:12px;padding:6px 11px;border-radius:8px;
+            border:1px solid #3a3f49;background:#272b33;color:#e6e6e6;cursor:pointer}
+  button.ui.activo{background:var(--on);border-color:var(--on);color:#fff}
+  .marcador{margin-left:auto;font-size:13px;min-width:150px;text-align:right}
+  .marcador b{color:#fff}
+
+  .wrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+        min-height:0;padding:10px;}
+  .mesa{background:var(--panel);border:2px solid #b9b6ad;border-radius:16px;
+        width:97vw;padding:2.4vh 2.6vw;display:flex;flex-direction:column;gap:2.6vh;
+        box-shadow:inset 0 2px 8px rgba(0,0,0,.15);}
+  .arriba{display:flex;align-items:center;gap:16px}
+  .centro{margin:0 auto;display:flex;gap:5vw}
+  .fila{display:flex;justify-content:space-around;align-items:center;gap:2vw}
+  .lado{display:flex;align-items:center;gap:2.6vw}
+  .grp{display:flex;flex-direction:column;align-items:center}
+  .cap{text-align:center;font-size:10px;color:#555;margin-top:4px}
+
+  .btn{width:clamp(42px,12vh,100px);height:clamp(42px,12vh,100px);border-radius:50%;
+       background:var(--btn);border:5px solid var(--rim);color:#555;
+       display:flex;align-items:center;justify-content:center;font-size:clamp(12px,2.4vh,20px);
+       cursor:pointer;transition:transform .05s, box-shadow .08s}
+  .btn.chico{width:clamp(34px,7vh,76px);height:clamp(34px,7vh,76px);border-width:4px;font-size:clamp(10px,1.8vh,15px)}
+  .seis{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.4vh,22px)}
+
+  /* cruceta: UNA sola cruz sobre base oscura, con zonas de toque invisibles */
+  .stick{position:relative;width:clamp(92px,24vh,210px);height:clamp(92px,24vh,210px);
+         border-radius:50%;background:#171717;flex:0 0 auto}
+  .cross{position:absolute;inset:0;pointer-events:none}
+  .cross::before,.cross::after{content:"";position:absolute;background:#c0272d;border-radius:5px}
+  .cross::before{left:50%;top:14%;height:72%;width:26%;transform:translateX(-50%)}
+  .cross::after{top:50%;left:14%;width:72%;height:26%;transform:translateY(-50%)}
+  .dz{position:absolute;border-radius:6px;cursor:pointer}
+  .dz[data-d=up]   {left:33%;top:6%;  width:34%;height:38%}
+  .dz[data-d=down] {left:33%;bottom:6%;width:34%;height:38%}
+  .dz[data-d=left] {top:33%;left:6%;  height:34%;width:38%}
+  .dz[data-d=right]{top:33%;right:6%; height:34%;width:38%}
+
+  /* pulsado FISICO (verificar) */
+  .btn.on{box-shadow:0 0 0 4px var(--on),0 0 18px var(--on);transform:scale(1.06)}
+  .dz.on{background:rgba(34,197,94,.75)}
+  /* enviado VIRTUAL (joystick) */
+  @keyframes flash{0%{box-shadow:0 0 0 4px var(--send),0 0 18px var(--send)}100%{box-shadow:none}}
+  .btn.send{animation:flash .45s ease-out}
+  @keyframes flashz{0%{background:rgba(96,165,250,.85)}100%{background:transparent}}
+  .dz.send{animation:flashz .45s ease-out}
+  /* aprender: objetivo parpadea */
+  @keyframes late{0%,100%{box-shadow:0 0 0 4px #f59e0b,0 0 20px #f59e0b}50%{box-shadow:0 0 0 2px #f59e0b}}
+  .btn.objetivo{animation:late 1s infinite}
+  .dz.objetivo{background:rgba(245,158,11,.8)}
+
+  .barra{background:#1d2026;border-top:1px solid #2b2f37;flex:0 0 auto;
+         padding:8px 12px;display:none;align-items:center;gap:12px;font-size:13px}
+  .barra .q{color:#f59e0b;font-weight:600}
+
+  #gira{display:none;position:fixed;inset:0;background:#0b0d11;color:#e6e6e6;
+        flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:30px;z-index:50}
+  #gira .ico{font-size:52px;animation:girar 1.6s ease-in-out infinite}
+  @keyframes girar{0%,100%{transform:rotate(0)}50%{transform:rotate(90deg)}}
+  @media (max-width:900px) and (orientation:portrait){ #gira{display:flex} }
+</style>
+</head>
+<body>
+
+<div id="gira"><div class="ico">📱↻</div><div><b>Gira el teléfono</b><br>Pon la pantalla en horizontal para usar el panel.</div></div>
+
+<header>
+  <a href="/" class="ui" style="text-decoration:none">&larr; panel</a>
+  <h1>Panel virtual · prototipo</h1>
+  <span class="pill" id="estadoAprend">sin calibrar</span>
+  <button class="ui" id="btnAprender">Aprender</button>
+  <button class="ui" id="btnReset">Borrar</button>
+  <div class="marcador" id="marcador">—</div>
+</header>
+
+<div class="wrap">
+  <div class="mesa" id="mesa">
+    <div class="arriba">
+      <div class="grp"><div class="btn" data-id="salir" style="background:#dedede">⎋</div><div class="cap">Salir</div></div>
+      <div class="centro">
+        <div class="grp"><div class="btn chico" data-id="start1">1P</div><div class="cap">Start P1</div></div>
+        <div class="grp"><div class="btn chico" data-id="start2">2P</div><div class="cap">Start P2</div></div>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="lado">
+        <div class="grp">
+          <div class="stick">
+            <span class="cross"></span>
+            <span class="dz" data-id="p1_up" data-d="up"></span>
+            <span class="dz" data-id="p1_down" data-d="down"></span>
+            <span class="dz" data-id="p1_left" data-d="left"></span>
+            <span class="dz" data-id="p1_right" data-d="right"></span>
+          </div>
+          <div class="cap">Cruceta P1</div>
+        </div>
+        <div class="grp">
+          <div class="seis">
+            <div class="btn" data-id="p1_b1">1</div><div class="btn" data-id="p1_b2">2</div><div class="btn" data-id="p1_b3">3</div>
+            <div class="btn" data-id="p1_b4">4</div><div class="btn" data-id="p1_b5">5</div><div class="btn" data-id="p1_b6">6</div>
+          </div><div class="cap">Botones P1</div>
+        </div>
+      </div>
+      <div class="lado">
+        <div class="grp">
+          <div class="stick">
+            <span class="cross"></span>
+            <span class="dz" data-id="p2_up" data-d="up"></span>
+            <span class="dz" data-id="p2_down" data-d="down"></span>
+            <span class="dz" data-id="p2_left" data-d="left"></span>
+            <span class="dz" data-id="p2_right" data-d="right"></span>
+          </div>
+          <div class="cap">Cruceta P2</div>
+        </div>
+        <div class="grp">
+          <div class="seis">
+            <div class="btn" data-id="p2_b1">1</div><div class="btn" data-id="p2_b2">2</div><div class="btn" data-id="p2_b3">3</div>
+            <div class="btn" data-id="p2_b4">4</div><div class="btn" data-id="p2_b5">5</div><div class="btn" data-id="p2_b6">6</div>
+          </div><div class="cap">Botones P2</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="barra" id="barra">
+  <span>Aprender <b id="prog"></b>:</span>
+  <span class="q" id="pide"></span>
+  <span style="margin-left:auto"></span>
+  <button class="ui" id="btnSaltar">Saltar</button>
+  <button class="ui" id="btnTerminar">Terminar</button>
+</div>
+
+<script>
+const CTRL = [
+  ["salir","Salir"],["start1","Start P1"],["start2","Start P2"],
+  ["p1_up","P1 Arriba"],["p1_down","P1 Abajo"],["p1_left","P1 Izquierda"],["p1_right","P1 Derecha"],
+  ["p1_b1","P1 Botón 1"],["p1_b2","P1 Botón 2"],["p1_b3","P1 Botón 3"],["p1_b4","P1 Botón 4"],["p1_b5","P1 Botón 5"],["p1_b6","P1 Botón 6"],
+  ["p2_up","P2 Arriba"],["p2_down","P2 Abajo"],["p2_left","P2 Izquierda"],["p2_right","P2 Derecha"],
+  ["p2_b1","P2 Botón 1"],["p2_b2","P2 Botón 2"],["p2_b3","P2 Botón 3"],["p2_b4","P2 Botón 4"],["p2_b5","P2 Botón 5"],["p2_b6","P2 Botón 6"],
+];
+const NOMBRE = Object.fromEntries(CTRL);
+const el = id => document.querySelector('[data-id="'+id+'"]');
+const CLAVE='panel_mapa_v2';   // clave "idDispositivo/codigo" -> control (mando REAL)
+let mapa = {}; try{ mapa = JSON.parse(localStorage.getItem(CLAVE)||'{}'); }catch(e){ mapa={}; }
+let modo = 'test', paso = 0, CSRF = null;
+
+function guardar(){ try{ localStorage.setItem(CLAVE, JSON.stringify(mapa)); }catch(e){} }
+function nAprendidos(){ return new Set(Object.values(mapa)).size; }
+function refrescaEstado(){ const n=nAprendidos();
+  document.getElementById('estadoAprend').textContent = n ? ('calibrado: '+n+'/'+CTRL.length) : 'sin calibrar'; }
+function marcador(t){ document.getElementById('marcador').innerHTML = t; }
+
+// --- Sesion: la SSE viaja con la cookie; el ENVIO (POST) necesita el token CSRF ---
+fetch('/api/sesion').then(r=>r.json()).then(d=>{ CSRF=d.csrf;
+  if(!d.autenticado) marcador('<b style="color:#f87171">inicia sesión en el panel y recarga</b>');
+}).catch(()=>{});
+
+// --- TEST / APRENDER: eventos REALES del mando por SSE /api/botones ---
+// panel/botones.py lee /dev/input y transmite cada pulsacion de los mandos (no del
+// teclado).  EventSource reconecta solo cuando el backend corta su ventana de 300 s.
+// Deja el gemelo encendido un minimo de tiempo: algunos encoders mandan
+// pulsar+soltar casi al instante, y sin esto "mantener pulsado" solo parpadearia.
+// Un hold de verdad se apaga al soltar, porque ya paso ese minimo.
+const MIN_ON = 350, _off = {}, _desde = {};
+function enciende(id){ const t=el(id); if(!t) return;
+  if(_off[id]){ clearTimeout(_off[id]); delete _off[id]; }
+  t.classList.add('on'); _desde[id]=Date.now(); }
+function apaga(id){ const t=el(id); if(!t) return;
+  const resto = MIN_ON - (Date.now() - (_desde[id]||0));
+  if(resto > 0) _off[id]=setTimeout(()=>{ t.classList.remove('on'); delete _off[id]; }, resto);
+  else t.classList.remove('on'); }
+
+function conectar(){
+  const fuente = new EventSource('/api/botones');
+  fuente.onmessage = ev=>{
+    let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+    if(d.latido || d.fin) return;
+    if(d.error){ marcador('<b style="color:#f87171">'+d.error+'</b>'); return; }
+    const clave = d.id + '/' + d.codigo;
+    if(modo==='aprender'){ if(d.pulsado) aprender(clave); return; }
+    const id = mapa[clave];
+    if(!id){ if(d.pulsado) marcador('control sin asignar ('+d.dispositivo+' #'+d.codigo+') — usa «Aprender»'); return; }
+    if(d.pulsado){ enciende(id); marcador('Pulsado físico: <b>'+NOMBRE[id]+'</b>'); }
+    else apaga(id);
+  };
+  fuente.onerror = ()=>{ marcador('<span class="pill">reconectando con la cabina…</span>'); };
+}
+conectar();
+
+// --- JOYSTICK VIRTUAL: tocar en pantalla -> ENVIAR a la cabina (/api/pulsar) ---
+document.getElementById('mesa').addEventListener('pointerdown', async e=>{
+  const t = e.target.closest('[data-id]'); if(!t) return;
+  e.preventDefault();
+  if(modo==='aprender') return;
+  const id = t.getAttribute('data-id');
+  t.classList.remove('send'); void t.offsetWidth; t.classList.add('send');
+  marcador('Enviando: <b>'+NOMBRE[id]+'</b>…');
+  try{
+    const r = await fetch('/api/pulsar', { method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF||''},
+      body: JSON.stringify({ control: id }) });
+    const d = await r.json().catch(()=>({}));
+    if(r.ok && d.ok) marcador('Enviado: <b>'+NOMBRE[id]+'</b>'+(d.nota?' · '+d.nota:''));
+    else marcador('<b style="color:#f87171">'+(d.error||('no se pudo enviar ('+r.status+')'))+'</b>');
+  }catch(err){ marcador('<b style="color:#f87171">error de red al enviar</b>'); }
+});
+
+// APRENDER
+function empezarAprender(){ modo='aprender'; paso=0; mapa={}; guardar(); refrescaEstado();
+  document.getElementById('barra').style.display='flex';
+  document.getElementById('btnAprender').classList.add('activo'); pintarObjetivo(); }
+function pintarObjetivo(){
+  document.querySelectorAll('.objetivo').forEach(x=>x.classList.remove('objetivo'));
+  if(paso>=CTRL.length){ terminarAprender(); return; }
+  const [id,nom]=CTRL[paso];
+  document.getElementById('prog').textContent='('+(paso+1)+'/'+CTRL.length+')';
+  document.getElementById('pide').textContent='pulsa el control físico para  «'+nom+'»';
+  const t=el(id); if(t) t.classList.add('objetivo'); }
+function aprender(clave){
+  // una misma tecla fisica no puede quedar asignada a dos controles
+  if(clave in mapa) delete mapa[clave];
+  mapa[clave]=CTRL[paso][0]; guardar(); refrescaEstado(); paso++; pintarObjetivo(); }
+function terminarAprender(){ modo='test';
+  document.getElementById('barra').style.display='none';
+  document.getElementById('btnAprender').classList.remove('activo');
+  document.querySelectorAll('.objetivo').forEach(x=>x.classList.remove('objetivo'));
+  marcador('listo — pulsa los controles del mueble'); }
+document.getElementById('btnAprender').onclick=empezarAprender;
+document.getElementById('btnSaltar').onclick=()=>{ paso++; pintarObjetivo(); };
+document.getElementById('btnTerminar').onclick=terminarAprender;
+document.getElementById('btnReset').onclick=()=>{ mapa={}; guardar(); refrescaEstado(); marcador('mapa borrado'); };
+
+// iOS Safari ignora user-scalable=no: evitar zoom por doble toque y por pellizco
+let _ultimoTap = 0;
+document.addEventListener('touchend', e=>{
+  const ahora = Date.now();
+  if(ahora - _ultimoTap <= 350) e.preventDefault();  // segundo toque rapido = doble-tap zoom
+  _ultimoTap = ahora;
+}, {passive:false});
+document.addEventListener('gesturestart', e=>e.preventDefault());  // pellizco
+
+refrescaEstado();
+marcador(nAprendidos()? 'listo — pulsa los controles del mueble' : 'pulsa «Aprender» para empezar');
+(function(){ const m={}; m['event8/304']='p1_b1'; if('event8/304'in m)delete m['event8/304']; m['event8/304']='p1_b2';
+  console.assert(m['event8/304']==='p1_b2','reasignacion rota'); })();
+</script>
+</body>
+</html>

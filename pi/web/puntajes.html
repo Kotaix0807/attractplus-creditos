@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puntajes — cabina</title>
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/picocss/2.0.6/pico.min.css">
+<style>
+  .barra { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem; }
+  .barra input[type=search] { flex:1 1 14rem; margin:0; }
+  .chip { font-size:.8rem; padding:.25rem .7rem; border-radius:99px; cursor:pointer;
+          border:1px solid var(--pico-muted-border-color); background:none;
+          color:inherit; margin:0; width:auto; }
+  .chip.on { background:var(--pico-primary-background); color:var(--pico-primary-inverse);
+             border-color:var(--pico-primary-background); }
+  h2 { font-size:1.1rem; margin:1.6rem 0 .6rem; }
+  h2 small { color:var(--pico-muted-color); font-weight:normal; }
+  .juego { margin:0; padding:.55rem 0; border-bottom:1px solid var(--pico-muted-border-color); }
+  .juego > summary, .juego > .fila { display:flex; align-items:center; gap:1rem; list-style:none; }
+  .juego > summary::-webkit-details-marker { display:none; }
+  .juego > summary::after { display:none; }
+  .juego > summary { cursor:pointer; }
+  .nombre { flex:1 1 auto; min-width:0; }
+  .tit { font-weight:600; line-height:1.2; }
+  .sub { font-size:.75rem; color:var(--pico-muted-color); }
+  .record { text-align:right; font-size:1.15rem; font-weight:700; white-space:nowrap;
+            font-variant-numeric:tabular-nums; }
+  .record small { display:block; font-size:.75rem; font-weight:600; color:var(--pico-muted-color); }
+  .fab { color:var(--pico-muted-color); font-size:.75rem; }
+  .juego table { margin:.5rem 0 .2rem; font-size:.85rem; max-width:24rem; }
+  .juego td, .juego th { padding:.15rem .5rem; }
+  .juego td.n, .juego th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.de-fabrica { opacity:.5; }
+  .motivo { font-size:.8rem; color:var(--pico-muted-color); text-align:right; }
+</style>
+</head>
+
+<body>
+<main class="container">
+  <p><a href="/">&larr; volver al panel</a></p>
+  <h1>Puntajes</h1>
+  <div class="barra">
+    <input id="buscar" type="search" placeholder="Buscar juego…">
+    <span id="filtros"></span>
+  </div>
+  <div id="lista">Cargando…</div>
+</main>
+
+<script>
+// Pagina de SOLO LECTURA: pide /api/puntajes (el portero lo reenvia a la cabina).
+// Misma sesion que el panel principal; sin sesion, /api/puntajes da 401.
+const $ = (id) => document.getElementById(id);
+let CACHE = null, FILTRO = "todos";
+const esc = (s) => s == null ? "" : String(s).replace(/[&<>"]/g,
+  (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const num = (v) => isNaN(Number(v)) || v === "" || v == null ? esc(v)
+  : Number(v).toLocaleString("es-CL");
+
+// Secciones de la pagina, en orden; cada una junta uno o mas estados
+const SECCIONES = [
+  ["Con tabla de récords", ["confirmado", "estimado"]],
+  ["Falta jugar para leer su tabla", ["pendiente"]],
+  ["Sin tabla de récords", ["no_aplica", "sin_puntaje"]],
+];
+
+// "Gradius (Japan, ROM version)" -> ["Gradius", "Japan, ROM version"]
+function partirTitulo(t) {
+  const m = /^(.*?)\s*\((.*)\)\s*$/.exec(t || "");
+  return m && m[1] ? [m[1], m[2]] : [t, ""];
+}
+
+async function cargar() {
+  let r;
+  try { r = await fetch("/api/puntajes"); }
+  catch (e) { $("lista").textContent = "Sin conexión con la cabina."; return; }
+  if (r.status === 401 || r.status === 403) {
+    $("lista").innerHTML = 'Inicia sesión primero en <a href="/">el panel</a> y vuelve a abrir esta página.';
+    return;
+  }
+  if (!r.ok) { $("lista").textContent = "Error al leer los puntajes."; return; }
+  CACHE = await r.json();
+  pintar();
+}
+
+function carta(rom, g) {
+  const [tit, sub] = partirTitulo(g.titulo || rom);
+  const ps = g.puestos || [];
+  const nombre = `<div class="nombre"><div class="tit">${esc(tit)}</div>`
+    + `<div class="sub">${esc([sub, tit.toLowerCase() !== rom && rom].filter(Boolean).join(" · "))}</div></div>`;
+  if (!ps.length)
+    return `<div class="juego"><div class="fila">${nombre}`
+      + `<div class="motivo">${esc(g.motivo || "sin tabla todavía")}</div></div></div>`;
+  // Fila = juego + su record; al pulsarla se despliega la tabla entera
+  const p = ps[0];
+  return `<details class="juego"><summary>${nombre}<div class="record">${num(p.puntos)}`
+    + `<small>${esc([p.nombre, p.defecto && "de fábrica"].filter(Boolean).join(" · "))}</small></div></summary>`
+    + `<table><thead><tr><th>#</th><th class="n">Puntos</th><th>Nombre</th></tr></thead><tbody>`
+    + ps.map((q) => `<tr${q.defecto ? ' class="de-fabrica"' : ""}><td>${esc(q.puesto)}</td>`
+        + `<td class="n">${num(q.puntos)}</td><td>${esc(q.nombre || "")}`
+        + (q.defecto ? ' <span class="fab">fábrica</span>' : "") + `</td></tr>`).join("")
+    + `</tbody></table></details>`;
+}
+
+function pintarFiltros(j) {
+  const cuenta = (ests) => Object.values(j).filter((g) => ests.includes(g.estado)).length;
+  const ops = [["todos", "Todos", Object.keys(j).length],
+               ...SECCIONES.map(([n, ests], i) => [String(i), n, cuenta(ests)])];
+  $("filtros").innerHTML = ops.map(([k, n, c]) =>
+    `<button class="chip${FILTRO === k ? " on" : ""}" data-k="${k}">${esc(n)} (${c})</button>`).join(" ");
+  for (const b of $("filtros").querySelectorAll("button"))
+    b.onclick = () => { FILTRO = b.dataset.k; pintar(); };
+}
+
+function pintar() {
+  if (!CACHE) return;
+  const j = CACHE.juegos || {};
+  pintarFiltros(j);
+  const q = ($("buscar").value || "").toLowerCase().trim();
+  const html = SECCIONES.map(([nombre, ests], i) => {
+    if (FILTRO !== "todos" && FILTRO !== String(i)) return "";
+    const roms = Object.keys(j)
+      .filter((r) => ests.includes(j[r].estado))
+      .filter((r) => !q || (j[r].titulo || "").toLowerCase().includes(q) || r.toLowerCase().includes(q))
+      .sort((a, b) => (j[a].titulo || a).localeCompare(j[b].titulo || b, "es"));
+    if (!roms.length) return "";
+    return `<h2>${esc(nombre)} <small>(${roms.length})</small></h2>`
+      + `${roms.map((r) => carta(r, j[r])).join("")}`;
+  }).join("");
+  $("lista").innerHTML = html || "<p><small>ningún juego coincide</small></p>";
+}
+
+$("buscar").oninput = pintar;
+cargar();
+</script>
+</body>
+</html>
