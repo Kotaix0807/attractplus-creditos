@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """El panel web de la cabina (backend real).  Ver docs/panel.md para el contrato.
 
-Sirve la GUI de panel/static/ y expone la API JSON /api/...  Escucha SOLO en
-127.0.0.1: quien lo saca al mundo es cloudflared.  Corre como 'arcade' (servicio
-de usuario), con sudo NOPASSWD para las pocas acciones que piden root.
+Expone la API JSON /api/...  La pagina (la GUI) NO se sirve desde aqui: la sirve
+la Raspberry Pi con pi/portero.py, que reenvia /api/* a este servidor.  Escucha en
+127.0.0.1 o en la IP del cable con la Pi (panel.conf, 'escucha').  Corre como
+'arcade' (servicio de usuario), con sudo NOPASSWD para las acciones que piden root.
 
     python3 panel/servidor.py        # produccion (lo lanza panel.service)
 
-Para desarrollar la GUI sin la cabina, usa panel/simulador.py (no necesita Flask).
+Solo estan las rutas que usan las paginas de pi/web/.  Lo que ninguna usaba
+(gestion de juegos, mantenimiento, actualizar, logs, ingresos, MJPEG...) se quito
+el 2026-11-22 por decision de Eloy; esta en el historial de git si hace falta.
 """
 
 import functools
@@ -15,34 +18,36 @@ import json
 import os
 import secrets
 import time
+from datetime import timedelta
 
-from flask import (Flask, Response, abort, jsonify, request, send_from_directory,
-                   session)
+from flask import Flask, Response, jsonify, request, session
 
 import acciones
 import botones
 import estado
-import monedas
-from comun import ATTRACT, auditar, clave_correcta, entero, usuario_correcto
-
-AQUI = os.path.dirname(os.path.abspath(__file__))
-ESTATICO = os.path.join(AQUI, "static")
+from comun import ATTRACT, CONF, auditar, clave_correcta, entero, usuario_correcto
 
 app = Flask(__name__, static_folder=None)
 
 
+# ---------------------------------------------------------------------------
+# Configuracion de la sesion
+# ---------------------------------------------------------------------------
+
 def _secreto():
     """Clave de sesion persistente: sobrevive a reinicios del servicio para no
-    cerrar la sesion a cada rato.  Se guarda con permisos de solo-usuario."""
+    cerrar la sesion a cada rato.  Se crea ya con permisos de solo-usuario."""
     ruta = os.path.join(ATTRACT, "panel_secret")
     try:
         if os.path.exists(ruta):
             return open(ruta, "rb").read()
         os.makedirs(ATTRACT, exist_ok=True)
         s = secrets.token_bytes(32)
-        with open(ruta, "wb") as f:
+        # os.open con 0o600: el fichero nunca existe con permisos abiertos (antes
+        # se creaba normal y se le hacia chmod despues).
+        fd = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
             f.write(s)
-        os.chmod(ruta, 0o600)
         return s
     except OSError:
         return secrets.token_bytes(32)
@@ -52,16 +57,11 @@ app.secret_key = _secreto()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 # "Mantener sesion iniciada": una sesion permanente dura esto en vez de cerrarse
 # al cerrar el navegador.
-from datetime import timedelta  # noqa: E402
 app.permanent_session_lifetime = timedelta(days=30)
 
 # Freno sencillo de fuerza bruta en el login (un solo usuario).
 _fallos = {"n": 0, "hasta": 0}
 
-
-# ---------------------------------------------------------------------------
-# Decoradores de autenticacion
-# ---------------------------------------------------------------------------
 
 def requiere_login(fn):
     @functools.wraps(fn)
@@ -86,6 +86,16 @@ def requiere_csrf(fn):
 
 def cuerpo():
     return request.get_json(silent=True) or {}
+
+
+def _arg_rango(nombre, defecto, lo, hi):
+    """Lee request.args[nombre] como entero acotado a [lo, hi] (a prueba de basura:
+    los valores van a un comando ffmpeg)."""
+    try:
+        v = int(request.args.get(nombre, defecto))
+    except (TypeError, ValueError):
+        v = defecto
+    return max(lo, min(hi, v))
 
 
 # ---------------------------------------------------------------------------
@@ -113,98 +123,20 @@ def login():
     return jsonify({"ok": True, "csrf": session["csrf"]})
 
 
-@app.post("/api/logout")
-def logout():
-    session.clear()
-    return jsonify({"ok": True})
-
-
 @app.get("/api/sesion")
 def sesion():
     return jsonify({"autenticado": bool(session.get("auth")),
                     "csrf": session.get("csrf") if session.get("auth") else None})
 
 
-@app.get("/api/compilacion")
-def api_compilacion():
-    """Avance de la compilacion de GroovyMAME (PUBLICO, se ve sin login).
-    Cuenta los .o generados en ~/groovymame-fuentes contra el total aproximado
-    de unidades (.cpp/.cc).  Lee ~/compilar-cabina.log para saber si termino."""
-    base = os.path.expanduser("~/groovymame-fuentes")
-    log = os.path.expanduser("~/compilar-cabina.log")
-    out = {"estado": "sin datos", "activo": False, "nobj": 0, "total": 0,
-           "pct": 0, "ultima": "", "ts": int(time.time())}
-    txt = ""
-    try:
-        with open(log, "rb") as f:
-            f.seek(0, 2); sz = f.tell(); f.seek(max(0, sz - 4000))
-            txt = f.read().decode("utf-8", "replace")
-    except OSError:
-        pass
-    lineas = txt.strip().splitlines()
-    out["ultima"] = (lineas[-1][:120] if lineas else "")
-    if "Listo:" in txt:
-        out.update(estado="ok", activo=False, pct=100)
-        return jsonify(out)
-    if any(m in txt for m in ("Fallo la compilacion", "No encuentro el binario",
-                              "Compilo pero no arranca")):
-        out.update(estado="fallo", activo=False)
-        return jsonify(out)
-    if not os.path.isdir(base):
-        return jsonify(out)
-    need_total = (api_compilacion._total == 0)
-    nobj = 0
-    total = 0
-    for _r, _d, files in os.walk(base):
-        for n in files:
-            if n.endswith(".o"):
-                nobj += 1
-            elif need_total and (n.endswith(".cpp") or n.endswith(".cc")):
-                total += 1
-    if need_total:
-        api_compilacion._total = total
-    total = api_compilacion._total
-    out.update(estado="compilando", activo=True, nobj=nobj, total=total,
-               pct=round(nobj * 100.0 / total, 1) if total else 0)
-    return jsonify(out)
-
-
-api_compilacion._total = 0
-
-
 # ---------------------------------------------------------------------------
-# Lectura (GET)
+# Pagina principal (pi/web/index.html)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/estado")
 @requiere_login
 def api_estado():
     return jsonify(estado.completo())
-
-
-@app.get("/api/sistema")
-@requiere_login
-def api_sistema():
-    return jsonify(estado.sistema())
-
-
-@app.get("/api/volumen")
-@requiere_login
-def api_volumen_get():
-    return jsonify(acciones.volumen_actual())
-
-
-@app.get("/api/tiradas")
-@requiere_login
-def api_tiradas():
-    return jsonify(monedas.tiradas(request.args.get("desde"),
-                                   request.args.get("hasta")))
-
-
-@app.get("/api/puntajes")
-@requiere_login
-def api_puntajes():
-    return jsonify(estado.puntajes())
 
 
 @app.get("/api/masjugados")
@@ -216,36 +148,23 @@ def api_masjugados():
     return jsonify(estado.masjugados(orden, limite))
 
 
-@app.get("/api/monedas")
+@app.get("/api/volumen")
 @requiere_login
-def api_monedas():
-    return jsonify(monedas.agregar(request.args.get("desde"),
-                                   request.args.get("hasta")))
+def api_volumen_get():
+    return jsonify(acciones.volumen_actual())
 
 
-@app.get("/api/juegos")
-@requiere_login
-def api_juegos():
-    # Lista base de mas-jugados (da titulo y partidas); la visibilidad y la
-    # tarifa se resuelven en el cliente/cabina.  Aqui damos lo barato de leer.
-    vistos = {j["rom"]: j for j in estado.masjugados("partidas", 1000)}
-    ocultos = _ocultos_actuales()
-    salida = []
-    for rom in sorted(set(list(vistos) + list(_roms_romlist()))):
-        j = vistos.get(rom, {"rom": rom, "titulo": estado._titulo_rom(rom),
-                             "partidas": 0})
-        t = acciones.tarifa_actual(rom)
-        salida.append({"rom": rom, "titulo": j["titulo"],
-                       "partidas": j.get("partidas", 0),
-                       "visible": rom not in ocultos,
-                       "tarifa": {"pesos": t["pesos"], "texto": t["texto"]}})
-    return jsonify(salida)
+@app.post("/api/volumen")
+@requiere_csrf
+def api_volumen():
+    return jsonify(acciones.volumen(cuerpo().get("nivel", 80)))
 
 
-@app.get("/api/juegos/<rom>/tarifa")
-@requiere_login
-def api_juego_tarifa_get(rom):
-    return jsonify(acciones.tarifa_actual(rom))
+@app.post("/api/sonido/prueba")
+@requiere_csrf
+def api_sonido_prueba():
+    """Prueba de altavoces: reproduce un tono en 'izquierda', 'derecha' o 'ambos'."""
+    return jsonify(acciones.prueba_sonido(cuerpo().get("canal", "ambos")))
 
 
 @app.get("/api/tarifa-global")
@@ -254,55 +173,25 @@ def api_tarifa_global_get():
     return jsonify(acciones.tarifa_global_actual())
 
 
+@app.post("/api/tarifa-global")
+@requiere_csrf
+def api_tarifa_global():
+    return jsonify(acciones.fijar_tarifa_global(cuerpo().get("valor")))
+
+
 @app.get("/api/leds/brillo")
 @requiere_login
 def api_brillo_get():
     return jsonify(acciones.brillo_actual())
 
 
-@app.get("/api/logs/retencion")
-@requiere_login
-def api_retencion_get():
-    return jsonify(acciones.logs_retencion())
+@app.post("/api/leds/brillo")
+@requiere_csrf
+def api_brillo_set():
+    return jsonify(acciones.fijar_brillo(cuerpo().get("brillo")))
 
 
-@app.get("/api/logs")
-@requiere_login
-def api_logs():
-    fuente = request.args.get("fuente", "panel")
-    n = request.args.get("lineas", "200")
-    n = int(n) if n.isdigit() else 200
-    acciones.limpiar_logs()   # aprovecha para aplicar la retencion configurada
-    return jsonify({"fuente": fuente, "lineas": _leer_log(fuente, n)})
-
-
-@app.get("/api/eventos")
-@requiere_login
-def api_eventos():
-    def flujo():
-        while True:
-            d = estado.completo()
-            chico = {"cpu": d["cpu"]["uso_pct"], "temperatura_c": d["temperatura_c"],
-                     "juego_actual": d["juego_actual"], "hora": d["hora"]}
-            yield "data: " + json.dumps(chico) + "\n\n"
-            time.sleep(2)
-    return Response(flujo(), mimetype="text/event-stream")
-
-
-@app.get("/api/botones")
-@requiere_login
-def api_botones():
-    """SSE: cada pulsacion de los mandos (no del teclado), para 'Test botones'."""
-    auditar("test_botones")
-    def flujo():
-        for ev in botones.eventos_botones():
-            yield "data: " + json.dumps(ev) + "\n\n"
-    return Response(flujo(), mimetype="text/event-stream")
-
-
-# ---------------------------------------------------------------------------
-# Acciones (POST, con CSRF)
-# ---------------------------------------------------------------------------
+# --- la maquina ---
 
 @app.post("/api/accion/reiniciar")
 @requiere_csrf
@@ -322,28 +211,16 @@ def api_suspender():
     return jsonify(acciones.suspender())
 
 
-@app.post("/api/accion/mantenimiento")
-@requiere_csrf
-def api_mantenimiento():
-    return jsonify(acciones.mantenimiento(cuerpo().get("activo")))
-
-
 @app.post("/api/frontend/reiniciar")
 @requiere_csrf
 def api_frontend():
     return jsonify(acciones.frontend_reiniciar())
 
 
-@app.post("/api/frontend/detener")
+@app.post("/api/frontend/menu")
 @requiere_csrf
-def api_frontend_detener():
-    return jsonify(acciones.frontend_detener())
-
-
-@app.post("/api/frontend/iniciar")
-@requiere_csrf
-def api_frontend_iniciar():
-    return jsonify(acciones.frontend_iniciar())
+def api_frontend_menu():
+    return jsonify(acciones.frontend_menu())
 
 
 @app.post("/api/monedero/reiniciar")
@@ -358,6 +235,14 @@ def api_arduino():
     return jsonify(acciones.arduino_reiniciar())
 
 
+# --- el juego en marcha ---
+
+@app.post("/api/creditos")
+@requiere_csrf
+def api_creditos():
+    return jsonify(acciones.creditos(cuerpo().get("n", 1)))
+
+
 @app.post("/api/juego/salir")
 @requiere_csrf
 def api_salir():
@@ -370,16 +255,20 @@ def api_juego_menu():
     return jsonify(acciones.juego_menu())
 
 
-@app.post("/api/frontend/menu")
-@requiere_csrf
-def api_frontend_menu():
-    return jsonify(acciones.frontend_menu())
+# ---------------------------------------------------------------------------
+# Tester de botones y joystick virtual (pi/web/tester.html)
+# ---------------------------------------------------------------------------
 
+@app.get("/api/botones")
+@requiere_login
+def api_botones():
+    """SSE: cada pulsacion de los mandos (no del teclado), para 'Test botones'."""
+    auditar("test_botones")
 
-@app.post("/api/creditos")
-@requiere_csrf
-def api_creditos():
-    return jsonify(acciones.creditos(cuerpo().get("n", 1)))
+    def flujo():
+        for ev in botones.eventos_botones():
+            yield "data: " + json.dumps(ev) + "\n\n"
+    return Response(flujo(), mimetype="text/event-stream")
 
 
 @app.post("/api/pulsar")
@@ -390,146 +279,19 @@ def api_pulsar():
     return jsonify(acciones.pulsar(cuerpo().get("control", "")))
 
 
-@app.post("/api/pantalla")
-@requiere_csrf
-def api_pantalla():
-    return jsonify(acciones.pantalla(cuerpo().get("destino", "")))
+# ---------------------------------------------------------------------------
+# Puntajes (pi/web/puntajes.html)
+# ---------------------------------------------------------------------------
 
-
-@app.post("/api/volumen")
-@requiere_csrf
-def api_volumen():
-    return jsonify(acciones.volumen(cuerpo().get("nivel", 80)))
-
-
-@app.post("/api/sonido/prueba")
-@requiere_csrf
-def api_sonido_prueba():
-    """Prueba de altavoces: reproduce un tono en 'izquierda', 'derecha' o 'ambos'."""
-    return jsonify(acciones.prueba_sonido(cuerpo().get("canal", "ambos")))
-
-
-@app.post("/api/puntajes/actualizar")
-@requiere_csrf
-def api_puntajes_act():
-    return jsonify(acciones.puntajes_actualizar())
-
-
-@app.get("/api/arranque/<rom>")
+@app.get("/api/puntajes")
 @requiere_login
-def api_arranque_get(rom):
-    return jsonify(acciones.arranque_opciones(rom))
-
-
-@app.post("/api/arranque/<rom>")
-@requiere_csrf
-def api_arranque_set(rom):
-    d = cuerpo()
-    return jsonify(acciones.arranque_fijar(rom, d.get("clave", ""), d.get("valor", "")))
-
-
-@app.post("/api/juegos/<rom>/visible")
-@requiere_csrf
-def api_juego_visible(rom):
-    return jsonify(acciones.juego_visible(rom, cuerpo().get("visible", True)))
-
-
-@app.post("/api/juegos/<rom>/tarifa")
-@requiere_csrf
-def api_juego_tarifa(rom):
-    return jsonify(acciones.juego_tarifa(rom, cuerpo().get("pesos", 100)))
-
-
-@app.post("/api/tarifa-global")
-@requiere_csrf
-def api_tarifa_global():
-    return jsonify(acciones.fijar_tarifa_global(cuerpo().get("valor")))
-
-
-@app.post("/api/leds/brillo")
-@requiere_csrf
-def api_brillo_set():
-    return jsonify(acciones.fijar_brillo(cuerpo().get("brillo")))
-
-
-@app.post("/api/juegos/<rom>/eliminar")
-@requiere_csrf
-def api_juego_eliminar(rom):
-    return jsonify(acciones.juego_eliminar(rom))
-
-
-@app.post("/api/juegos/<rom>/reset-nvram")
-@requiere_csrf
-def api_juego_nvram(rom):
-    return jsonify(acciones.juego_reset_nvram(rom))
-
-
-@app.post("/api/juegos/<rom>/reset-puntajes")
-@requiere_csrf
-def api_juego_rpunt(rom):
-    return jsonify(acciones.juego_reset_puntajes(rom))
-
-
-@app.post("/api/juegos/subir")
-@requiere_csrf
-def api_juego_subir():
-    f = request.files.get("archivo")
-    if not f or not f.filename:
-        return jsonify({"ok": False, "error": "falta el archivo"}), 400
-    tmp = os.path.join("/tmp", "panel_sube_" + secrets.token_hex(6))
-    f.save(tmp)
-    return jsonify(acciones.juego_subir(tmp, f.filename))
-
-
-@app.post("/api/monedas/cero")
-@requiere_csrf
-def api_monedas_cero():
-    monedas.poner_a_cero()
-    auditar("monedas_cero")
-    return jsonify({"ok": True})
-
-
-@app.get("/api/actualizar/estado")
-@requiere_login
-def api_act_estado():
-    return jsonify(acciones.actualizar_estado())
-
-
-@app.post("/api/actualizar")
-@requiere_csrf
-def api_actualizar():
-    return jsonify(acciones.actualizar())
-
-
-@app.post("/api/restaurar-fabrica")
-@requiere_csrf
-def api_restaurar():
-    d = cuerpo()
-    return jsonify(acciones.restaurar_fabrica(bool(d.get("records", True)),
-                                              bool(d.get("stats", True))))
-
-
-@app.post("/api/logs/retencion")
-@requiere_csrf
-def api_retencion_set():
-    d = cuerpo()
-    return jsonify(acciones.fijar_retencion(d.get("cada", 12),
-                                            d.get("unidad", "horas")))
+def api_puntajes():
+    return jsonify(estado.puntajes())
 
 
 # ---------------------------------------------------------------------------
-# Ficheros estaticos (la GUI de Eloy)
+# Pantalla remota (pi/web/pantalla.html)
 # ---------------------------------------------------------------------------
-
-def _arg_rango(nombre, defecto, lo, hi):
-    """Lee request.args[nombre] como entero acotado a [lo, hi] (a prueba de basura:
-    los valores van a un comando ffmpeg)."""
-    try:
-        v = int(request.args.get(nombre, defecto))
-    except (TypeError, ValueError):
-        v = defecto
-    return max(lo, min(hi, v))
-
 
 @app.get("/api/pantalla.mp4")
 @requiere_login
@@ -556,106 +318,77 @@ def api_pantalla_h264():
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
-@app.get("/api/pantalla.mjpeg")
-@requiere_login
-def api_pantalla_mjpeg():
-    """Stream MJPEG en vivo de la pantalla (respaldo del H.264). La GUI lo pone
-    en un <img>. La cookie de sesion va en la peticion del <img>.
-    Ajustable en caliente por URL: ?ancho=px&calidad=2..31&fps=."""
-    gen = acciones.stream_pantalla(fps=_arg_rango("fps", 30, 5, 30),
-                                   ancho=_arg_rango("ancho", 480, 240, 1024),
-                                   calidad=_arg_rango("calidad", 12, 2, 31))
-    return Response(gen,
-                    mimetype="multipart/x-mixed-replace; boundary=frame",
-                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
-
-
-@app.get("/api/pantalla.jpg")
-@requiere_login
-def api_pantalla_jpg():
-    """Compartir pantalla (solo ver): un fotograma JPEG del CRT. La GUI lo refresca
-    en un <img>. Requiere sesion (la cookie va en la peticion del <img>)."""
-    datos = acciones.frame_actual()
-    if not datos:
-        return jsonify({"error": "no se pudo capturar la pantalla"}), 503
-    return Response(datos, mimetype="image/jpeg",
-                    headers={"Cache-Control": "no-store, max-age=0"})
-
-
-@app.get("/")
-def raiz():
-    return send_from_directory(ESTATICO, "index.html")
-
-
-@app.get("/<path:ruta>")
-def estatico(ruta):
-    if ruta.startswith("api/"):
-        abort(404)
-    destino = os.path.normpath(os.path.join(ESTATICO, ruta))
-    if not destino.startswith(ESTATICO) or not os.path.isfile(destino):
-        abort(404)
-    return send_from_directory(ESTATICO, ruta)
-
-
 # ---------------------------------------------------------------------------
-# Auxiliares
+# Avance de la compilacion de GroovyMAME (pi/web/compilacion.html)
 # ---------------------------------------------------------------------------
 
-def _leer_log(fuente, n):
-    import glob
-    from comun import F_AUDITORIA, RAIZ_REPO
-    rutas = {
-        "auditoria": [F_AUDITORIA],
-        "attract": [os.path.join(ATTRACT, "last_run.log"),
-                    os.path.join(ATTRACT, "attract.log")],
-        "monedero": sorted(glob.glob(os.path.join(RAIZ_REPO, "arduino", "log*.txt")))[-1:],
-        "panel": [],
-    }
-    for ruta in rutas.get(fuente, []):
-        if ruta and os.path.exists(ruta):
-            try:
-                return open(ruta, encoding="utf-8", errors="replace").read().splitlines()[-n:]
-            except OSError:
-                pass
-    if fuente == "panel":
-        rc, out, _ = acciones.ejecutar(
-            ["journalctl", "--user", "-u", "panel.service", "-n", str(n), "--no-pager"])
-        return out.splitlines() if rc == 0 else ["(sin log)"]
-    return ["(sin log)"]
+_compilacion = {"total": 0, "visto": 0.0, "respuesta": None}
 
 
-def _ocultos_actuales():
-    ruta = os.path.join(ATTRACT, "displays.cfg")
+@app.get("/api/compilacion")
+def api_compilacion():
+    """PUBLICO a proposito (la pagina se mira sin login mientras compila).  Cuenta
+    los .o de ~/groovymame-fuentes contra el total de .cpp/.cc y lee
+    ~/compilar-cabina.log para saber si termino.  Recorrer el arbol (3 GB) cuesta,
+    asi que la respuesta se guarda 10 s: sin eso cualquiera podia ponerse a
+    pedirla en bucle y cargar el i3 mientras se juega."""
+    if _compilacion["respuesta"] and time.time() - _compilacion["visto"] < 10:
+        return jsonify(_compilacion["respuesta"])
+    _compilacion["respuesta"] = _medir_compilacion()
+    _compilacion["visto"] = time.time()
+    return jsonify(_compilacion["respuesta"])
+
+
+def _medir_compilacion():
+    base = os.path.expanduser("~/groovymame-fuentes")
+    log = os.path.expanduser("~/compilar-cabina.log")
+    out = {"estado": "sin datos", "activo": False, "nobj": 0, "total": 0,
+           "pct": 0, "ultima": "", "ts": int(time.time())}
+
+    txt = ""
     try:
-        for l in open(ruta, encoding="utf-8"):
-            if "Name" in l and "not_equals" in l and l.strip().startswith("rule"):
-                trozo = l.split("not_equals", 1)[1].strip()
-                return set(x for x in trozo.split("|") if x)
+        with open(log, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4000))
+            txt = f.read().decode("utf-8", "replace")
     except OSError:
         pass
-    return set()
+    lineas = txt.strip().splitlines()
+    out["ultima"] = lineas[-1][:120] if lineas else ""
 
+    if "Listo:" in txt:
+        out.update(estado="ok", pct=100)
+        return out
+    if any(m in txt for m in ("Fallo la compilacion", "No encuentro el binario",
+                              "Compilo pero no arranca")):
+        out.update(estado="fallo")
+        return out
+    if not os.path.isdir(base):
+        return out
 
-def _roms_romlist():
-    ruta = os.path.join(ATTRACT, "romlists", "groovymame.txt")
-    roms = []
-    try:
-        for l in open(ruta, encoding="utf-8"):
-            if l and not l.startswith("#") and ";" in l:
-                roms.append(l.split(";", 1)[0])
-    except OSError:
-        pass
-    return roms
+    contar_total = (_compilacion["total"] == 0)
+    nobj = total = 0
+    for _r, _d, ficheros in os.walk(base):
+        for n in ficheros:
+            if n.endswith(".o"):
+                nobj += 1
+            elif contar_total and n.endswith((".cpp", ".cc")):
+                total += 1
+    if contar_total:
+        _compilacion["total"] = total
+    total = _compilacion["total"]
+    out.update(estado="compilando", activo=True, nobj=nobj, total=total,
+               pct=round(nobj * 100.0 / total, 1) if total else 0)
+    return out
 
 
 def main():
-    from comun import CONF
     puerto = entero("puerto", 8808)
     # 127.0.0.1 por defecto (solo cloudflared local).  Si hay un Pi delante por
     # cable LAN, se pone en panel.conf la IP de ESE enlace punto-a-punto
     # (p.ej. escucha=10.55.0.2), nunca una LAN compartida sin confianza.
     escucha = CONF.get("escucha", "127.0.0.1").strip() or "127.0.0.1"
-    # threaded=True para que el SSE de /api/eventos no bloquee al resto.
+    # threaded=True para que los streams (SSE, video) no bloqueen al resto.
     app.run(host=escucha, port=puerto, threaded=True)
 
 

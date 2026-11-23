@@ -7,6 +7,7 @@ suelto; lo importan servidor.py, estado.py, acciones.py y monedas.py.
 """
 
 import hashlib
+import hmac
 import os
 import subprocess
 import time
@@ -95,10 +96,11 @@ def entero(clave, por_defecto=0):
 def clave_correcta(clave):
     """True si 'clave' coincide con clave_hash.  Si no hay hash configurado, se
     acepta 'arcade' como clave por defecto (y conviene cambiarla)."""
+    # compare_digest: tiempo constante, que no se pueda adivinar por cuanto tarda.
     h = CONF.get("clave_hash", "").strip()
     if not h:
-        return clave == "arcade"
-    return hashlib.sha256(clave.encode("utf-8")).hexdigest() == h
+        return hmac.compare_digest(clave.encode("utf-8"), b"arcade")
+    return hmac.compare_digest(hashlib.sha256(clave.encode("utf-8")).hexdigest(), h)
 
 
 def usuario_correcto(usuario):
@@ -106,23 +108,6 @@ def usuario_correcto(usuario):
     (cualquiera, incluso vacio, vale: la seguridad la da la clave + Cloudflare)."""
     esperado = CONF.get("usuario", "").strip()
     return not esperado or (usuario or "").strip() == esperado
-
-
-def leer_ajustes():
-    """Ajustes que el propio panel escribe (retencion de logs, tarifa fijada por
-    juego...).  Van en panel_ajustes.json, aparte de panel.conf (que es plantilla
-    del repo y no se reescribe)."""
-    import json
-    try:
-        with open(F_AJUSTES, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
-
-def guardar_ajustes(d):
-    import json
-    escribir_atomico(F_AJUSTES, json.dumps(d, ensure_ascii=False, indent=2))
 
 
 # ---------------------------------------------------------------------------

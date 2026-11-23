@@ -142,15 +142,12 @@ botón quedará, pero sin efecto, y la alternativa es un enchufe inteligente con
 
 ---
 
-## Probar el conjunto sin la cabina
+## Probar el portero sin la cabina
 
-El simulador hace de cabina de mentira; el portero le habla igual:
+Basta con lanzarlo apuntando a una cabina que no responde: sirve `~/web` y para
+`/api/*` contesta el 503 "apagada", con el botón Encender por WoL. (El simulador
+de cabina se quitó el 2026-11-22; las páginas se prueban contra la cabina real.)
 
 ```bash
-# en una terminal (hace de cabina):
-PUERTO=8808 python3 panel/simulador.py
-# en otra (el portero):
-CABINA=127.0.0.1:8808 PUERTO=8080 python3 pi/portero.py
-# ahora http://localhost:8080/ pasa por el portero hasta el simulador.
-# Para el simulador (Ctrl-C) y verás el 503 "apagada" y el Encender por WoL.
+CABINA=127.0.0.1:9 PUERTO=8080 python3 pi/portero.py
 ```

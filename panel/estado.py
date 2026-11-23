@@ -13,10 +13,11 @@ import glob
 import json
 import os
 import shutil
+import threading
 import time
 
 from comun import (ATTRACT, DIR_STATS, F_CREDITOS_JUEGO, F_JUEGO_ACTUAL,
-                   F_MANTENIMIENTO, F_MONEDERO_SWITCH, F_PUNTAJES, RAIZ_REPO,
+                   F_MONEDERO_SWITCH, F_PUNTAJES, RAIZ_REPO,
                    ejecutar)
 
 HZ = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
@@ -152,11 +153,19 @@ def proceso_vivo(*nombres):
     return False
 
 
-def juego_actual():
+def _pid_del_juego():
+    """PID del emulador en marcha: MAME o Hypseus (Dragon's Lair).  Antes solo se
+    miraba mame, y con Dragon's Lair el panel decia 'sin juego' y 'rele off'."""
     pid = _pid_de("mame")
+    return pid if pid is not None else _pid_de("hypseus")
+
+
+def juego_actual():
+    pid = _pid_del_juego()
     if pid is None:
         return None
-    # El rom y el titulo los deja creditos.lua en juego_actual (rom<TAB>titulo).
+    # El rom y el titulo los deja en juego_actual (rom<TAB>titulo) creditos.lua,
+    # o creditos/lanzar_hypseus.sh con Dragon's Lair.
     rom, titulo = None, None
     txt = _leer(F_JUEGO_ACTUAL).strip()
     if txt:
@@ -218,7 +227,7 @@ def _puerto_arduino():
 
 def arduino():
     puerto = _puerto_arduino()
-    hay_mame = _pid_de("mame") is not None
+    hay_mame = _pid_del_juego() is not None
     switch = _leer(F_MONEDERO_SWITCH).strip()
     if not hay_mame:
         rele = "off"
@@ -280,33 +289,6 @@ def versiones():
 _sistema_cache = None
 
 
-def sistema():
-    """Hardware + software para la tarjeta 'Informacion del sistema'.  Se cachea:
-    nada de esto cambia mientras la cabina esta encendida."""
-    global _sistema_cache
-    if _sistema_cache is not None:
-        return _sistema_cache
-    equipo = (_leer("/sys/class/dmi/id/product_name").strip()
-              or _leer("/sys/class/dmi/id/board_name").strip() or "?")
-    cpu_modelo = "?"
-    for l in _leer("/proc/cpuinfo").splitlines():
-        if l.lower().startswith("model name"):
-            cpu_modelo = l.split(":", 1)[1].strip()
-            break
-    so = "?"
-    for l in _leer("/etc/os-release").splitlines():
-        if l.startswith("PRETTY_NAME="):
-            so = l.split("=", 1)[1].strip().strip('"')
-            break
-    v = versiones()
-    _sistema_cache = {
-        "equipo": equipo, "cpu_modelo": cpu_modelo,
-        "ram_total_mb": ram()["total_mb"], "disco_total_gb": disco()["total_gb"],
-        "so": so, "mame": v["mame"], "attractplus": v["attractplus"],
-    }
-    return _sistema_cache
-
-
 def juegos_total():
     ruta = os.path.join(ATTRACT, "romlists", "groovymame.txt")
     n = 0
@@ -325,10 +307,6 @@ def commit():
                 "fecha": partes[1] if len(partes) > 1 else "",
                 "mensaje": partes[2] if len(partes) > 2 else ""}
     return {"hash": "?", "fecha": "", "mensaje": ""}
-
-
-def mantenimiento():
-    return os.path.exists(F_MANTENIMIENTO)
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +335,6 @@ def completo():
     return {
         "hora": int(time.time()),
         "uptime_seg": uptime(),
-        "mantenimiento": mantenimiento(),
         "cpu": cpu(),
         "temperatura_c": temperatura(),
         "temperatura_max_c": entero("temp_aviso", 80),
@@ -411,10 +388,11 @@ DIRS_TABLAS = [os.path.expanduser("~/.mame/hiscore"),
                os.path.expanduser("~/.mame/nvram")]
 
 
-def _puntajes_al_dia():
-    """puntajes.py solo lo lanzaba el boton 'actualizar': un record recien hecho
-    no salia en el panel (Q*bert, 2026-11-18).  Se regenera si alguna tabla es
-    mas nueva que el JSON.  Tarda ~10 s en la cabina, y solo tras jugar."""
+_regenerando = threading.Lock()
+
+
+def _hay_tabla_nueva():
+    """True si alguna tabla de records (.hi o NVRAM) es mas nueva que el JSON."""
     try:
         hecho = os.path.getmtime(F_PUNTAJES)
     except OSError:
@@ -423,11 +401,33 @@ def _puntajes_al_dia():
         for ruta in glob.glob(os.path.join(d, "**"), recursive=True):
             try:
                 if os.path.getmtime(ruta) > hecho and os.path.isfile(ruta):
-                    ejecutar(["python3", os.path.join(RAIZ_REPO, "creditos",
-                                                      "puntajes.py")], timeout=600)
-                    return
+                    return True
             except OSError:
                 pass
+    return False
+
+
+def _puntajes_al_dia():
+    """puntajes.py solo lo lanzaba el boton 'actualizar': un record recien hecho
+    no salia en el panel (Q*bert, 2026-11-18).  Se regenera si alguna tabla es
+    mas nueva que el JSON.  Tarda ~10 s en la cabina, y solo tras jugar.
+
+    Dos cuidados: con el candado, dos peticiones a la vez no lanzan dos
+    puntajes.py (la segunda sirve el JSON que haya); y el JSON se marca como
+    hecho aunque puntajes.py falle, o se relanzaria en cada visita."""
+    if not _hay_tabla_nueva():
+        return
+    if not _regenerando.acquire(blocking=False):
+        return
+    try:
+        ejecutar(["python3", os.path.join(RAIZ_REPO, "creditos", "puntajes.py")],
+                 timeout=600)
+        try:
+            os.utime(F_PUNTAJES)
+        except OSError:
+            pass   # no hay JSON todavia: se volvera a intentar
+    finally:
+        _regenerando.release()
 
 
 def puntajes():

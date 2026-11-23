@@ -171,6 +171,9 @@ function nAprendidos(){ return new Set(Object.values(mapa)).size; }
 function refrescaEstado(){ const n=nAprendidos();
   document.getElementById('estadoAprend').textContent = n ? ('calibrado: '+n+'/'+CTRL.length) : 'sin calibrar'; }
 function marcador(t){ document.getElementById('marcador').innerHTML = t; }
+// Escapa lo que viene de fuera (nombre del mando, errores del servidor) antes de
+// meterlo en marcador(): un dispositivo USB con un nombre raro podria inyectar HTML.
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // --- Sesion: la SSE viaja con la cookie; el ENVIO (POST) necesita el token CSRF ---
 fetch('/api/sesion').then(r=>r.json()).then(d=>{ CSRF=d.csrf;
@@ -197,11 +200,11 @@ function conectar(){
   fuente.onmessage = ev=>{
     let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
     if(d.latido || d.fin) return;
-    if(d.error){ marcador('<b style="color:#f87171">'+d.error+'</b>'); return; }
+    if(d.error){ marcador('<b style="color:#f87171">'+esc(d.error)+'</b>'); return; }
     const clave = d.id + '/' + d.codigo;
     if(modo==='aprender'){ if(d.pulsado) aprender(clave); return; }
     const id = mapa[clave];
-    if(!id){ if(d.pulsado) marcador('control sin asignar ('+d.dispositivo+' #'+d.codigo+') — usa «Aprender»'); return; }
+    if(!id){ if(d.pulsado) marcador('control sin asignar ('+esc(d.dispositivo)+' #'+esc(d.codigo)+') — usa «Aprender»'); return; }
     if(d.pulsado){ enciende(id); marcador('Pulsado físico: <b>'+NOMBRE[id]+'</b>'); }
     else apaga(id);
   };
@@ -222,8 +225,8 @@ document.getElementById('mesa').addEventListener('pointerdown', async e=>{
       headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF||''},
       body: JSON.stringify({ control: id }) });
     const d = await r.json().catch(()=>({}));
-    if(r.ok && d.ok) marcador('Enviado: <b>'+NOMBRE[id]+'</b>'+(d.nota?' · '+d.nota:''));
-    else marcador('<b style="color:#f87171">'+(d.error||('no se pudo enviar ('+r.status+')'))+'</b>');
+    if(r.ok && d.ok) marcador('Enviado: <b>'+NOMBRE[id]+'</b>'+(d.nota?' · '+esc(d.nota):''));
+    else marcador('<b style="color:#f87171">'+esc(d.error||('no se pudo enviar ('+r.status+')'))+'</b>');
   }catch(err){ marcador('<b style="color:#f87171">error de red al enviar</b>'); }
 });
 

@@ -13,7 +13,6 @@ Eventos:
 Los ingresos = (monedas de verdad) * valor_moneda  (por defecto $100 CLP).
 """
 
-import os
 import time
 
 from comun import F_MONEDAS, entero
@@ -89,32 +88,6 @@ def agregar(desde=None, hasta=None):
         "por_hora": [{"hora": h, "monedas": m, "ingresos": m * VALOR}
                      for h, m in sorted(por_hora.items())],
     }
-
-
-def tiradas(desde=None, hasta=None):
-    """Partidas jugadas (evento 'consumido': creditos que el juego se llevo), por
-    juego/dia/hora.  No es dinero: una partida pagada con comp del panel cuenta
-    como tirada pero no como ingreso."""
-    from estado import _titulo_rom
-    total, por_juego, por_dia, por_hora = _resumen("consumido", desde, hasta)
-    return {
-        "total": total,
-        "por_juego": [{"rom": r, "titulo": _titulo_rom(r), "tiradas": n}
-                      for r, n in sorted(por_juego.items(),
-                                         key=lambda x: x[1], reverse=True)],
-        "por_dia": [{"fecha": d, "tiradas": n} for d, n in sorted(por_dia.items())],
-        "por_hora": [{"hora": h, "tiradas": n} for h, n in sorted(por_hora.items())],
-    }
-
-
-def poner_a_cero():
-    """Vacia el log de monedas (guardando una copia con fecha, por si acaso)."""
-    if os.path.exists(F_MONEDAS):
-        respaldo = F_MONEDAS + time.strftime(".%Y%m%d_%H%M%S")
-        try:
-            os.rename(F_MONEDAS, respaldo)
-        except OSError:
-            pass
 
 
 if __name__ == "__main__":
