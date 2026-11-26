@@ -62,13 +62,13 @@ lastError = None
 lastSwitch = None
 lastLed = None
 lastAviso = None   # estado anterior del aviso de salida ('off'/'salir'/None)
-lastBrillo = None
-minijuego = False     # el PC reclamo el panel por el FIFO
+lastLEDglow = None
+minigame = False     # el PC reclamo el panel por el FIFO
 fifoBuf = ""
-puertoAbierto = None  # ruta del puerto abierto (para ver si desaparece)
-ultimaRevision = 0.0
+openPort = None  # ruta del puerto abierto (para ver si desaparece)
+lastRevision = 0.0
 
-def find_port():
+def findPort():
     forzado = os.environ.get("ARDUINO_PORT")                   # util para pruebas / montajes raros
     if forzado:
         return forzado
@@ -100,12 +100,12 @@ def logOk():
      lastError = None
 
 def initArduino():
-    global conection, lastSwitch, lastLed, lastBrillo, lastAviso, puertoAbierto
+    global conection, lastSwitch, lastLed, lastLEDglow, lastAviso, openPort
 
     if conection is not None:
         return True
 
-    port = find_port()
+    port = findPort()
     if port is None:
         log("no encuentro el Arduino (ni /dev/serial/by-id/*1a86* ni /dev/ttyUSB*)")
         return False
@@ -114,13 +114,13 @@ def initArduino():
         # write_timeout: una escritura a una placa colgada/desenchufada falla en
         # vez de bloquear el demonio para siempre.
         conection = serial.Serial(port, BAUD_RATE, write_timeout=2)
-        puertoAbierto = port
+        openPort = port
         # Abrir el puerto reinicia la placa: esperar a que arranque y volver a
         # mandarle todo, porque ha vuelto a su estado inicial.
         time.sleep(ARDUINO_TIME)
         lastSwitch = None
         lastLed = None
-        lastBrillo = None
+        lastLEDglow = None
         lastAviso = None   # la placa reinicio: re-mandar tambien el estado del aviso de salida
         logOk()
         return True
@@ -136,22 +136,22 @@ def getFileData(path):
 
 _partida = {"hay": False, "visto": 0.0}
 
-def mameRunning():
+def gameRunning():
     # Recorrer /proc entero cuesta CPU en el i3 (medido: ~8% a 10 veces por
     # segundo). Basta con mirarlo una vez por segundo: el rele de verdad lo manda
     # monedero_switch, que escribe creditos.lua; esto solo decide atraccion/juego.
     if time.monotonic() - _partida["visto"] < 1.0:
         return _partida["hay"]
     _partida["visto"] = time.monotonic()
-    _partida["hay"] = procesoVivo(("mame", "hypseus"))
-    _partida["minijuego"] = procesoVivo(("minijuegos",))
+    _partida["hay"] = livingProcess(("mame", "hypseus"))
+    _partida["minijuego"] = livingProcess(("minijuegos",))
     return _partida["hay"]
 
-def minijuegoVivo():
-    # Se actualiza junto con mameRunning (una vez por segundo).
+def minigameAlive():
+    # Se actualiza junto con gameRunning (una vez por segundo).
     return _partida.get("minijuego", False)
 
-def procesoVivo(nombres):
+def livingProcess(nombres):
     # "Hay partida": MAME o Hypseus (laserdisc). En Hypseus no corre creditos.lua:
     # botones_juego lo escribe su lanzador (creditos/lanzar_hypseus.sh) y
     # monedero_switch=1 el propio Hypseus parcheado cuando la placa esta lista.
@@ -191,7 +191,7 @@ def getMoneyBankState(running):
         log(e)
         return None
 
-def getBrillo():
+def getGlow():
     # None = no hay fichero o error -> no se manda nada (la placa queda a 255).
     try:
         return max(0, min(255, int(getFileData(BRILLO_PATH).strip())))
@@ -201,7 +201,7 @@ def getBrillo():
         log(e)
         return None
 
-def getBotonesMask():
+def getButtonsMask():
     # creditos.lua escribe los botones de P1 que usa el juego; aqui se traducen
     # a una mascara de 13 bits de canales de LED. 0 = ninguno.
     try:
@@ -227,7 +227,7 @@ def getBotonesMask():
             mask |= (1 << canal)
     return mask
 
-def getAvisoLed():
+def getLedWarn():
     # Cuadro de salida con creditos dentro (lo escribe creditos.lua):
     #   'off'   -> apaga todos los botones; 'salir' -> parpadea el de salir (canal 0);
     #   None    -> no hay cuadro (LEDs normales).
@@ -240,7 +240,7 @@ def getAvisoLed():
         return None
     return v if v in ("off", "salir") else None
 
-def enviarCrudo(texto):
+def sendRawData(texto):
     global conection
     if conection is None:
         return False
@@ -258,9 +258,9 @@ def enviarCrudo(texto):
     return True
 
 def sendToArduino(tipo, valor):
-    return enviarCrudo(tipo + str(valor))
+    return sendRawData(tipo + str(valor))
 
-def abrirFifo():
+def openFifo():
     # O_RDWR (no solo O_RDONLY) mantiene un extremo escritor abierto, asi el
     # read nunca da EOF cuando el frontend no esta conectado y no hay que reabrir.
     try:
@@ -271,33 +271,48 @@ def abrirFifo():
         log(e)
         return None
 
-# main
+def rebootMoneyBank():
+    global lastSwitch
+    if os.path.exists(MONEDERO_RESET_PATH):
+        try:
+            os.remove(MONEDERO_RESET_PATH)
+        except OSError:
+            pass
+        RELE_ON_S = 2.030          # rele/solenoide vivo EXACTAMENTE esto (medido por Eloy);
+                                    # mas rato dejaba aceptar monedas de mas
+        CORTE_S = 1.5              # alimentacion cortada para que recalibre al volver
+        assert CORTE_S < RELE_ON_S, "el corte no cabe en la ventana del rele" # esta wea es como un try
+        sendRawData("M1")          # solenoide ON (si no, no calibra)
+        t0 = time.monotonic()      # el rele queda vivo desde aqui
+        sendRawData("R0")          # corta alimentacion del monedero
+        time.sleep(CORTE_S)
+        sendRawData("R1")          # la restaura: calibra con el solenoide activo
+        resto = RELE_ON_S - (time.monotonic() - t0)
+        if resto > 0:
+            time.sleep(resto)      # apaga a los 2.030 s EXACTOS del M1, ni uno mas
+        sendRawData("M0")          # solenoide OFF
+        lastSwitch = None          # re-sincroniza la M en la proxima vuelta
+        log("monedero reiniciado (pulso de calibracion del solenoide)")
+        return True
+    return False
 
-fifoFd = abrirFifo()
 
-while True:
-
-    if initArduino() is False:
-        time.sleep(RETRY_TIME)
-        continue
-
-    # Si el puerto desaparece (cable flojo, la placa se re-enumera por USB), la
-    # placa ha vuelto a su estado de fabrica y no nos enteramos: solo se detecta al
-    # fallar un write, y en atraccion estable no se escribe nada. Se cierra para
-    # que initArduino la reabra y le re-mande todo.
-    if time.monotonic() - ultimaRevision > PUERTO_TIME:
-        ultimaRevision = time.monotonic()
-        if puertoAbierto and not os.path.exists(puertoAbierto):
+def checkArduinoConnection():
+    global lastRevision, conection
+    if time.monotonic() - lastRevision > PUERTO_TIME:
+        lastRevision = time.monotonic()
+        if openPort and not os.path.exists(openPort):
             try:
                 conection.close()
             except Exception:
                 pass
             conection = None
-            log("el puerto %s desaparecio: reabro" % puertoAbierto)
-            continue
+            log("el puerto %s desaparecio: reabro" % openPort)
+            return False
+    return True
 
-    # Reinicio manual de la placa (el panel escribe ~/.attract/arduino_reset):
-    # cerrar y reabrir el puerto la resetea por DTR, y initArduino re-manda todo.
+def requestArduinoReboot():
+    global conection
     if os.path.exists(RESET_PATH):
         try:
             os.remove(RESET_PATH)
@@ -309,37 +324,11 @@ while True:
             pass
         conection = None
         log("reinicio del Arduino pedido")
-        continue
+        return True
+    return False
 
-    # Reinicio del MONEDERO (el panel escribe ~/.attract/monedero_reiniciar):
-    # corta y restaura su alimentacion (R) con el solenoide ACTIVADO (M1), para
-    # que calibre al encender; luego apaga el solenoide. Al terminar se deja
-    # lastSwitch=None para que la vuelta siguiente re-mande la M correcta (segun
-    # haya partida o no) y no quede desincronizado.
-    if os.path.exists(MONEDERO_RESET_PATH):
-        try:
-            os.remove(MONEDERO_RESET_PATH)
-        except OSError:
-            pass
-        RELE_ON_S = 2.030          # rele/solenoide vivo EXACTAMENTE esto (medido por Eloy);
-                                   # mas rato dejaba aceptar monedas de mas
-        CORTE_S = 1.5              # alimentacion cortada para que recalibre al volver
-        assert CORTE_S < RELE_ON_S, "el corte no cabe en la ventana del rele"
-        enviarCrudo("M1")          # solenoide ON (si no, no calibra)
-        t0 = time.monotonic()      # el rele queda vivo desde aqui
-        enviarCrudo("R0")          # corta alimentacion del monedero
-        time.sleep(CORTE_S)
-        enviarCrudo("R1")          # la restaura: calibra con el solenoide activo
-        resto = RELE_ON_S - (time.monotonic() - t0)
-        if resto > 0:
-            time.sleep(resto)      # apaga a los 2.030 s EXACTOS del M1, ni uno mas
-        enviarCrudo("M0")          # solenoide OFF
-        lastSwitch = None          # re-sincroniza la M en la proxima vuelta
-        log("monedero reiniciado (pulso de calibracion del solenoide)")
-        continue
-
-    # Despertar en cuanto el FIFO tenga datos (minijuego: latencia de un write),
-    # o cada UPDATE_TIME para la ronda de ficheros.
+def wakeUpOnFifo():
+    global fifoFd
     if fifoFd is not None:
         try:
             select.select([fifoFd], [], [], UPDATE_TIME)
@@ -348,9 +337,10 @@ while True:
             time.sleep(UPDATE_TIME)
     else:
         time.sleep(UPDATE_TIME)
-        fifoFd = abrirFifo()
+        fifoFd = openFifo()
 
-    # Drenar el FIFO y reenviar lo del minijuego
+def minigameHandle():
+    global fifoBuf, minigame, lastLed
     if fifoFd is not None:
         try:
             data = os.read(fifoFd, 4096)
@@ -359,70 +349,120 @@ while True:
         if data:
             fifoBuf += data.decode(errors="ignore")
             while "\n" in fifoBuf:
-                linea, fifoBuf = fifoBuf.split("\n", 1)
-                linea = linea.strip()
-                if linea == "[":
-                    minijuego = True
+                line, fifoBuf = fifoBuf.split("\n", 1)
+                line = line.strip()
+                if line == "[":
+                    minigame = True
                     _partida["minijuego"] = True   # hasta el proximo vistazo a /proc
                     lastLed = None   # al salir habra que re-mandar A/B
-                elif linea == "]":
-                    minijuego = False
+                elif line == "]":
+                    minigame = False
                     lastLed = None
-                elif linea in ("R0", "R1"):
-                    enviarCrudo(linea)   # alimentacion del monedero (canal 13): el panel lo reinicia
-                elif linea and minijuego:
-                    enviarCrudo(linea)   # P<ch>,<v> / X crudos del frontend
+                elif line in ("R0", "R1"):
+                    sendRawData(line)   # alimentacion del monedero (canal 13): el panel lo reinicia
+                elif line and minigame:
+                    sendRawData(line)   # P<ch>,<v> / X crudos del frontend
 
-    running = mameRunning()
 
-    # Si el minijuego murio sin mandar ']' (pkill al relanzar el frontend, un
-    # cuelgue...), el panel se quedaba suyo para siempre: sin atraccion y sin las
-    # luces de los juegos hasta la siguiente sesion de minijuegos.
-    if minijuego and not minijuegoVivo():
-        minijuego = False
-        lastLed = None
-        log("el minijuego termino sin soltar el panel: vuelvo a atraccion")
+def glowHandle():
+    global LEDglow, lastLEDglow
+    LEDglow = getGlow()
+    if LEDglow is not None and LEDglow != lastLEDglow:
+        if sendToArduino("L", LEDglow) is True:
+            lastLEDglow = LEDglow
+            print("Brillo:", LEDglow)
 
+def moneyBankHandle():
+    global switch, lastSwitch
     switch = getMoneyBankState(running)
     if switch is not None and switch != lastSwitch:
         if sendToArduino("M", switch) is True:
             lastSwitch = switch
             print("Monedero:", switch)
 
+def updateLeds():
+    global lastLed, lastAviso
+    warn = getLedWarn() if running else None # operador ternario
+    if warn != lastAviso:
+        # cambio de estado del aviso: limpia (X) y fuerza re-mandar lo que toque
+        sendRawData("X")
+        lastLed = None
+        lastAviso = warn
+        if warn is not None:
+            print("Aviso salida:", warn)
+    if warn == "salir":
+        # parpadeo llamativo del boton de salir (canal 0), ~3 Hz por reloj
+        on = int(time.time() * 6) % 2
+        sendRawData("P0,%d" % (255 if on else 0))
+    elif warn == "off":
+        pass   # ya se mando X al entrar: todos los botones apagados
+    else:
+        if running:
+            mask = getButtonsMask()
+            cmd = None if mask is None else ("B%X" % mask)
+        else:
+            cmd = "A" + ANIM_ATRACCION
+        if cmd is not None and cmd != lastLed:
+            if sendRawData(cmd) is True:
+                lastLed = cmd
+                print("LEDs:", cmd)
+# main
+
+fifoFd = openFifo()
+
+while True:
+
+    if initArduino() is False:
+        time.sleep(RETRY_TIME)
+        continue
+
+    # Si el puerto desaparece (cable flojo, la placa se re-enumera por USB), la
+    # placa ha vuelto a su estado de fabrica y no nos enteramos: solo se detecta al
+    # fallar un write, y en atraccion estable no se escribe nada. Se cierra para
+    # que initArduino la reabra y le re-mande todo.
+    if checkArduinoConnection() is False:
+        continue
+
+    # Reinicio manual de la placa (el panel escribe ~/.attract/arduino_reset):
+    # cerrar y reabrir el puerto la resetea por DTR, y initArduino re-manda todo.
+    if requestArduinoReboot() is True:
+        continue
+
+    # Reinicio del MONEDERO (el panel escribe ~/.attract/monedero_reiniciar):
+    # corta y restaura su alimentacion (R) con el solenoide ACTIVADO (M1), para
+    # que calibre al encender; luego apaga el solenoide. Al terminar se deja
+    # lastSwitch=None para que la vuelta siguiente re-mande la M correcta (segun
+    # haya partida o no) y no quede desincronizado.
+
+    if rebootMoneyBank() is True:
+        continue
+
+    # Despertar en cuanto el FIFO tenga datos (minijuego: latencia de un write),
+    # o cada UPDATE_TIME para la ronda de ficheros.
+    wakeUpOnFifo()
+
+    # Drenar el FIFO y reenviar lo del minijuego
+    minigameHandle()
+
+    running = gameRunning()
+
+    # Si el minijuego murio sin mandar ']' (pkill al relanzar el frontend, un
+    # cuelgue...), el panel se quedaba suyo para siempre: sin atraccion y sin las
+    # luces de los juegos hasta la siguiente sesion de minijuegos.
+    if minigame and not minigameAlive():
+        minigame = False
+        lastLed = None
+        log("el minijuego termino sin soltar el panel: volviendo a atraccion")
+
+    moneyBankHandle()
+
     if conection is None:
         continue
 
-    brillo = getBrillo()
-    if brillo is not None and brillo != lastBrillo:
-        if sendToArduino("L", brillo) is True:
-            lastBrillo = brillo
-            print("Brillo:", brillo)
+    glowHandle()
 
     # Los LEDs: en minijuego manda el PC (ya reenviado arriba). Si no: el aviso de
     # salida (apagar todo / parpadear el boton de salir) manda sobre el juego; si no
     # lo hay, A (atraccion) o B (botones del juego).
-    if not minijuego:
-        aviso = getAvisoLed() if running else None
-        if aviso != lastAviso:
-            # cambio de estado del aviso: limpia (X) y fuerza re-mandar lo que toque
-            enviarCrudo("X")
-            lastLed = None
-            lastAviso = aviso
-            if aviso is not None:
-                print("Aviso salida:", aviso)
-        if aviso == "salir":
-            # parpadeo llamativo del boton de salir (canal 0), ~3 Hz por reloj
-            on = int(time.time() * 6) % 2
-            enviarCrudo("P0,%d" % (255 if on else 0))
-        elif aviso == "off":
-            pass   # ya se mando X al entrar: todos los botones apagados
-        else:
-            if running:
-                mask = getBotonesMask()
-                cmd = None if mask is None else ("B%X" % mask)
-            else:
-                cmd = "A" + ANIM_ATRACCION
-            if cmd is not None and cmd != lastLed:
-                if enviarCrudo(cmd) is True:
-                    lastLed = cmd
-                    print("LEDs:", cmd)
+    if not minigame:
+        updateLeds()
