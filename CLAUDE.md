@@ -2403,6 +2403,13 @@ cabina: con una moneda entra en partida y sale el puente.
   espada), y la moneda se apunta como `panel` en `monedas.log`. El lanzador
   escribe `juego_actual` y borra `panel_cmd`. Probado en el portátil: crédito +
   START del panel arrancan la partida y «salir» cierra el juego.
+- **El marcador, en español** (mismo parche, `overlay_scoreboard.cpp`): «Jugador
+  1/2», «Creditos», «Vidas». Trampas de `fonts/digital.ttf`: las letras
+  MINÚSCULAS son las que se ven como mayúsculas normales (en mayúsculas la R
+  parece A y la D, O), y no tiene tildes (la É sale como un garabato). «Jugador
+  2» mide 6 px más que «Player 2»: va en x=204 para no tocar los dígitos de P2.
+  El texto grabado en la película (instrucciones, «Insert coins»…) NO se ha
+  traducido: está dentro del vídeo.
 - **AM+ sólo lee `emulators/*.cfg` al arrancar**: un cambio en `hypseus.cfg`
   (p. ej. `-fastboot`) no vale hasta reiniciar el frontend.
 - **Controles**: `config/cabina/hypinput.ini` → `~/hypseus-singe/hypinput.ini`,

@@ -176,6 +176,32 @@ index cc3899b..8be1814 100644
      // If we're seeking to the frame we're already on, then don't seek
      // This optimizes performance for many games and especially improves the
      // coin insert delay
+diff --git a/src/scoreboard/overlay_scoreboard.cpp b/src/scoreboard/overlay_scoreboard.cpp
+index 1b6b3af..b541cd5 100644
+--- a/src/scoreboard/overlay_scoreboard.cpp
++++ b/src/scoreboard/overlay_scoreboard.cpp
+@@ -46,11 +46,16 @@ bool OverlayScoreboard::RepaintIfNeeded()
+                                    decor("Lives: ", 268, 14, pSurface, rgb, false);
+                                 }
+                                 else {
+-                                   decor("Credits", 142, 4, pSurface, rgb, true);
+-                                   decor("Player 1 ", 63, 4, pSurface, rgb, true);
+-                                   decor("Player 2 ", 210, 4, pSurface, rgb, true);
+-                                   decor("Lives ", 24, 18, pSurface, rgb, true);
+-                                   decor("Lives ", 270, 18, pSurface, rgb, true);
++                                   // cabina: en espanol. En digital.ttf las MINUSCULAS son
++                                   // las que se ven como mayusculas normales (las mayusculas
++                                   // son otro estilo), y no tiene tildes. "Jugador 2" mide 6 px
++                                   // mas que "Player 2": se corre para no tocar los digitos de
++                                   // P2; "Creditos" se corre para seguir centrado.
++                                   decor("Creditos", 139, 4, pSurface, rgb, true);
++                                   decor("Jugador 1", 63, 4, pSurface, rgb, true);
++                                   decor("Jugador 2", 204, 4, pSurface, rgb, true);
++                                   decor("Vidas", 24, 18, pSurface, rgb, true);
++                                   decor("Vidas", 270, 18, pSurface, rgb, true);
+                                 }
+ 
+ 				// Update Player Scores
 diff --git a/src/sound/sound.cpp b/src/sound/sound.cpp
 index 2961427..6d03f34 100644
 --- a/src/sound/sound.cpp
