@@ -78,7 +78,11 @@ paso "Fuentes de GroovyMAME"
 version="$( groovymame -version 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' )"
 if [ -n "$version" ]; then
 	echo "  el groovymame instalado es $version"
-	rama="mame${version/./}"      # 0.264 -> mame0264
+	# La rama buena es la de GroovyMAME (groovymameXXXX), NO el tag de MAME
+	# upstream (mameXXXX): esa ultima es una revision mas vieja que, ademas de no
+	# traer los arreglos de GroovyMAME, renderiza el texto de la UI borroso en la
+	# cabina (medido 2026-11-02: groovymame0289 nitido, mame0289 difuminado).
+	rama="groovymame${version/./}"      # 0.289 -> groovymame0289
 else
 	aviso "  no pude leer la version instalada; uso la rama por defecto"
 	rama=""
@@ -130,7 +134,13 @@ fi
 # portaudio' en mame.ini (lo pone instalar.sh, tarea audio).
 paso "Compilando con $TRABAJOS trabajos (esto tarda horas)"
 extra=()
-command -v ccache >/dev/null && extra+=( "PATH=/usr/lib/ccache:$PATH" )
+# ccache: los symlinks del compilador van en /usr/lib/ccache/bin en Arch y en
+# /usr/lib/ccache en Debian/Ubuntu. Se usa el directorio que de verdad los tenga.
+if command -v ccache >/dev/null; then
+	for ccd in /usr/lib/ccache/bin /usr/lib/ccache; do
+		if [ -x "$ccd/gcc" ] || [ -x "$ccd/cc" ]; then extra+=( "PATH=$ccd:$PATH" ); break; fi
+	done
+fi
 ( cd "$FUENTES" && env "${extra[@]}" make -j"$TRABAJOS" NOWERROR=1 USE_QTDEBUG=0 USE_SYSTEM_LIB_PORTAUDIO=1 ) || {
 	rojo "Fallo la compilacion. Lo mas comun es quedarse sin memoria:"
 	rojo "  vuelve a lanzarlo con TRABAJOS=1 ./parches/compilar-en-arch.sh"
