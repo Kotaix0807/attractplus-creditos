@@ -1398,6 +1398,12 @@ cual y el proceso termina con traza de Python.
 
 ## 8. `contador_arduino.py` — el saldo hacia el Arduino
 
+> **Fundido en `arduino/moneyBank.py` el 2026-10-05** y borrado del repo. Esta
+> sección describe el script tal como era; sus decisiones (reabrir el fichero en
+> cada lectura, abrir el puerto una sola vez, `lastCredit = None` al reconectar,
+> apuntar sólo lo enviado con éxito) siguen vivas en el demonio fusionado, que
+> ahora manda el saldo como `C<n>` junto al relé del monedero (`M0`/`M1`).
+
 ### 8.1 Propósito y cuándo se usa
 
 Es el proceso que hace visible el saldo de monedero en el contador físico de
