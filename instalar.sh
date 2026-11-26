@@ -1912,43 +1912,54 @@ panel_por_defecto=OFF
 minijuegos_por_defecto=OFF
 [ "$ES_GROOVYARCADE" = 1 ] && minijuegos_por_defecto=ON
 
+# Las tareas, UNA sola vez: nombre, marcada por defecto y texto del dialogo, en
+# el orden en que se ejecutan (dependencias antes de compilar, compilar antes de
+# la lista...). De aqui salen el dialogo, el defecto sin dialogo y la ejecucion,
+# asi que no pueden desincronizarse. Cada una la hace tarea_<nombre>, salvo deps.
+TABLA_TAREAS=(
+	"deps|ON|Instalar las dependencias que falten"
+	"compilar|$compilar_por_defecto|Compilar Attract-Mode Plus"
+	"binario|$binario_por_defecto|Instalarlo en el sistema (lo que lanza gasetup)"
+	"descargar|OFF|Bajar GroovyMAME ya parcheado (81 MB, sin compilar)"
+	"mame|OFF|Parchear y compilar GroovyMAME (largo)"
+	"config|ON|Instalar plugins, layout y configuracion"
+	"crt|OFF|La pantalla es un CRT: ajustar el shader"
+	"audio|$audio_por_defecto|Sacar el audio por la placa, no por el mando (PS4)"
+	"monedero|$monedero_por_defecto|Arrancar el demonio del monedero (Arduino) con la cabina"
+	"panel|$panel_por_defecto|Panel web de control remoto (servicio; la entrada la pone la Pi)"
+	"minijuegos|$minijuegos_por_defecto|Minijuegos de luces del panel (huevo: P2 Start)"
+	"borderless|OFF|Pantalla completa SIN bordes (evita el parpadeo al entrar/salir)"
+	"salida|OFF|Mandar la imagen al CRT y apagar el panel interno"
+	"escritorio|$escritorio_por_defecto|Arreglar el escritorio de GroovyArcade (LXDE)"
+	"teclado|$teclado_por_defecto|Poner el teclado que toca al idioma del sistema"
+	"romlist|ON|Construir la lista de juegos"
+	"arte|ON|Descargar marquesinas y capturas"
+	"videos|OFF|Grabar los videos de muestra (~10 min)"
+)
+
 # El defecto cuando no hay dialogo: lo mismo que sale marcado en la lista.
 # Se puede fijar por entorno, que es como se prueba sin ir tarea por tarea:
 #   TAREAS="config romlist" ./instalar.sh --sin-preguntar
 if [ -z "${TAREAS:-}" ]; then
-	TAREAS="deps config romlist arte"
-	[ "$compilar_por_defecto" = ON ] && TAREAS="deps compilar $TAREAS"
-	[ "$binario_por_defecto"  = ON ] && TAREAS="$TAREAS binario"
-	[ "$audio_por_defecto"    = ON ] && TAREAS="$TAREAS audio"
-	[ "$monedero_por_defecto" = ON ] && TAREAS="$TAREAS monedero"
-	[ "$panel_por_defecto"    = ON ] && TAREAS="$TAREAS panel"
-	[ "$minijuegos_por_defecto" = ON ] && TAREAS="$TAREAS minijuegos"
+	TAREAS=""
+	for t in "${TABLA_TAREAS[@]}"; do
+		IFS='|' read -r nombre marcada _ <<< "$t"
+		[ "$marcada" = ON ] && TAREAS="$TAREAS $nombre"
+	done
+	TAREAS="${TAREAS# }"
 	FIJADAS=0
 else
 	FIJADAS=1
 fi
 if [ "$FIJADAS" = 0 ] && hay_dialogo; then
+	opciones=()
+	for t in "${TABLA_TAREAS[@]}"; do
+		IFS='|' read -r nombre marcada texto <<< "$t"
+		opciones+=( "$nombre" "$texto" "$marcada" )
+	done
 	seleccion=$( whiptail --title "Que quieres que haga" --notags \
 		--checklist "Espacio marca y desmarca, Enter confirma." 22 74 10 \
-		deps     "Instalar las dependencias que falten"          ON \
-		compilar "Compilar Attract-Mode Plus"                    $compilar_por_defecto \
-		binario  "Instalarlo en el sistema (lo que lanza gasetup)" $binario_por_defecto \
-		config   "Instalar plugins, layout y configuracion"      ON \
-		romlist  "Construir la lista de juegos"                  ON \
-		arte     "Descargar marquesinas y capturas"              ON \
-		crt      "La pantalla es un CRT: ajustar el shader"      OFF \
-		audio    "Sacar el audio por la placa, no por el mando (PS4)" $audio_por_defecto \
-		monedero "Arrancar el demonio del monedero (Arduino) con la cabina" $monedero_por_defecto \
-		panel    "Panel web de control remoto (servicio; la entrada la pone la Pi)" $panel_por_defecto \
-		minijuegos "Minijuegos de luces del panel (huevo: P2 Start)" $minijuegos_por_defecto \
-		salida   "Mandar la imagen al CRT y apagar el panel interno" OFF \
-		escritorio "Arreglar el escritorio de GroovyArcade (LXDE)" $escritorio_por_defecto \
-		teclado  "Poner el teclado que toca al idioma del sistema" $teclado_por_defecto \
-		descargar "Bajar GroovyMAME ya parcheado (81 MB, sin compilar)" OFF \
-		mame     "Parchear y compilar GroovyMAME (largo)"        OFF \
-		videos   "Grabar los videos de muestra (~10 min)"        OFF \
-		borderless "Pantalla completa SIN bordes (evita el parpadeo al entrar/salir)" OFF \
-		3>&1 1>&2 2>&3 ) && TAREAS="${seleccion//\"/}"
+		"${opciones[@]}" 3>&1 1>&2 2>&3 ) && TAREAS="${seleccion//\"/}"
 fi
 # Sin roms no hay lista de juegos, ni artes que emparejar, ni videos que grabar.
 if [ "$SIN_ROMS" = 1 ]; then
@@ -1990,23 +2001,11 @@ Seguir de todas formas?" no
 		exit 1
 	fi
 fi
-hace compilar && { tarea_compilar     || fallos=$((fallos+1)); }
-hace binario  && { tarea_binario      || fallos=$((fallos+1)); }
-hace descargar && { tarea_descargar  || fallos=$((fallos+1)); }
-hace mame      && { tarea_mame       || fallos=$((fallos+1)); }
-hace config   && { tarea_config       || fallos=$((fallos+1)); }
-hace crt      && { tarea_crt          || fallos=$((fallos+1)); }
-hace audio    && { tarea_audio        || fallos=$((fallos+1)); }
-hace monedero && { tarea_monedero     || fallos=$((fallos+1)); }
-hace panel    && { tarea_panel        || fallos=$((fallos+1)); }
-hace minijuegos && { tarea_minijuegos || fallos=$((fallos+1)); }
-hace borderless && { tarea_borderless || fallos=$((fallos+1)); }
-hace salida   && { tarea_salida       || fallos=$((fallos+1)); }
-hace escritorio && { tarea_escritorio || fallos=$((fallos+1)); }
-hace teclado  && { tarea_teclado      || fallos=$((fallos+1)); }
-hace romlist  && { tarea_romlist      || fallos=$((fallos+1)); }
-hace arte     && { tarea_arte         || fallos=$((fallos+1)); }
-hace videos   && { tarea_videos       || fallos=$((fallos+1)); }
+for t in "${TABLA_TAREAS[@]}"; do
+	nombre="${t%%|*}"
+	[ "$nombre" = deps ] && continue          # ya hecha arriba, con su pregunta
+	hace "$nombre" && { "tarea_$nombre" || fallos=$((fallos+1)); }
+done
 
 # ---------------------------------------------------------------- revision
 # Las tres cosas que fallaron de verdad en la maquina de pruebas y que no dan
