@@ -1649,7 +1649,10 @@ void FeInputMap::save( nowide::ofstream &f ) const
 		write_param(
 			f,
 			"map",
-			"Joy" + m_joy_config[i].first,
+			// BUGFIX: era "Joy" + .first (int) -> aritmetica de puntero, corrompia
+			// la linea al guardar (Joy1 -> "oy1"), asi que el mapeo de joysticks por
+			// nombre no persistia. .first es int; hay que convertirlo a texto.
+			"Joy" + std::to_string( m_joy_config[i].first ),
 			m_joy_config[i].second,
 			1
 		);

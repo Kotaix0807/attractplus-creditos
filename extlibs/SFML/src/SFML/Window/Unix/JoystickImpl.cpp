@@ -37,9 +37,12 @@
 #include <poll.h>
 #include <string>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
+#include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 
 namespace
@@ -227,6 +230,16 @@ void updatePluggedList(udev_device* udevDevice = nullptr)
     udev_list_entry* devices = udev_enumerate_get_list_entry(udevEnumerator.get());
     udev_list_entry* device  = nullptr;
 
+    // udev returns devices sorted by syspath as a STRING, so ".../input10/js1"
+    // sorts before ".../input9/js0" (the kernel's inputN numbers aren't zero
+    // padded). That makes which joystick lands at SFML index 0 change between
+    // boots whenever the number of digits changes, so two identical gamepads
+    // (e.g. the two halves of a dual arcade encoder) swap. SDL and the apps
+    // that read joystick id 0 use the jsN node directly and always get js0, so
+    // here we collect the joysticks and order them by their jsN NUMBER before
+    // assigning indices, to match that stable behaviour.
+    std::vector<std::pair<std::string, std::string>> found; // (deviceNode, systemPath)
+
     udev_list_entry_foreach(device, devices)
     {
         const char* syspath       = udev_list_entry_get_name(device);
@@ -235,30 +248,46 @@ void updatePluggedList(udev_device* udevDevice = nullptr)
         if (newUdevDevice && isJoystick(newUdevDevice.get()))
         {
             // Since isJoystick returned true, this has to succeed
-            const char* devnode = udev_device_get_devnode(newUdevDevice.get());
+            if (const char* devnode = udev_device_get_devnode(newUdevDevice.get()))
+                found.emplace_back(devnode, syspath ? syspath : "");
+        }
+    }
 
-            JoystickList::iterator recordIt;
+    const auto jsNumber = [](const std::string& node)
+    {
+        const std::string::size_type p = node.find("/js");
+        return (p == std::string::npos) ? -1 : std::atoi(node.c_str() + p + 3);
+    };
+    std::sort(found.begin(),
+              found.end(),
+              [&jsNumber](const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b)
+              { return jsNumber(a.first) < jsNumber(b.first); });
 
-            // Check if the device node has been mapped before
-            for (recordIt = joystickList.begin(); recordIt != joystickList.end(); ++recordIt)
+    for (const std::pair<std::string, std::string>& entry : found)
+    {
+        const std::string& devnode = entry.first;
+
+        JoystickList::iterator recordIt;
+
+        // Check if the device node has been mapped before
+        for (recordIt = joystickList.begin(); recordIt != joystickList.end(); ++recordIt)
+        {
+            if (recordIt->deviceNode == devnode)
             {
-                if (recordIt->deviceNode == devnode)
-                {
-                    recordIt->plugged = true;
-                    break;
-                }
+                recordIt->plugged = true;
+                break;
             }
+        }
 
-            // If not mapped before, map it now
-            if (recordIt == joystickList.end())
-            {
-                JoystickRecord newRecord;
-                newRecord.deviceNode = devnode;
-                newRecord.systemPath = syspath;
-                newRecord.plugged    = true;
+        // If not mapped before, map it now
+        if (recordIt == joystickList.end())
+        {
+            JoystickRecord newRecord;
+            newRecord.deviceNode = devnode;
+            newRecord.systemPath = entry.second;
+            newRecord.plugged    = true;
 
-                joystickList.push_back(newRecord);
-            }
+            joystickList.push_back(newRecord);
         }
     }
 }
