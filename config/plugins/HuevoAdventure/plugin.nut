@@ -331,8 +331,13 @@ class HuevoAdventure
 			m_current = 0;
 			m_fase = "escucha";
 		}
+		// La marca de "se esta lanzando un juego" la pone tambien este plugin: si
+		// Minijuegos esta desactivado, nadie mas la pondria.
+		if ( ttype == Transition.ToGame )
+			::ga_en_juego = true;
 		if ( ttype == Transition.FromGame )
 		{
+			::ga_en_juego = false;
 			// Un combo a medias NO sobrevive a una partida. Si el boton esperado quedo
 			// pulsado al entrar al juego, al volver la rama de avance (else if m_pressed)
 			// corre ANTES que la del RESET_TIME: completaba el combo con el reloj

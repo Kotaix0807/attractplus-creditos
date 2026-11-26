@@ -143,6 +143,9 @@ class Minijuegos
 				if ( exe != null && exe != "" )
 					fe.plugin_command( exe, m_config[ "args" ] );  // bloquea hasta que sale
 				if ( m_velo != null ) m_velo.alpha = 0;            // sin fade-in al volver
+				// Como al volver de un juego: un P2 que venga pulsado del minijuego no
+				// cuenta, o al soltarlo en el menu se relanzaria el minijuego.
+				m_rearmar = true;
 			}
 			return;
 		}
