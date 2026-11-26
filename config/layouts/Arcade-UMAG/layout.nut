@@ -80,7 +80,6 @@ fe.layout.width = WIDTH;
 fe.layout.height = HEIGHT;
 fe.layout.preserve_aspect_ratio=true;
 fe.image_cache.bg_load = true;
-
 fe.load_module( "fade" );
 
 local snap;
@@ -166,7 +165,7 @@ tmp.trigger = Transition.EndNavigation;
 if ( pres_ar )
 	tmp.preserve_aspect_ratio = true;
 
-local field = put_image( "field.png", 0, 0, 0, 456, 336 );
+local field = put_image( "field.png", 0, 0, 0, WIDTH, HEIGHT);
 local main_caption = fe.add_text( "[DisplayName]", 118, 316, 220, 14 );
 
 
@@ -189,6 +188,8 @@ fe.add_transition_callback( "attracman_transition" );
 local umag = put_image("umag.png", 0, 0, 2147483647, 55, 55);
 
 local dic = put_image( "dic.png", 55, 0, 2147483647, 55, 55 );
+
+local m_texto = fe.add_text( "Juego Gratis!", 16, 200, fe.layout.width - 32, 32 );
 
 
 function attracman_transition( ttype, var, ttime )
@@ -228,4 +229,4 @@ function attracman_transition( ttype, var, ttime )
 fe.do_nut( "engine.nut" );
 
 // prevent videos from spilling over on left side of playfield
-fe.add_image( "blank.png", 456, 0, 336, 336 );
+fe.add_image( "blank.png", WIDTH, 0, HEIGHT, HEIGHT );
