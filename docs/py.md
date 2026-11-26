@@ -594,6 +594,11 @@ resto del `main()` cargue ese fichero por completo.
 
 ### 2.8 `main()`: cómo se atan todos los cabos
 
+> Desde el 2026-11-26 cada modo es una función: `modo_fabrica`, `modo_proponer`,
+> `modo_detectar`, `modo_listar`, `modo_capturar` y `exportar` (el modo normal).
+> `main()` prepara lo común (pasos 1-6) y llama a la que toque. `--capturar` ya
+> no calcula antes todos los puntajes, que luego no usaba.
+
 1. Parsea argumentos (ver 2.2). Si `--help`, imprime el docstring del módulo y
    sale con código 0.
 2. Resuelve `hiscore.dat` (`ruta_hiscore_dat()`) y la carpeta de `.hi`

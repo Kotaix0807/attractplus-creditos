@@ -958,6 +958,220 @@ def _fabrica_disponible():
         return []
 
 
+def modo_fabrica(a, bloques, fabrica, f_fab):
+    """--fabrica: arranca cada juego y lee de la RAM su tabla de fabrica."""
+    mame = a.mame or os.path.expanduser(
+        "~/.local/share/groovymame-cabina/mame")
+    roms = a.roms or mame_opcion("rompath", mame) or ""
+    if not os.path.exists(mame):
+        print(f"no encuentro el emulador en {mame} (usa --mame)", file=sys.stderr)
+        return 1
+    lista = a.juegos or [l.split(";")[0] for l in
+                         open(os.path.expanduser(
+                             "~/.attract/romlists/groovymame.txt"))][1:]
+    print(f"# emulador: {mame}\n# roms: {roms}\n")
+    nuevos = capturar_fabrica(lista, bloques, mame, roms)
+    fabrica.update(nuevos)
+    json.dump(fabrica, open(f_fab, "w"), indent=1)
+    print(f"\n# {len(nuevos)} tablas de fabrica nuevas, "
+          f"{len(fabrica)} en total -> {f_fab}")
+    return 0
+
+
+def modo_proponer(recetas, fabrica, disponibles, dir_hi, bloques):
+    """--proponer: anade a puntajes.dat la mejor receta detectada de cada juego."""
+    dat = os.path.join(AQUI, "puntajes.dat")
+    ya = set(recetas)
+    nuevas = []
+    for j in sorted(set(list(fabrica) + disponibles)):
+        if j in ya:
+            continue
+        datos, _, _ = datos_de(j, recetas.get(j), dir_hi)
+        if datos is None and j in fabrica:
+            datos = bytes.fromhex(fabrica[j])
+        if datos is None:
+            continue
+        b = bloques.get(j, [])
+        trozo = datos[:b[0][3]] if b else datos
+        c = detectar(trozo)
+        if not c:
+            continue
+        mejor = c[0]
+        nuevas.append((j, mejor,
+                       f"{j} entradas={mejor['entradas']} bytes={mejor['bytes']} "
+                       f"puntos={mejor['puntos']}"
+                       + (f" nombre={mejor['nombre']}" if mejor["nombre"] else "")
+                       + " confirmado=no"))
+    if not nuevas:
+        print("\nno hay nada nuevo que proponer")
+        return 0
+    with open(dat, "a", encoding="utf-8") as f:
+        f.write("\n# --- propuestas automaticas del detector "
+                "-------------------------------\n#\n"
+                "# Las escribio ./puntajes.py --proponer mirando la tabla de\n"
+                "# fabrica de cada juego. Llevan 'confirmado=no' porque NADIE\n"
+                "# las ha comparado con lo que el juego ensena en pantalla, y\n"
+                "# esa comparacion es la unica prueba: a dkong le sobraba un\n"
+                "# x10 y solo se vio mirando su modo de atraccion.\n"
+                "#\n# Para confirmar una: mira su tabla en el juego, corrige la\n"
+                "# linea si hace falta y cambia a 'confirmado=si'.\n#\n")
+        for j, mejor, linea in nuevas:
+            f.write(f"# {j}: {mejor['valores'][:6]}\n{linea}\n")
+    print(f"\n# {len(nuevas)} propuestas anadidas a {dat}")
+    for j, mejor, _ in nuevas[:15]:
+        print(f"   {j:<12} {mejor['valores'][:5]}")
+    if len(nuevas) > 15:
+        print(f"   ... y {len(nuevas) - 15} mas")
+    return 0
+
+
+def modo_detectar(juegos, recetas, dir_hi, fabrica, bloques):
+    """--detectar: ensena las recetas candidatas de cada juego."""
+    for j in juegos:
+        datos, origen, aviso = datos_de(j, recetas.get(j), dir_hi, fabrica)
+        if datos is None and j in fabrica:
+            datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
+        if datos is None:
+            print(f"\n{j}: {aviso} (prueba --fabrica)")
+            continue
+        b = bloques.get(j, [])
+        trozo = datos[:b[0][3]] if (b and origen == "hi") else datos
+        print(f"\n=== {j} ({origen}, {len(trozo)} bytes) ===")
+        cands = detectar(trozo)
+        if not cands:
+            print("  nada que parezca una tabla ordenada de puntuaciones.")
+            print("  Puede que el bloque mezcle tabla y estado (le pasa a")
+            print("  asteroid), o que el juego guarde una sola puntuacion.")
+            continue
+        for k, c in enumerate(cands[:4], 1):
+            linea = (f"{j} entradas={c['entradas']} bytes={c['bytes']} "
+                     f"puntos={c['puntos']}"
+                     + (f" nombre={c['nombre']}" if c["nombre"] else "")
+                     + (" fuente=nvram" if origen == "nvram" else ""))
+            print(f"  {k}) {c['valores'][:8]}")
+            print(f"     {linea}")
+        print("  Elige la que tenga pinta de puntuaciones y pegala en "
+              "puntajes.dat.")
+    return 0
+
+
+def modo_listar(disponibles, bloques, recetas, dir_hi):
+    """--listar: que juegos descifran y cuales no."""
+    # Se DESCIFRA de verdad para listar, en vez de mirar el tamano del
+    # fichero: lo que interesa saber es si de ese juego sale una tabla, y
+    # eso solo lo dice el mismo camino que produce el resultado. Medir por
+    # una ruta y publicar por otra ya dio una cifra inflada una vez.
+    ok, sin, vacios, sin_jugar = [], [], [], []
+    print(f"\n{'juego':<14} {'receta':<8} {'fuente':<10} {'pos':<5} nota")
+    for j in disponibles:
+        filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
+                                           recetas.get(j), dir_hi)
+        receta = (filas[0].get("receta", "propia") if filas
+                  else ("SI" if j in recetas else "--"))
+        n = len(filas) if filas else 0
+        print(f"  {j:<12} {receta:<8} {str(origen or '-'):<10} "
+              f"{n:<5} {aviso or ''}")
+        if filas:
+            ok.append(j)
+        elif aviso == VACIA:
+            sin_jugar.append(j)
+        elif origen:
+            sin.append(j)
+        else:
+            vacios.append(j)
+
+    print(f"\nDescifran con datos ({len(ok)}): {' '.join(ok)}")
+    if sin_jugar:
+        print(f"\nDescifran, tabla VACIA -- nadie ha jugado "
+              f"({len(sin_jugar)}): {' '.join(sin_jugar)}")
+    if sin:
+        print(f"\nTienen datos y NO descifran ({len(sin)}): {' '.join(sin)}")
+    if vacios:
+        print(f"\nSin datos guardados ({len(vacios)}): {' '.join(vacios)}")
+    return 0
+
+
+def modo_capturar(fabrica, recetas, bloques, defectos, f_def):
+    """--capturar: apunta las tablas de fabrica en puntajes_defecto.json."""
+    # La base sale de las tablas que --fabrica leyo de la RAM: son las que
+    # trae la ROM antes de que nadie juegue, que es justo la definicion de
+    # "nombre ficticio". Asi se cubren TODOS los juegos capturados, no solo
+    # los pocos que alguien ha jugado ya.
+    for j, crudo in sorted(fabrica.items()):
+        cfg = recetas.get(j)
+        if not cfg:
+            continue
+        datos = bytes.fromhex(crudo)
+        b = bloques.get(j, [])
+        idx = int(cfg.get("bloque", 0))
+        desde = sum(x[3] for x in b[:idx]) if b else 0
+        largo = b[idx][3] if b and idx < len(b) else len(datos)
+        trozo = datos[desde:desde + largo]
+        if len(trozo) < int(cfg["entradas"]) * int(cfg["bytes"]):
+            continue
+        try:
+            filas = descifrar(trozo, cfg)
+        except RecetaNoEncaja as e:
+            print(f"  {j:<12} la receta no encaja: {e}")
+            continue
+        defectos[j] = [[f.get("nombre", ""), f["puntos"]] for f in filas]
+        print(f"  {j:<12} {len(filas)} entradas de fabrica  "
+              f"{[f['puntos'] for f in filas[:4]]}")
+    json.dump(defectos, open(f_def, "w"), indent=1, ensure_ascii=False)
+    print(f"\nBase de fabrica en {f_def}")
+    return 0
+
+
+def exportar(juegos, bloques, recetas, dir_hi, fabrica, defectos, salida):
+    """El modo normal: descifra cada juego y escribe puntajes.json."""
+    resultado, sin_receta = {}, []
+    for j in juegos:
+        filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
+                                           recetas.get(j), dir_hi)
+        if filas is None:
+            # Aun sin receta se exporta lo que hay: asi el fichero cubre TODOS
+            # los juegos desde el primer dia y el programa que lo lea no se
+            # queda sin nada. Cuando aparezca la receta, la misma entrada pasa a
+            # traer los puntajes descifrados.
+            datos, org, _ = datos_de(j, recetas.get(j), dir_hi, fabrica)
+            if datos is not None:
+                resultado[j] = {"descifrado": False, "origen": org,
+                                "motivo": aviso, "crudo": datos.hex()}
+            sin_receta.append((j, aviso))
+            continue
+        resultado[j] = {"descifrado": True, "origen": origen,
+                        "puestos": marcar_defectos(j, filas, defectos)}
+
+    os.makedirs(os.path.dirname(salida), exist_ok=True)
+    tmp = salida + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(resultado, f, indent=1, ensure_ascii=False)
+    os.replace(tmp, salida)      # atomico: nadie lee un JSON a medias
+
+    print()
+    descifrados = {j: r for j, r in resultado.items() if r.get("descifrado")}
+    for j, r in sorted(descifrados.items()):
+        filas = r["puestos"]
+        reales = [f for f in filas if f.get("defecto") is False]
+        print(f"  {j:<12} [{r['origen']}] {len(filas)} entradas, "
+              f"{len(reales) if defectos.get(j) else '?'} de jugadores")
+        for f in filas[:3]:
+            marca = {True: " (de fabrica)", False: "", None: " (?)"}[f.get("defecto")]
+            print(f"       {f['puesto']}. {f.get('nombre', ''):<6} "
+                  f"{f['puntos']:>10}{marca}")
+    if sin_receta:
+        con_datos = [x for x in sin_receta if x[0] in resultado]
+        print(f"\n  con datos pero SIN descifrar ({len(con_datos)}): "
+              "van al JSON en crudo")
+        for j, aviso in con_datos[:12]:
+            print(f"       {j:<12} {aviso}")
+        if len(con_datos) > 12:
+            print(f"       ... y {len(con_datos) - 12} mas")
+        print("  Para sacarles la receta:  ./puntajes.py --detectar <juego>")
+    print(f"\n# {len(resultado)} juegos ({len(descifrados)} descifrados) -> {salida}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("juegos", nargs="*")
@@ -1041,205 +1255,16 @@ def main():
     FABRICA = fabrica
 
     if a.fabrica:
-        mame = a.mame or os.path.expanduser(
-            "~/.local/share/groovymame-cabina/mame")
-        roms = a.roms or mame_opcion("rompath", mame) or ""
-        if not os.path.exists(mame):
-            print(f"no encuentro el emulador en {mame} (usa --mame)", file=sys.stderr)
-            return 1
-        lista = a.juegos or [l.split(";")[0] for l in
-                             open(os.path.expanduser(
-                                 "~/.attract/romlists/groovymame.txt"))][1:]
-        print(f"# emulador: {mame}\n# roms: {roms}\n")
-        nuevos = capturar_fabrica(lista, bloques, mame, roms)
-        fabrica.update(nuevos)
-        json.dump(fabrica, open(f_fab, "w"), indent=1)
-        print(f"\n# {len(nuevos)} tablas de fabrica nuevas, "
-              f"{len(fabrica)} en total -> {f_fab}")
-        return 0
-
+        return modo_fabrica(a, bloques, fabrica, f_fab)
     if a.proponer:
-        dat = os.path.join(AQUI, "puntajes.dat")
-        ya = set(recetas)
-        nuevas = []
-        for j in sorted(set(list(fabrica) + disponibles)):
-            if j in ya:
-                continue
-            datos, origen, _ = datos_de(j, recetas.get(j), dir_hi)
-            if datos is None and j in fabrica:
-                datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
-            if datos is None:
-                continue
-            b = bloques.get(j, [])
-            trozo = datos[:b[0][3]] if b else datos
-            c = detectar(trozo)
-            if not c:
-                continue
-            mejor = c[0]
-            nuevas.append((j, mejor,
-                           f"{j} entradas={mejor['entradas']} bytes={mejor['bytes']} "
-                           f"puntos={mejor['puntos']}"
-                           + (f" nombre={mejor['nombre']}" if mejor["nombre"] else "")
-                           + " confirmado=no"))
-        if not nuevas:
-            print("\nno hay nada nuevo que proponer")
-            return 0
-        with open(dat, "a", encoding="utf-8") as f:
-            f.write("\n# --- propuestas automaticas del detector "
-                    "-------------------------------\n#\n"
-                    "# Las escribio ./puntajes.py --proponer mirando la tabla de\n"
-                    "# fabrica de cada juego. Llevan 'confirmado=no' porque NADIE\n"
-                    "# las ha comparado con lo que el juego ensena en pantalla, y\n"
-                    "# esa comparacion es la unica prueba: a dkong le sobraba un\n"
-                    "# x10 y solo se vio mirando su modo de atraccion.\n"
-                    "#\n# Para confirmar una: mira su tabla en el juego, corrige la\n"
-                    "# linea si hace falta y cambia a 'confirmado=si'.\n#\n")
-            for j, mejor, linea in nuevas:
-                f.write(f"# {j}: {mejor['valores'][:6]}\n{linea}\n")
-        print(f"\n# {len(nuevas)} propuestas anadidas a {dat}")
-        for j, mejor, _ in nuevas[:15]:
-            print(f"   {j:<12} {mejor['valores'][:5]}")
-        if len(nuevas) > 15:
-            print(f"   ... y {len(nuevas) - 15} mas")
-        return 0
-
+        return modo_proponer(recetas, fabrica, disponibles, dir_hi, bloques)
     if a.detectar:
-        for j in juegos:
-            datos, origen, aviso = datos_de(j, recetas.get(j), dir_hi, fabrica)
-            if datos is None and j in fabrica:
-                datos, origen = bytes.fromhex(fabrica[j]), "fabrica"
-            if datos is None:
-                print(f"\n{j}: {aviso} (prueba --fabrica)")
-                continue
-            b = bloques.get(j, [])
-            trozo = datos[:b[0][3]] if (b and origen == "hi") else datos
-            print(f"\n=== {j} ({origen}, {len(trozo)} bytes) ===")
-            cands = detectar(trozo)
-            if not cands:
-                print("  nada que parezca una tabla ordenada de puntuaciones.")
-                print("  Puede que el bloque mezcle tabla y estado (le pasa a")
-                print("  asteroid), o que el juego guarde una sola puntuacion.")
-                continue
-            for k, c in enumerate(cands[:4], 1):
-                linea = (f"{j} entradas={c['entradas']} bytes={c['bytes']} "
-                         f"puntos={c['puntos']}"
-                         + (f" nombre={c['nombre']}" if c["nombre"] else "")
-                         + (" fuente=nvram" if origen == "nvram" else ""))
-                print(f"  {k}) {c['valores'][:8]}")
-                print(f"     {linea}")
-            print("  Elige la que tenga pinta de puntuaciones y pegala en "
-                  "puntajes.dat.")
-        return 0
-
+        return modo_detectar(juegos, recetas, dir_hi, fabrica, bloques)
     if a.listar:
-        # Se DESCIFRA de verdad para listar, en vez de mirar el tamano del
-        # fichero: lo que interesa saber es si de ese juego sale una tabla, y
-        # eso solo lo dice el mismo camino que produce el resultado. Medir por
-        # una ruta y publicar por otra ya dio una cifra inflada una vez.
-        ok, sin, vacios, sin_jugar = [], [], [], []
-        print(f"\n{'juego':<14} {'receta':<8} {'fuente':<10} {'pos':<5} nota")
-        for j in disponibles:
-            filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
-                                               recetas.get(j), dir_hi)
-            receta = (filas[0].get("receta", "propia") if filas
-                      else ("SI" if j in recetas else "--"))
-            n = len(filas) if filas else 0
-            print(f"  {j:<12} {receta:<8} {str(origen or '-'):<10} "
-                  f"{n:<5} {aviso or ''}")
-            if filas:
-                ok.append(j)
-            elif aviso == VACIA:
-                sin_jugar.append(j)
-            elif origen:
-                sin.append(j)
-            else:
-                vacios.append(j)
-
-        print(f"\nDescifran con datos ({len(ok)}): {' '.join(ok)}")
-        if sin_jugar:
-            print(f"\nDescifran, tabla VACIA -- nadie ha jugado "
-                  f"({len(sin_jugar)}): {' '.join(sin_jugar)}")
-        if sin:
-            print(f"\nTienen datos y NO descifran ({len(sin)}): {' '.join(sin)}")
-        if vacios:
-            print(f"\nSin datos guardados ({len(vacios)}): {' '.join(vacios)}")
-        return 0
-
-    resultado, sin_receta = {}, []
-    for j in juegos:
-        filas, origen, aviso = puntajes_de(j, bloques.get(j, []),
-                                           recetas.get(j), dir_hi)
-        if filas is None:
-            # Aun sin receta se exporta lo que hay: asi el fichero cubre TODOS
-            # los juegos desde el primer dia y el programa que lo lea no se
-            # queda sin nada. Cuando aparezca la receta, la misma entrada pasa a
-            # traer los puntajes descifrados.
-            datos, org, _ = datos_de(j, recetas.get(j), dir_hi, fabrica)
-            if datos is not None:
-                resultado[j] = {"descifrado": False, "origen": org,
-                                "motivo": aviso, "crudo": datos.hex()}
-            sin_receta.append((j, aviso))
-            continue
-        resultado[j] = {"descifrado": True, "origen": origen,
-                        "puestos": marcar_defectos(j, filas, defectos)}
-
+        return modo_listar(disponibles, bloques, recetas, dir_hi)
     if a.capturar:
-        # La base sale de las tablas que --fabrica leyo de la RAM: son las que
-        # trae la ROM antes de que nadie juegue, que es justo la definicion de
-        # "nombre ficticio". Asi se cubren TODOS los juegos capturados, no solo
-        # los pocos que alguien ha jugado ya.
-        for j, crudo in sorted(fabrica.items()):
-            cfg = recetas.get(j)
-            if not cfg:
-                continue
-            datos = bytes.fromhex(crudo)
-            b = bloques.get(j, [])
-            idx = int(cfg.get("bloque", 0))
-            desde = sum(x[3] for x in b[:idx]) if b else 0
-            largo = b[idx][3] if b and idx < len(b) else len(datos)
-            trozo = datos[desde:desde + largo]
-            if len(trozo) < int(cfg["entradas"]) * int(cfg["bytes"]):
-                continue
-            try:
-                filas = descifrar(trozo, cfg)
-            except RecetaNoEncaja as e:
-                print(f"  {j:<12} la receta no encaja: {e}")
-                continue
-            defectos[j] = [[f.get("nombre", ""), f["puntos"]] for f in filas]
-            print(f"  {j:<12} {len(filas)} entradas de fabrica  "
-                  f"{[f['puntos'] for f in filas[:4]]}")
-        json.dump(defectos, open(f_def, "w"), indent=1, ensure_ascii=False)
-        print(f"\nBase de fabrica en {f_def}")
-        return 0
-
-    os.makedirs(os.path.dirname(a.salida), exist_ok=True)
-    tmp = a.salida + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(resultado, f, indent=1, ensure_ascii=False)
-    os.replace(tmp, a.salida)      # atomico: nadie lee un JSON a medias
-
-    print()
-    descifrados = {j: r for j, r in resultado.items() if r.get("descifrado")}
-    for j, r in sorted(descifrados.items()):
-        filas = r["puestos"]
-        reales = [f for f in filas if f.get("defecto") is False]
-        print(f"  {j:<12} [{r['origen']}] {len(filas)} entradas, "
-              f"{len(reales) if defectos.get(j) else '?'} de jugadores")
-        for f in filas[:3]:
-            marca = {True: " (de fabrica)", False: "", None: " (?)"}[f.get("defecto")]
-            print(f"       {f['puesto']}. {f.get('nombre', ''):<6} "
-                  f"{f['puntos']:>10}{marca}")
-    if sin_receta:
-        con_datos = [x for x in sin_receta if x[0] in resultado]
-        print(f"\n  con datos pero SIN descifrar ({len(con_datos)}): "
-              "van al JSON en crudo")
-        for j, aviso in con_datos[:12]:
-            print(f"       {j:<12} {aviso}")
-        if len(con_datos) > 12:
-            print(f"       ... y {len(con_datos) - 12} mas")
-        print("  Para sacarles la receta:  ./puntajes.py --detectar <juego>")
-    print(f"\n# {len(resultado)} juegos ({len(descifrados)} descifrados) -> {a.salida}")
-    return 0
+        return modo_capturar(fabrica, recetas, bloques, defectos, f_def)
+    return exportar(juegos, bloques, recetas, dir_hi, fabrica, defectos, a.salida)
 
 
 if __name__ == "__main__":
