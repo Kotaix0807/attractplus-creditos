@@ -1356,8 +1356,10 @@ int main(void) {
         close(fifoFd);
     liberarPitch(&okAgudo, &okCanal);       // libera las copias de tono (sin fugas)
     liberarPitch(&topoAgudo, &topoCanal);
-    if (texTopoAppear) SDL_DestroyTexture(texTopoAppear);
-    if (texTopoWhack)  SDL_DestroyTexture(texTopoWhack);
+    if (texTopoAppear)
+        SDL_DestroyTexture(texTopoAppear);
+    if (texTopoWhack)
+        SDL_DestroyTexture(texTopoWhack);
     SDL_Quit();
     return 0;
 }
